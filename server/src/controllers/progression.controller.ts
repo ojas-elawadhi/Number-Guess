@@ -16,6 +16,7 @@ progressionRouter.post("/bootstrap", async (request, response) => {
     const result = await progressionService.bootstrap(payload);
     response.json(result);
   } catch (error) {
+    console.error("[progression/bootstrap]", error);
     response.status(503).json({
       message: error instanceof Error ? error.message : "Could not initialize player progression."
     });
@@ -42,6 +43,7 @@ progressionRouter.patch("/preferences", async (request, response) => {
       message: "No supported preference update was provided."
     });
   } catch (error) {
+    console.error("[progression/preferences]", error);
     response.status(503).json({
       message: error instanceof Error ? error.message : "Could not update progression preferences."
     });
@@ -53,6 +55,7 @@ progressionRouter.post("/daily-reward", async (request, response) => {
     const payload = request.body as ClaimDailyRewardPayload;
     response.json(await progressionService.claimDailyReward(payload.playerKey));
   } catch (error) {
+    console.error("[progression/daily-reward]", error);
     response.status(503).json({
       message: error instanceof Error ? error.message : "Could not claim the daily reward."
     });
@@ -64,6 +67,7 @@ progressionRouter.post("/match", async (request, response) => {
     const payload = request.body as RecordMatchPayload;
     response.json(await progressionService.recordMatch(payload.playerKey, payload.input));
   } catch (error) {
+    console.error("[progression/match]", error);
     response.status(503).json({
       message: error instanceof Error ? error.message : "Could not record the match."
     });

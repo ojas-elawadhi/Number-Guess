@@ -5,7 +5,7 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 
-import { getHealth } from "./controllers/health.controller";
+import { getDatabaseHealth, getHealth } from "./controllers/health.controller";
 import { progressionRouter } from "./controllers/progression.controller";
 import { registerGameSocketHandlers } from "./sockets/game.socket";
 import type { ClientToServerEvents, ServerToClientEvents } from "./types/game.types";
@@ -35,6 +35,7 @@ app.get("/", (_request, response) => {
 });
 
 app.get("/health", getHealth);
+app.get("/health/db", getDatabaseHealth);
 app.use("/api/progression", progressionRouter);
 
 const httpServer = createServer(app);
