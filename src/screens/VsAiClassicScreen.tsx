@@ -1,12 +1,19 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AiOpponentCard } from "../components/AiOpponentCard";
+import { ConfettiBurst } from "../components/ConfettiBurst";
+import { CountdownOverlay } from "../components/CountdownOverlay";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { TextField } from "../components/TextField";
+import { useCountdownOverlay } from "../hooks/useCountdownOverlay";
+import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
+import type { MatchRecord } from "../types/progression.types";
 import { colors, spacing } from "../utils/theme";
+import { formatDuration } from "../utils/progression";
 import { getDifficultyConfig, getDifficultyRangeLabel, parseDifficulty } from "../../shared/difficulty";
 
 interface AiClassicRoundEntry {
@@ -41,6 +48,16 @@ export default function VsAiClassicScreen() {
   const difficulty: Difficulty = parseDifficulty(params.difficulty);
   const difficultyConfig = getDifficultyConfig(difficulty);
   const digitLimit = String(difficultyConfig.maxNumber).length;
+  const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
+  const {
+    countdownActive,
+    countdownOpacity,
+    countdownScale,
+    countdownValue,
+    startCountdown
+  } = useCountdownOverlay();
+  const startTimeRef = useRef(Date.now());
+  const recordedMatchRef = useRef(false);
   const [targetNumber, setTargetNumber] = useState(() => randomBetween(1, difficultyConfig.maxNumber));
   const [guess, setGuess] = useState("");
   const [roundNumber, setRoundNumber] = useState(1);
@@ -50,12 +67,41 @@ export default function VsAiClassicScreen() {
   const [history, setHistory] = useState<AiClassicRoundEntry[]>([]);
   const [winner, setWinner] = useState<ClassicWinner>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
 
   const isComplete = winner !== null;
 
+  useEffect(() => {
+    startCountdown();
+  }, [startCountdown]);
+
+  useEffect(() => {
+    if (!isComplete || recordedMatchRef.current === true) {
+      return;
+    }
+
+    recordedMatchRef.current = true;
+    const outcome = winner === "player" ? "win" : winner === "tie" ? "tie" : "loss";
+
+    recordMatch({
+      category: "vs-ai",
+      mode: "classic",
+      difficulty,
+      outcome,
+      attempts: history.length,
+      durationMs: Date.now() - startTimeRef.current,
+      opponentName: "Nova Lynx",
+      opponentPersona: "Pattern hunter"
+    })
+      .then(setMatchSummary)
+      .catch(() => {
+        // Keep match flow intact even if progression persistence fails.
+      });
+  }, [difficulty, history.length, isComplete, recordMatch, winner]);
+
   const latestFeedback = useMemo(() => {
     if (!lastRound) {
-      return `You and the AI are chasing the same hidden number in the ${getDifficultyRangeLabel(difficulty)} range. Submit one guess each round and use the higher or lower hints to narrow it down.`;
+      return `You and the AI are chasing the same hidden number in the ${getDifficultyRangeLabel(difficulty)} range. Submit one guess each round and use only high or low feedback to narrow it down.`;
     }
 
     const playerLine = `Your guess ${lastRound.playerGuess}: ${formatFeedback(lastRound.playerResult)}`;
@@ -115,6 +161,8 @@ export default function VsAiClassicScreen() {
   };
 
   const handlePlayAgain = () => {
+    recordedMatchRef.current = false;
+    startTimeRef.current = Date.now();
     setTargetNumber(randomBetween(1, difficultyConfig.maxNumber));
     setGuess("");
     setRoundNumber(1);
@@ -124,10 +172,22 @@ export default function VsAiClassicScreen() {
     setHistory([]);
     setWinner(null);
     setErrorMessage(null);
+    setMatchSummary(null);
+    startCountdown();
   };
 
   return (
     <ScreenContainer>
+      <ConfettiBurst visible={winner === "player" || winner === "tie"} />
+      {countdownValue !== null ? (
+        <CountdownOverlay
+          label="Match Starts In"
+          opacity={countdownOpacity}
+          scale={countdownScale}
+          value={countdownValue}
+        />
+      ) : null}
+
       <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backLink, pressed && styles.backLinkPressed]}>
         <Text style={styles.backText}>Back</Text>
       </Pressable>
@@ -140,9 +200,29 @@ export default function VsAiClassicScreen() {
         </Text>
       </View>
 
+      <AiOpponentCard
+        name="Nova Lynx"
+        personality="Fast starter, calm finisher, and always chasing patterns in the range."
+        title="Shared-Target Rival"
+      />
+
+      <View style={styles.statusRow}>
+        <View style={[styles.statusPill, countdownActive && styles.statusPillAccent]}>
+          <Text style={styles.statusPillText}>
+            {countdownActive ? "Match starting" : isComplete ? "Match complete" : "Your turn"}
+          </Text>
+        </View>
+        <View style={styles.statusPill}>
+          <Text style={styles.statusPillText}>
+            {winner === null ? `AI guess ${lastRound?.aiGuess ?? "—"}` : `Winner: ${winner === "ai" ? "AI" : winner === "player" ? "You" : "Tie"}`}
+          </Text>
+        </View>
+      </View>
+
       <View style={styles.card}>
         <View style={styles.roundHeader}>
           <Text style={styles.roundTitle}>Round {roundNumber}</Text>
+          <Text style={styles.roundMeta}>{difficultyConfig.label} range</Text>
         </View>
 
         <Text style={styles.status}>
@@ -152,22 +232,22 @@ export default function VsAiClassicScreen() {
               : winner === "player"
                 ? "You reached the hidden number first."
                 : "The AI reached the hidden number first."
-            : "Lock in your guess and the AI will respond with one of its own."}
+            : "Lock in your guess and the AI will answer with one guess of its own."}
         </Text>
 
         <TextField
-          editable={!isComplete}
+          editable={!isComplete && !countdownActive}
           keyboardType="numeric"
           label="Your guess"
           maxLength={digitLimit}
           onChangeText={setGuess}
-          placeholder={isComplete ? "Round complete" : "Pick a number"}
+          placeholder={countdownActive ? "Get ready..." : isComplete ? "Round complete" : "Pick a number"}
           value={guess}
         />
 
         <PrimaryButton
-          disabled={isComplete}
-          label={isComplete ? "Classic Finished" : "Lock In Guess"}
+          disabled={isComplete || countdownActive}
+          label={countdownActive ? "Starting..." : isComplete ? "Classic Finished" : "Lock In Guess"}
           onPress={handleSubmitGuess}
         />
 
@@ -182,20 +262,14 @@ export default function VsAiClassicScreen() {
       {isComplete ? (
         <View style={styles.resultCard}>
           <Text style={styles.resultTitle}>
-            {winner === "tie"
-              ? "It's a tie."
-              : winner === "player"
-                ? "You win."
-                : "AI wins."}
+            {winner === "tie" ? "It’s a tie." : winner === "player" ? "You win." : "AI wins."}
           </Text>
           <Text style={styles.resultText}>
-            {winner === "tie"
-              ? "Both guesses hit the shared hidden number in the same round."
-              : winner === "player"
-                ? "You read the hints faster than the AI this time."
-                : "The AI narrowed the shared target down before you did."}
+            {matchSummary
+              ? `+${matchSummary.points} points • +${matchSummary.xpEarned} XP • ${formatDuration(matchSummary.durationMs)}`
+              : "Scoring your match..."}
           </Text>
-          <PrimaryButton label="Play Again" onPress={handlePlayAgain} />
+          <PrimaryButton label="Rematch" onPress={handlePlayAgain} />
         </View>
       ) : null}
 
@@ -212,9 +286,7 @@ export default function VsAiClassicScreen() {
                 {" -> "}
                 {entry.playerResult}
               </Text>
-              <Text style={styles.historyText}>
-                AI: {entry.aiGuess}
-              </Text>
+              <Text style={styles.historyText}>AI: {entry.aiGuess}</Text>
             </View>
           ))
         )}
@@ -256,6 +328,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24
   },
+  statusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm
+  },
+  statusPill: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8
+  },
+  statusPillAccent: {
+    borderColor: colors.accent
+  },
+  statusPillText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "700"
+  },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 24,
@@ -273,6 +366,11 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 20,
     fontWeight: "700"
+  },
+  roundMeta: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: "600"
   },
   status: {
     color: colors.textMuted,
@@ -300,7 +398,7 @@ const styles = StyleSheet.create({
   resultCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.accent,
+    borderColor: colors.success,
     borderRadius: 24,
     padding: spacing.lg,
     gap: spacing.md

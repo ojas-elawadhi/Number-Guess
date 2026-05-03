@@ -327,6 +327,27 @@ export default function OnlineGameScreen() {
         </Text>
       </View>
 
+      <View style={styles.statusRow}>
+        <View style={[styles.statusPill, isCollecting && styles.statusPillAccent]}>
+          <Text style={styles.statusPillText}>
+            {isSecretSetup
+              ? hasSubmittedSecret
+                ? "Secret locked"
+                : "Choose secret"
+              : hasSubmitted
+                ? "Guess locked"
+                : isCollecting
+                  ? "Your turn"
+                  : "Waiting"}
+          </Text>
+        </View>
+        <View style={styles.statusPill}>
+          <Text style={styles.statusPillText}>
+            {isSecretSetup ? `Range ${getDifficultyRangeLabel(difficulty)}` : isCollecting ? `${secondsRemaining}s left` : "Resolving"}
+          </Text>
+        </View>
+      </View>
+
       <View style={styles.card}>
         {isSecretSetup ? (
           <>
@@ -557,6 +578,27 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: spacing.lg,
     gap: spacing.md
+  },
+  statusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm
+  },
+  statusPill: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8
+  },
+  statusPillAccent: {
+    borderColor: colors.accent
+  },
+  statusPillText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "700"
   },
   roundHeader: {
     alignItems: "center",

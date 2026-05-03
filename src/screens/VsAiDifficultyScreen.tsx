@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AiOpponentCard } from "../components/AiOpponentCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import type { Difficulty, OnlineMode } from "../types/game.types";
@@ -35,6 +36,17 @@ export default function VsAiDifficultyScreen() {
             : "Pick the number range before you and the AI start hiding and guessing secret numbers."}
         </Text>
       </View>
+
+      <AiOpponentCard
+        accentColor={mode === "classic" ? colors.accent : colors.success}
+        name={mode === "classic" ? "Nova Lynx" : "Cipher Fox"}
+        personality={
+          mode === "classic"
+            ? "Reads shared-target patterns quickly, but only sees the same high or low clues you do."
+            : "Plays the long game by narrowing your secret range one guess at a time."
+        }
+        title={mode === "classic" ? "Classic Rival" : "Duel Rival"}
+      />
 
       <View style={styles.card}>
         <View style={styles.modeRow}>

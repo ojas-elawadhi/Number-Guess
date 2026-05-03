@@ -1,12 +1,19 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AiOpponentCard } from "../components/AiOpponentCard";
+import { ConfettiBurst } from "../components/ConfettiBurst";
+import { CountdownOverlay } from "../components/CountdownOverlay";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { TextField } from "../components/TextField";
+import { useCountdownOverlay } from "../hooks/useCountdownOverlay";
+import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
+import type { MatchRecord } from "../types/progression.types";
 import { colors, spacing } from "../utils/theme";
+import { formatDuration } from "../utils/progression";
 import { getDifficultyConfig, getDifficultyRangeLabel, parseDifficulty } from "../../shared/difficulty";
 
 interface AiDuelRoundEntry {
@@ -50,6 +57,16 @@ export default function VsAiDuelScreen() {
   const difficulty: Difficulty = parseDifficulty(params.difficulty);
   const difficultyConfig = getDifficultyConfig(difficulty);
   const digitLimit = String(difficultyConfig.maxNumber).length;
+  const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
+  const {
+    countdownActive,
+    countdownOpacity,
+    countdownScale,
+    countdownValue,
+    startCountdown
+  } = useCountdownOverlay();
+  const startTimeRef = useRef(Date.now());
+  const recordedMatchRef = useRef(false);
   const [playerSecretInput, setPlayerSecretInput] = useState("");
   const [playerSecretNumber, setPlayerSecretNumber] = useState<number | null>(null);
   const [aiSecretNumber, setAiSecretNumber] = useState<number | null>(null);
@@ -61,9 +78,34 @@ export default function VsAiDuelScreen() {
   const [history, setHistory] = useState<AiDuelRoundEntry[]>([]);
   const [winner, setWinner] = useState<DuelWinner>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
 
   const isSetup = playerSecretNumber === null || aiSecretNumber === null;
   const isComplete = winner !== null;
+
+  useEffect(() => {
+    if (!isComplete || recordedMatchRef.current) {
+      return;
+    }
+
+    recordedMatchRef.current = true;
+    const outcome = winner === "player" ? "win" : winner === "tie" ? "tie" : "loss";
+
+    recordMatch({
+      category: "vs-ai",
+      mode: "duel",
+      difficulty,
+      outcome,
+      attempts: history.length,
+      durationMs: Date.now() - startTimeRef.current,
+      opponentName: "Cipher Fox",
+      opponentPersona: "Mind-game specialist"
+    })
+      .then(setMatchSummary)
+      .catch(() => {
+        // Duel flow should not break if local progression saving fails.
+      });
+  }, [difficulty, history.length, isComplete, recordMatch, winner]);
 
   const latestFeedback = useMemo(() => {
     if (!lastRound) {
@@ -84,6 +126,8 @@ export default function VsAiDuelScreen() {
       return;
     }
 
+    startTimeRef.current = Date.now();
+    recordedMatchRef.current = false;
     setPlayerSecretNumber(parsedSecretNumber);
     setAiSecretNumber(randomBetween(1, difficultyConfig.maxNumber));
     setGuess("");
@@ -94,6 +138,8 @@ export default function VsAiDuelScreen() {
     setHistory([]);
     setWinner(null);
     setErrorMessage(null);
+    setMatchSummary(null);
+    startCountdown();
   };
 
   const handleSubmitGuess = () => {
@@ -152,6 +198,8 @@ export default function VsAiDuelScreen() {
   };
 
   const handlePlayAgain = () => {
+    startTimeRef.current = Date.now();
+    recordedMatchRef.current = false;
     setPlayerSecretInput("");
     setPlayerSecretNumber(null);
     setAiSecretNumber(null);
@@ -163,23 +211,41 @@ export default function VsAiDuelScreen() {
     setHistory([]);
     setWinner(null);
     setErrorMessage(null);
+    setMatchSummary(null);
   };
 
   return (
     <ScreenContainer>
+      <ConfettiBurst visible={winner === "player" || winner === "tie"} />
+      {countdownValue !== null ? (
+        <CountdownOverlay
+          label="Duel Starts In"
+          opacity={countdownOpacity}
+          scale={countdownScale}
+          value={countdownValue}
+        />
+      ) : null}
+
       <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backLink, pressed && styles.backLinkPressed]}>
         <Text style={styles.backText}>Back</Text>
       </Pressable>
 
       <View style={styles.hero}>
         <Text style={styles.eyebrow}>VS AI Duel</Text>
-        <Text style={styles.title}>{isSetup ? "Choose Your Secret Number" : "Guess The AI's Number"}</Text>
+        <Text style={styles.title}>{isSetup ? "Choose Your Secret Number" : "Guess The AI’s Number"}</Text>
         <Text style={styles.subtitle}>
           {isSetup
             ? `Pick a number in the ${getDifficultyRangeLabel(difficulty)} range. The AI will protect one too, and both of you will start guessing each round.`
-            : `Each round, you guess the AI's number and the AI guesses yours using higher or lower hints inside the ${getDifficultyRangeLabel(difficulty)} range.`}
+            : `Each round, you guess the AI's number and the AI guesses yours using high or low hints inside the ${getDifficultyRangeLabel(difficulty)} range.`}
         </Text>
       </View>
+
+      <AiOpponentCard
+        accentColor={colors.success}
+        name="Cipher Fox"
+        personality="Loves narrowing the range, bluffing with pace, and forcing a long duel."
+        title="Secret-Number Duelist"
+      />
 
       {playerSecretNumber !== null ? (
         <View style={styles.secretBanner}>
@@ -188,25 +254,40 @@ export default function VsAiDuelScreen() {
         </View>
       ) : null}
 
+      <View style={styles.statusRow}>
+        <View style={[styles.statusPill, countdownActive && styles.statusPillAccent]}>
+          <Text style={styles.statusPillText}>
+            {isSetup ? "Secret setup" : countdownActive ? "Match starting" : isComplete ? "Duel complete" : "Your turn"}
+          </Text>
+        </View>
+        <View style={styles.statusPill}>
+          <Text style={styles.statusPillText}>{isSetup ? difficultyConfig.label : `AI guess ${lastRound?.aiGuess ?? "—"}`}</Text>
+        </View>
+      </View>
+
       <View style={styles.card}>
         {isSetup ? (
           <>
             <TextField
+              editable={!countdownActive}
               keyboardType="numeric"
               label="Your secret number"
               maxLength={digitLimit}
               onChangeText={setPlayerSecretInput}
-              placeholder="Pick a secret number"
+              placeholder={countdownActive ? "Locking in..." : "Pick a secret number"}
               value={playerSecretInput}
             />
 
-            <PrimaryButton label="Start Duel" onPress={handleStartDuel} />
+            <PrimaryButton
+              label={countdownActive ? "Starting..." : "Start Duel"}
+              onPress={handleStartDuel}
+            />
           </>
         ) : (
           <>
             <View style={styles.roundHeader}>
               <Text style={styles.roundTitle}>Round {roundNumber}</Text>
-              <Text style={styles.roundMeta}>AI range: {aiMin} - {aiMax}</Text>
+              <Text style={styles.roundMeta}>AI search: {aiMin} - {aiMax}</Text>
             </View>
 
             <Text style={styles.status}>
@@ -220,18 +301,18 @@ export default function VsAiDuelScreen() {
             </Text>
 
             <TextField
-              editable={!isComplete}
+              editable={!isComplete && !countdownActive}
               keyboardType="numeric"
               label="Your guess for the AI"
               maxLength={digitLimit}
               onChangeText={setGuess}
-              placeholder={isComplete ? "Round complete" : "Guess the AI number"}
+              placeholder={countdownActive ? "Get ready..." : isComplete ? "Round complete" : "Guess the AI number"}
               value={guess}
             />
 
             <PrimaryButton
-              disabled={isComplete}
-              label={isComplete ? "Duel Finished" : "Lock In Guess"}
+              disabled={isComplete || countdownActive}
+              label={countdownActive ? "Starting..." : isComplete ? "Duel Finished" : "Lock In Guess"}
               onPress={handleSubmitGuess}
             />
           </>
@@ -248,20 +329,14 @@ export default function VsAiDuelScreen() {
       {isComplete ? (
         <View style={styles.resultCard}>
           <Text style={styles.resultTitle}>
-            {winner === "tie"
-              ? "It's a tie."
-              : winner === "player"
-                ? "You win."
-                : "AI wins."}
+            {winner === "tie" ? "It’s a tie." : winner === "player" ? "You win." : "AI wins."}
           </Text>
           <Text style={styles.resultText}>
-            {winner === "tie"
-              ? "You both guessed correctly in the same round."
-              : winner === "player"
-                ? "Your higher and lower reads beat the AI this time."
-                : "The AI narrowed your number down before you finished the chase."}
+            {matchSummary
+              ? `+${matchSummary.points} points • +${matchSummary.xpEarned} XP • ${formatDuration(matchSummary.durationMs)}`
+              : "Scoring your duel..."}
           </Text>
-          <PrimaryButton label="Play Again" onPress={handlePlayAgain} />
+          <PrimaryButton label="Rematch" onPress={handlePlayAgain} />
         </View>
       ) : null}
 
@@ -271,15 +346,15 @@ export default function VsAiDuelScreen() {
           <Text style={styles.feedbackText}>No rounds yet.</Text>
         ) : (
           history.map((entry) => (
-              <View key={entry.roundNumber} style={styles.historyRow}>
-                <Text style={styles.historyRound}>Round {entry.roundNumber}</Text>
-                <Text style={styles.historyText}>
-                  You: {entry.playerGuess}
-                  {" -> "}
-                  {entry.playerResult}
-                </Text>
-                <Text style={styles.historyText}>AI: {entry.aiGuess}</Text>
-              </View>
+            <View key={entry.roundNumber} style={styles.historyRow}>
+              <Text style={styles.historyRound}>Round {entry.roundNumber}</Text>
+              <Text style={styles.historyText}>
+                You: {entry.playerGuess}
+                {" -> "}
+                {entry.playerResult}
+              </Text>
+              <Text style={styles.historyText}>AI: {entry.aiGuess}</Text>
+            </View>
           ))
         )}
       </View>
@@ -342,6 +417,27 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "800"
   },
+  statusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm
+  },
+  statusPill: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8
+  },
+  statusPillAccent: {
+    borderColor: colors.accent
+  },
+  statusPillText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "700"
+  },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 24,
@@ -391,7 +487,7 @@ const styles = StyleSheet.create({
   resultCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.accent,
+    borderColor: colors.success,
     borderRadius: 24,
     padding: spacing.lg,
     gap: spacing.md

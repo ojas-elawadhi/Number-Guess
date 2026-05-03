@@ -1,0 +1,160 @@
+import type { Difficulty } from "./game.types";
+
+export type MatchCategory = "single-player" | "vs-ai" | "online";
+export type MatchMode = "practice" | "classic" | "duel";
+export type MatchOutcome = "win" | "loss" | "tie";
+export type AchievementId =
+  | "first-win"
+  | "streak-3"
+  | "streak-5"
+  | "hard-winner"
+  | "quick-reader"
+  | "ai-slayer"
+  | "online-contender"
+  | "daily-dedication";
+
+export interface ScoreBreakdown {
+  base: number;
+  attempts: number;
+  time: number;
+  difficulty: number;
+  streak: number;
+  total: number;
+}
+
+export interface MatchRecord {
+  id: string;
+  category: MatchCategory;
+  mode: MatchMode;
+  difficulty: Difficulty;
+  outcome: MatchOutcome;
+  attempts: number;
+  durationMs: number;
+  points: number;
+  xpEarned: number;
+  scoreBreakdown: ScoreBreakdown;
+  opponentName: string;
+  opponentPersona?: string;
+  playedAt: string;
+  streakAfter: number;
+  levelAfter: number;
+}
+
+export interface MatchInput {
+  category: MatchCategory;
+  mode: MatchMode;
+  difficulty: Difficulty;
+  outcome: MatchOutcome;
+  attempts: number;
+  durationMs: number;
+  opponentName: string;
+  opponentPersona?: string;
+}
+
+export interface CategoryStats {
+  wins: number;
+  losses: number;
+  ties: number;
+  matches: number;
+  points: number;
+}
+
+export interface PlayerStats {
+  wins: number;
+  losses: number;
+  ties: number;
+  matches: number;
+  totalAttempts: number;
+  totalDurationMs: number;
+  practiceMatches: number;
+  category: Record<MatchCategory, CategoryStats>;
+  difficultyWins: Record<Difficulty, number>;
+}
+
+export interface DailyRewardState {
+  lastClaimedOn: string | null;
+  streakDays: number;
+}
+
+export interface LastRewardSummary {
+  claimedOn: string;
+  points: number;
+  xp: number;
+  streakDays: number;
+}
+
+export interface PlayerProfile {
+  xp: number;
+  level: number;
+  totalPoints: number;
+  currentWinStreak: number;
+  bestWinStreak: number;
+  achievements: AchievementId[];
+  history: MatchRecord[];
+  stats: PlayerStats;
+  tutorialSeen: boolean;
+  soundPlaceholdersEnabled: boolean;
+  dailyReward: DailyRewardState;
+  lastRewardSummary: LastRewardSummary | null;
+  lastMatchSummary: MatchRecord | null;
+  updatedAt: string;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  rank: number;
+  name: string;
+  points: number;
+  streak: number;
+  level: number;
+  isPlayer?: boolean;
+}
+
+export interface AchievementDefinition {
+  id: AchievementId;
+  title: string;
+  description: string;
+  icon: string;
+}
+
+export interface ProgressBootstrapPayload {
+  playerKey: string;
+  displayName?: string;
+  localProfile?: PlayerProfile | null;
+}
+
+export interface ProgressPreferencesPayload {
+  playerKey: string;
+  tutorialSeen?: boolean;
+  soundPlaceholdersEnabled?: boolean;
+}
+
+export interface ClaimDailyRewardPayload {
+  playerKey: string;
+}
+
+export interface RecordMatchPayload {
+  playerKey: string;
+  input: MatchInput;
+}
+
+export interface ProgressSyncResponse {
+  playerKey: string;
+  displayName: string;
+  profile: PlayerProfile;
+  leaderboard: LeaderboardEntry[];
+  persistence: "remote";
+}
+
+export interface ClaimDailyRewardResponse extends ProgressSyncResponse {
+  claimed: boolean;
+  reward: {
+    points: number;
+    xp: number;
+    streakDays: number;
+  };
+}
+
+export interface RecordMatchResponse extends ProgressSyncResponse {
+  record: MatchRecord;
+}

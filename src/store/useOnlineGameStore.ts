@@ -17,6 +17,7 @@ interface OnlineGameStore {
   player: Player | null;
   room: PublicRoom | null;
   gameState: GameState;
+  matchStartedAt: number | null;
   lastGuessResult: GuessResultPayload | null;
   guessHistory: GuessHistoryItem[];
   personalSecretNumber: number | null;
@@ -38,6 +39,7 @@ const initialState = {
   player: null,
   room: null,
   gameState: "waiting" as GameState,
+  matchStartedAt: null,
   lastGuessResult: null,
   guessHistory: [] as GuessHistoryItem[],
   personalSecretNumber: null,
@@ -63,7 +65,10 @@ const normalizeRoom = (
     ...room,
     mode,
     difficulty,
-    maxNumber: legacyRoom.maxNumber ?? options?.previousRoom?.maxNumber ?? (difficulty === "easy" ? 99 : difficulty === "hard" ? 999 : 9999),
+    maxNumber:
+      legacyRoom.maxNumber ??
+      options?.previousRoom?.maxNumber ??
+      (difficulty === "easy" ? 99 : difficulty === "hard" ? 999 : 9999),
     maxPlayers: legacyRoom.maxPlayers ?? options?.previousRoom?.maxPlayers ?? (mode === "duel" ? 2 : 6),
     winner: legacyRoom.winner ?? options?.previousRoom?.winner ?? null,
     winnerIds:
@@ -91,6 +96,7 @@ export const useOnlineGameStore = create<OnlineGameStore>((set) => ({
       player,
       room: normalizeRoom(room, { fallbackMode }),
       gameState: room.gameState,
+      matchStartedAt: null,
       personalSecretNumber: null,
       errorMessage: null
     }),
@@ -103,6 +109,7 @@ export const useOnlineGameStore = create<OnlineGameStore>((set) => ({
     set((state) => ({
       room: normalizeRoom(room, { previousRoom: state.room }),
       gameState: room.gameState,
+      matchStartedAt: Date.now(),
       personalSecretNumber: null,
       lastGuessResult: null,
       guessHistory: [],
@@ -123,7 +130,8 @@ export const useOnlineGameStore = create<OnlineGameStore>((set) => ({
   setGameOver: ({ room }) =>
     set((state) => ({
       room: normalizeRoom(room, { previousRoom: state.room }),
-      gameState: room.gameState
+      gameState: room.gameState,
+      matchStartedAt: state.matchStartedAt
     })),
   resetRoundState: () =>
     set((state) => ({
@@ -141,6 +149,7 @@ export const useOnlineGameStore = create<OnlineGameStore>((set) => ({
           }
         : null,
       gameState: "waiting",
+      matchStartedAt: null,
       lastGuessResult: null,
       guessHistory: [],
       personalSecretNumber: null,

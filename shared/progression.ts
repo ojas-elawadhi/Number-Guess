@@ -1,0 +1,445 @@
+import type { Difficulty } from "./game.types";
+import type {
+  AchievementDefinition,
+  AchievementId,
+  LeaderboardEntry,
+  MatchInput,
+  MatchOutcome,
+  MatchRecord,
+  PlayerProfile,
+  PlayerStats,
+  ScoreBreakdown
+} from "./progression.types";
+
+export const MAX_HISTORY_ITEMS = 20;
+
+const difficultyMultipliers: Record<Difficulty, number> = {
+  easy: 1,
+  hard: 1.5,
+  impossible: 2.2
+};
+
+export const achievements: AchievementDefinition[] = [
+  {
+    id: "first-win",
+    title: "First Win",
+    description: "Win your first match.",
+    icon: "ribbon-outline"
+  },
+  {
+    id: "streak-3",
+    title: "On Fire",
+    description: "Reach a 3-match win streak.",
+    icon: "flame-outline"
+  },
+  {
+    id: "streak-5",
+    title: "Unstoppable",
+    description: "Reach a 5-match win streak.",
+    icon: "trophy-outline"
+  },
+  {
+    id: "hard-winner",
+    title: "High Roller",
+    description: "Win a Hard range match.",
+    icon: "diamond-outline"
+  },
+  {
+    id: "quick-reader",
+    title: "Quick Reader",
+    description: "Win in 4 attempts or fewer.",
+    icon: "flash-outline"
+  },
+  {
+    id: "ai-slayer",
+    title: "AI Slayer",
+    description: "Win 5 VS AI matches.",
+    icon: "skull-outline"
+  },
+  {
+    id: "online-contender",
+    title: "Online Contender",
+    description: "Win 3 online matches.",
+    icon: "globe-outline"
+  },
+  {
+    id: "daily-dedication",
+    title: "Daily Dedication",
+    description: "Claim daily rewards 3 days in a row.",
+    icon: "calendar-outline"
+  }
+];
+
+const defaultCategoryStats = () => ({
+  wins: 0,
+  losses: 0,
+  ties: 0,
+  matches: 0,
+  points: 0
+});
+
+export const createInitialStats = (): PlayerStats => ({
+  wins: 0,
+  losses: 0,
+  ties: 0,
+  matches: 0,
+  totalAttempts: 0,
+  totalDurationMs: 0,
+  practiceMatches: 0,
+  category: {
+    "single-player": defaultCategoryStats(),
+    "vs-ai": defaultCategoryStats(),
+    online: defaultCategoryStats()
+  },
+  difficultyWins: {
+    easy: 0,
+    hard: 0,
+    impossible: 0
+  }
+});
+
+export const createInitialProfile = (updatedAt = new Date().toISOString()): PlayerProfile => ({
+  xp: 0,
+  level: 1,
+  totalPoints: 0,
+  currentWinStreak: 0,
+  bestWinStreak: 0,
+  achievements: [],
+  history: [],
+  stats: createInitialStats(),
+  tutorialSeen: false,
+  soundPlaceholdersEnabled: true,
+  dailyReward: {
+    lastClaimedOn: null,
+    streakDays: 0
+  },
+  lastRewardSummary: null,
+  lastMatchSummary: null,
+  updatedAt
+});
+
+export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): PlayerProfile => {
+  const baseProfile = createInitialProfile();
+
+  if (!profile) {
+    return baseProfile;
+  }
+
+  return {
+    ...baseProfile,
+    ...profile,
+    achievements: Array.isArray(profile.achievements)
+      ? [...new Set(profile.achievements as AchievementId[])]
+      : baseProfile.achievements,
+    history: Array.isArray(profile.history)
+      ? profile.history.slice(0, MAX_HISTORY_ITEMS)
+      : baseProfile.history,
+    stats: {
+      ...baseProfile.stats,
+      ...profile.stats,
+      category: {
+        ...baseProfile.stats.category,
+        ...profile.stats?.category
+      },
+      difficultyWins: {
+        ...baseProfile.stats.difficultyWins,
+        ...profile.stats?.difficultyWins
+      }
+    },
+    dailyReward: {
+      ...baseProfile.dailyReward,
+      ...profile.dailyReward
+    },
+    updatedAt: profile.updatedAt ?? baseProfile.updatedAt
+  };
+};
+
+export const getLevelFromXp = (xp: number) => Math.max(1, Math.floor(Math.sqrt(xp / 140)) + 1);
+
+const getBaseScore = (outcome: MatchOutcome) => {
+  if (outcome === "win") {
+    return 140;
+  }
+
+  if (outcome === "tie") {
+    return 75;
+  }
+
+  return 35;
+};
+
+export const calculateMatchScore = (
+  input: MatchInput,
+  currentStreak: number
+): {
+  points: number;
+  xpEarned: number;
+  scoreBreakdown: ScoreBreakdown;
+} => {
+  const attemptScore = Math.max(8, 110 - Math.max(0, input.attempts - 1) * 11);
+  const timeScore = Math.max(10, 90 - Math.floor(input.durationMs / 1000) * 2);
+  const difficultyScore = Math.round(55 * difficultyMultipliers[input.difficulty]);
+  const streakScore = input.outcome === "win" ? currentStreak * 12 : 0;
+  const base = getBaseScore(input.outcome);
+  const total = Math.round(base + attemptScore + timeScore + difficultyScore + streakScore);
+  const xpEarned = Math.round(total * 0.72 + (input.outcome === "win" ? 24 : input.outcome === "tie" ? 14 : 8));
+
+  return {
+    points: total,
+    xpEarned,
+    scoreBreakdown: {
+      base,
+      attempts: attemptScore,
+      time: timeScore,
+      difficulty: difficultyScore,
+      streak: streakScore,
+      total
+    }
+  };
+};
+
+export const formatDuration = (durationMs: number) => {
+  const totalSeconds = Math.max(1, Math.round(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes === 0) {
+    return `${seconds}s`;
+  }
+
+  return `${minutes}m ${seconds}s`;
+};
+
+export const getTodayKey = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+export const getDateDifferenceInDays = (earlierKey: string, laterKey: string) => {
+  const earlier = new Date(`${earlierKey}T00:00:00`);
+  const later = new Date(`${laterKey}T00:00:00`);
+  return Math.round((later.getTime() - earlier.getTime()) / 86_400_000);
+};
+
+export const getDailyRewardValues = (streakDays: number) => ({
+  points: 70 + streakDays * 18,
+  xp: 40 + streakDays * 12
+});
+
+export const getUnlocks = (profile: PlayerProfile, latestMatch: MatchRecord | null) => {
+  const unlocked = new Set<AchievementId>(profile.achievements);
+
+  if (profile.stats.wins >= 1) {
+    unlocked.add("first-win");
+  }
+
+  if (profile.bestWinStreak >= 3) {
+    unlocked.add("streak-3");
+  }
+
+  if (profile.bestWinStreak >= 5) {
+    unlocked.add("streak-5");
+  }
+
+  if (profile.stats.category["vs-ai"].wins >= 5) {
+    unlocked.add("ai-slayer");
+  }
+
+  if (profile.stats.category.online.wins >= 3) {
+    unlocked.add("online-contender");
+  }
+
+  if (profile.dailyReward.streakDays >= 3) {
+    unlocked.add("daily-dedication");
+  }
+
+  if (latestMatch?.difficulty === "hard" && latestMatch.outcome === "win") {
+    unlocked.add("hard-winner");
+  }
+
+  if (latestMatch?.outcome === "win" && latestMatch.attempts <= 4) {
+    unlocked.add("quick-reader");
+  }
+
+  return [...unlocked];
+};
+
+export const applyTutorialSeen = (profile: PlayerProfile) => ({
+  ...normalizeProfile(profile),
+  tutorialSeen: true,
+  updatedAt: new Date().toISOString()
+});
+
+export const applySoundPlaceholdersEnabled = (profile: PlayerProfile, enabled: boolean) => ({
+  ...normalizeProfile(profile),
+  soundPlaceholdersEnabled: enabled,
+  updatedAt: new Date().toISOString()
+});
+
+export const claimProfileDailyReward = (profile: PlayerProfile, todayKey = getTodayKey()) => {
+  const currentProfile = normalizeProfile(profile);
+
+  if (currentProfile.dailyReward.lastClaimedOn === todayKey) {
+    return {
+      profile: currentProfile,
+      claimed: false,
+      reward: {
+        points: 0,
+        xp: 0,
+        streakDays: currentProfile.dailyReward.streakDays
+      }
+    };
+  }
+
+  const lastClaimedOn = currentProfile.dailyReward.lastClaimedOn;
+  const streakDays =
+    lastClaimedOn && getDateDifferenceInDays(lastClaimedOn, todayKey) === 1
+      ? currentProfile.dailyReward.streakDays + 1
+      : 1;
+  const reward = getDailyRewardValues(streakDays);
+  const xp = currentProfile.xp + reward.xp;
+  const nextProfile: PlayerProfile = {
+    ...currentProfile,
+    xp,
+    level: getLevelFromXp(xp),
+    totalPoints: currentProfile.totalPoints + reward.points,
+    dailyReward: {
+      lastClaimedOn: todayKey,
+      streakDays
+    },
+    lastRewardSummary: {
+      claimedOn: todayKey,
+      points: reward.points,
+      xp: reward.xp,
+      streakDays
+    },
+    updatedAt: new Date().toISOString()
+  };
+
+  nextProfile.achievements = getUnlocks(nextProfile, nextProfile.lastMatchSummary);
+
+  return {
+    profile: nextProfile,
+    claimed: true,
+    reward: {
+      points: reward.points,
+      xp: reward.xp,
+      streakDays
+    }
+  };
+};
+
+export const applyRecordedMatch = (profile: PlayerProfile, input: MatchInput) => {
+  const currentProfile = normalizeProfile(profile);
+  const streakBase =
+    input.category === "single-player"
+      ? currentProfile.currentWinStreak
+      : input.outcome === "win"
+        ? currentProfile.currentWinStreak + 1
+        : 0;
+  const score = calculateMatchScore(input, currentProfile.currentWinStreak);
+  const xp = currentProfile.xp + score.xpEarned;
+  const updatedStreak =
+    input.category === "single-player"
+      ? currentProfile.currentWinStreak
+      : input.outcome === "win"
+        ? currentProfile.currentWinStreak + 1
+        : 0;
+  const stats = {
+    ...currentProfile.stats,
+    wins: currentProfile.stats.wins + (input.outcome === "win" ? 1 : 0),
+    losses: currentProfile.stats.losses + (input.outcome === "loss" ? 1 : 0),
+    ties: currentProfile.stats.ties + (input.outcome === "tie" ? 1 : 0),
+    matches: currentProfile.stats.matches + 1,
+    totalAttempts: currentProfile.stats.totalAttempts + input.attempts,
+    totalDurationMs: currentProfile.stats.totalDurationMs + input.durationMs,
+    practiceMatches:
+      currentProfile.stats.practiceMatches + (input.category === "single-player" ? 1 : 0),
+    category: {
+      ...currentProfile.stats.category,
+      [input.category]: {
+        ...currentProfile.stats.category[input.category],
+        wins: currentProfile.stats.category[input.category].wins + (input.outcome === "win" ? 1 : 0),
+        losses:
+          currentProfile.stats.category[input.category].losses + (input.outcome === "loss" ? 1 : 0),
+        ties: currentProfile.stats.category[input.category].ties + (input.outcome === "tie" ? 1 : 0),
+        matches: currentProfile.stats.category[input.category].matches + 1,
+        points: currentProfile.stats.category[input.category].points + score.points
+      }
+    },
+    difficultyWins: {
+      ...currentProfile.stats.difficultyWins,
+      [input.difficulty]:
+        currentProfile.stats.difficultyWins[input.difficulty] + (input.outcome === "win" ? 1 : 0)
+    }
+  };
+
+  const record: MatchRecord = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    ...input,
+    points: score.points,
+    xpEarned: score.xpEarned,
+    scoreBreakdown: score.scoreBreakdown,
+    playedAt: new Date().toISOString(),
+    streakAfter: updatedStreak,
+    levelAfter: getLevelFromXp(xp)
+  };
+
+  const nextProfile: PlayerProfile = {
+    ...currentProfile,
+    xp,
+    level: record.levelAfter,
+    totalPoints: currentProfile.totalPoints + score.points,
+    currentWinStreak: updatedStreak,
+    bestWinStreak: Math.max(currentProfile.bestWinStreak, updatedStreak, streakBase),
+    stats,
+    history: [record, ...currentProfile.history].slice(0, MAX_HISTORY_ITEMS),
+    lastMatchSummary: record,
+    updatedAt: new Date().toISOString()
+  };
+
+  nextProfile.achievements = getUnlocks(nextProfile, record);
+
+  return {
+    profile: nextProfile,
+    record
+  };
+};
+
+export const getPlayerOnlineScore = (profile: PlayerProfile) =>
+  profile.stats.category.online.points + profile.stats.category.online.wins * 45;
+
+export const buildOnlineLeaderboard = (profile: PlayerProfile): LeaderboardEntry[] => {
+  const playerOnlinePoints = getPlayerOnlineScore(profile);
+  const playerScore = playerOnlinePoints + profile.bestWinStreak * 8 + profile.level * 16;
+  const seeded = [
+    { id: "nova", name: "Nova Lynx", points: 1420, streak: 7, level: 12 },
+    { id: "pulse", name: "Pulse K", points: 1310, streak: 4, level: 11 },
+    { id: "zen", name: "Zen Orbit", points: 1180, streak: 3, level: 10 },
+    { id: "arc", name: "Arc Vega", points: 1040, streak: 2, level: 9 },
+    { id: "mira", name: "Mira Byte", points: 920, streak: 1, level: 8 }
+  ];
+
+  return [
+    ...seeded,
+    {
+      id: "you",
+      name: "You",
+      points: playerScore,
+      streak: profile.currentWinStreak,
+      level: profile.level,
+      isPlayer: true
+    }
+  ]
+    .sort((left, right) => right.points - left.points)
+    .map((entry, index) => ({
+      ...entry,
+      rank: index + 1
+    }))
+    .slice(0, 6);
+};
+
+export const getAchievementMeta = (achievementId: AchievementId) =>
+  achievements.find((achievement) => achievement.id === achievementId) ?? null;

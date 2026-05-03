@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AiOpponentCard } from "../components/AiOpponentCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { colors, spacing } from "../utils/theme";
@@ -24,6 +25,12 @@ export default function VsAiSetupScreen() {
           Pick whether you want to race the AI toward one shared target or duel with secret numbers.
         </Text>
       </View>
+
+      <AiOpponentCard
+        name="Nova Lynx"
+        personality="A cool-headed rival with two personas: shared-target sprinter in Classic, secret-number schemer in Duel."
+        title="Featured AI Rival"
+      />
 
       <View style={styles.card}>
         <View style={styles.modeRow}>

@@ -1,12 +1,18 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { ConfettiBurst } from "../components/ConfettiBurst";
+import { CountdownOverlay } from "../components/CountdownOverlay";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { TextField } from "../components/TextField";
+import { useCountdownOverlay } from "../hooks/useCountdownOverlay";
+import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
+import type { MatchRecord } from "../types/progression.types";
 import { colors, spacing } from "../utils/theme";
+import { formatDuration } from "../utils/progression";
 import { getDifficultyConfig, getDifficultyRangeLabel, parseDifficulty } from "../../shared/difficulty";
 
 interface PracticeGuessEntry {
@@ -19,16 +25,58 @@ export default function PracticeScreen() {
   const difficulty: Difficulty = parseDifficulty(params.difficulty);
   const difficultyConfig = getDifficultyConfig(difficulty);
   const digitLimit = String(difficultyConfig.maxNumber).length;
-  const [secretNumber, setSecretNumber] = useState(() => Math.floor(Math.random() * difficultyConfig.maxNumber) + 1);
+  const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
+  const {
+    countdownActive,
+    countdownOpacity,
+    countdownScale,
+    countdownValue,
+    startCountdown
+  } = useCountdownOverlay();
+  const startTimeRef = useRef(Date.now());
+  const recordedCompletionRef = useRef(false);
+  const [secretNumber, setSecretNumber] = useState(
+    () => Math.floor(Math.random() * difficultyConfig.maxNumber) + 1
+  );
   const [guess, setGuess] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<PracticeGuessEntry | null>(null);
   const [guessHistory, setGuessHistory] = useState<PracticeGuessEntry[]>([]);
   const [isComplete, setIsComplete] = useState(false);
+  const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
+
+  useEffect(() => {
+    startCountdown();
+  }, [startCountdown]);
+
+  useEffect(() => {
+    if (!isComplete || recordedCompletionRef.current) {
+      return;
+    }
+
+    recordedCompletionRef.current = true;
+    const attempts = guessHistory.length;
+    const durationMs = Date.now() - startTimeRef.current;
+
+    recordMatch({
+      category: "single-player",
+      mode: "practice",
+      difficulty,
+      outcome: "win",
+      attempts,
+      durationMs,
+      opponentName: "Practice Board",
+      opponentPersona: "Solo training"
+    })
+      .then(setMatchSummary)
+      .catch(() => {
+        // Practice mode should still complete even if meta tracking fails.
+      });
+  }, [difficulty, guessHistory.length, isComplete, recordMatch]);
 
   const latestFeedback = useMemo(() => {
     if (!lastResult) {
-      return `Guess a number from ${getDifficultyRangeLabel(difficulty)}. You will get an instant higher or lower hint after each try.`;
+      return `Guess a number from ${getDifficultyRangeLabel(difficulty)}. You will get an instant high or low hint after each try.`;
     }
 
     if (lastResult.result === "correct") {
@@ -65,16 +113,30 @@ export default function PracticeScreen() {
   };
 
   const handlePlayAgain = () => {
+    recordedCompletionRef.current = false;
+    startTimeRef.current = Date.now();
     setSecretNumber(Math.floor(Math.random() * difficultyConfig.maxNumber) + 1);
     setGuess("");
     setErrorMessage(null);
     setLastResult(null);
     setGuessHistory([]);
     setIsComplete(false);
+    setMatchSummary(null);
+    startCountdown();
   };
 
   return (
     <ScreenContainer>
+      <ConfettiBurst visible={isComplete} />
+      {countdownValue !== null ? (
+        <CountdownOverlay
+          label="Practice Starts In"
+          opacity={countdownOpacity}
+          scale={countdownScale}
+          value={countdownValue}
+        />
+      ) : null}
+
       <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backLink, pressed && styles.backLinkPressed]}>
         <Text style={styles.backText}>Back</Text>
       </Pressable>
@@ -83,24 +145,33 @@ export default function PracticeScreen() {
         <Text style={styles.eyebrow}>Practice</Text>
         <Text style={styles.title}>Single Player</Text>
         <Text style={styles.subtitle}>
-          The game picked a hidden number in the {getDifficultyRangeLabel(difficulty)} range. Keep guessing until you find it.
+          The game picked a hidden number in the {getDifficultyRangeLabel(difficulty)} range. Keep reading the high or low feedback until you find it.
         </Text>
+      </View>
+
+      <View style={styles.statusRow}>
+        <View style={[styles.statusPill, countdownActive && styles.statusPillAccent]}>
+          <Text style={styles.statusPillText}>{countdownActive ? "Match starting" : isComplete ? "Solved" : "Your turn"}</Text>
+        </View>
+        <View style={styles.statusPill}>
+          <Text style={styles.statusPillText}>{difficultyConfig.label}</Text>
+        </View>
       </View>
 
       <View style={styles.card}>
         <TextField
-          editable={!isComplete}
+          editable={!isComplete && !countdownActive}
           keyboardType="numeric"
           label="Your guess"
           maxLength={digitLimit}
           onChangeText={setGuess}
-          placeholder={isComplete ? "Round complete" : "Pick a number"}
+          placeholder={countdownActive ? "Get ready..." : isComplete ? "Round complete" : "Pick a number"}
           value={guess}
         />
 
         <PrimaryButton
-          disabled={isComplete}
-          label={isComplete ? "Solved" : "Submit Guess"}
+          disabled={isComplete || countdownActive}
+          label={countdownActive ? "Starting..." : isComplete ? "Solved" : "Submit Guess"}
           onPress={handleSubmitGuess}
         />
 
@@ -115,8 +186,12 @@ export default function PracticeScreen() {
       {isComplete ? (
         <View style={styles.successCard}>
           <Text style={styles.successTitle}>You found it in {guessHistory.length} guesses.</Text>
-          <Text style={styles.successText}>Start another {difficultyConfig.label.toLowerCase()} practice round or head back home.</Text>
-          <PrimaryButton label="Play Again" onPress={handlePlayAgain} />
+          <Text style={styles.successText}>
+            {matchSummary
+              ? `+${matchSummary.points} points • +${matchSummary.xpEarned} XP • ${formatDuration(matchSummary.durationMs)}`
+              : "Scoring your run..."}
+          </Text>
+          <PrimaryButton label="Rematch" onPress={handlePlayAgain} />
         </View>
       ) : null}
 
@@ -170,6 +245,27 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 16,
     lineHeight: 24
+  },
+  statusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm
+  },
+  statusPill: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8
+  },
+  statusPillAccent: {
+    borderColor: colors.accent
+  },
+  statusPillText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "700"
   },
   card: {
     backgroundColor: colors.surface,
