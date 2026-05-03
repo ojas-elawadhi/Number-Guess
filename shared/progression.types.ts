@@ -129,6 +129,11 @@ export interface ProgressPreferencesPayload {
   soundPlaceholdersEnabled?: boolean;
 }
 
+export interface UpdateDisplayNamePayload {
+  playerKey: string;
+  displayName: string;
+}
+
 export interface ClaimDailyRewardPayload {
   playerKey: string;
 }
@@ -158,3 +163,5 @@ export interface ClaimDailyRewardResponse extends ProgressSyncResponse {
 export interface RecordMatchResponse extends ProgressSyncResponse {
   record: MatchRecord;
 }
+
+export interface UpdateDisplayNameResponse extends ProgressSyncResponse {}

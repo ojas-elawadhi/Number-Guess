@@ -6,7 +6,8 @@ import type {
   PlayerProfile,
   ProgressBootstrapPayload,
   ProgressSyncResponse,
-  RecordMatchResponse
+  RecordMatchResponse,
+  UpdateDisplayNameResponse
 } from "../../../shared/progression.types";
 import {
   applyRecordedMatch,
@@ -15,13 +16,13 @@ import {
   buildOnlineLeaderboard,
   claimProfileDailyReward,
   createInitialProfile,
+  getDefaultDisplayName,
   getPlayerOnlineScore,
-  normalizeProfile
+  normalizeProfile,
+  validateDisplayName
 } from "../../../shared/progression";
 
 const isDatabaseConfigured = () => Boolean(process.env.DATABASE_URL);
-
-const getDefaultDisplayName = (playerKey: string) => `Player ${playerKey.slice(-4).toUpperCase()}`;
 
 const profileToJson = (profile: PlayerProfile) => profile as unknown as never;
 
@@ -77,7 +78,7 @@ class ProgressionService {
     this.assertConfigured();
 
     const localProfile = normalizeProfile(payload.localProfile ?? undefined);
-    const displayName = payload.displayName?.trim() || getDefaultDisplayName(payload.playerKey);
+    const displayName = await this.resolveDisplayName(payload.playerKey, payload.displayName);
     const existing = await prisma.playerProgress.findUnique({
       where: {
         playerKey: payload.playerKey
@@ -130,6 +131,29 @@ class ProgressionService {
 
   async setSoundPlaceholdersEnabled(playerKey: string, enabled: boolean) {
     return this.updateProfile(playerKey, (profile) => applySoundPlaceholdersEnabled(profile, enabled));
+  }
+
+  async updateDisplayName(playerKey: string, displayName: string): Promise<UpdateDisplayNameResponse> {
+    this.assertConfigured();
+    const current = await this.requirePlayer(playerKey);
+    const nextDisplayName = await this.resolveDisplayName(playerKey, displayName, true);
+
+    await prisma.playerProgress.update({
+      where: {
+        playerKey
+      },
+      data: {
+        displayName: nextDisplayName
+      }
+    });
+
+    return {
+      playerKey: current.playerKey,
+      displayName: nextDisplayName,
+      profile: current.profile,
+      leaderboard: await this.getLeaderboard(current.playerKey, current.profile, nextDisplayName),
+      persistence: "remote"
+    };
   }
 
   async claimDailyReward(playerKey: string): Promise<ClaimDailyRewardResponse> {
@@ -258,6 +282,58 @@ class ProgressionService {
         ...entry,
         rank: index + 1
       }));
+  }
+
+  private async resolveDisplayName(playerKey: string, requestedDisplayName?: string, requireUnique = false) {
+    if (requestedDisplayName && requestedDisplayName.trim().length > 0) {
+      const normalizedDisplayName = validateDisplayName(requestedDisplayName);
+      const conflictingPlayer = await prisma.$queryRaw<Array<{ playerKey: string }>>`
+        SELECT "playerKey"
+        FROM "PlayerProgress"
+        WHERE LOWER("displayName") = LOWER(${normalizedDisplayName})
+          AND "playerKey" <> ${playerKey}
+        LIMIT 1
+      `;
+
+      if (conflictingPlayer.length > 0) {
+        throw new Error("That username is already taken.");
+      }
+
+      return normalizedDisplayName;
+    }
+
+    const baseDisplayName = getDefaultDisplayName(playerKey);
+
+    if (!requireUnique) {
+      const conflictingPlayer = await prisma.$queryRaw<Array<{ playerKey: string }>>`
+        SELECT "playerKey"
+        FROM "PlayerProgress"
+        WHERE LOWER("displayName") = LOWER(${baseDisplayName})
+          AND "playerKey" <> ${playerKey}
+        LIMIT 1
+      `;
+
+      if (conflictingPlayer.length === 0) {
+        return baseDisplayName;
+      }
+    }
+
+    for (let suffix = 0; suffix < 50; suffix += 1) {
+      const candidate = suffix === 0 ? baseDisplayName : `${baseDisplayName}_${suffix + 1}`;
+      const conflictingPlayer = await prisma.$queryRaw<Array<{ playerKey: string }>>`
+        SELECT "playerKey"
+        FROM "PlayerProgress"
+        WHERE LOWER("displayName") = LOWER(${candidate})
+          AND "playerKey" <> ${playerKey}
+        LIMIT 1
+      `;
+
+      if (conflictingPlayer.length === 0) {
+        return candidate;
+      }
+    }
+
+    throw new Error("Could not reserve a username right now. Please try again.");
   }
 }
 

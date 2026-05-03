@@ -5,7 +5,8 @@ import type {
   ClaimDailyRewardPayload,
   ProgressBootstrapPayload,
   ProgressPreferencesPayload,
-  RecordMatchPayload
+  RecordMatchPayload,
+  UpdateDisplayNamePayload
 } from "../../../shared/progression.types";
 
 export const progressionRouter = Router();
@@ -46,6 +47,18 @@ progressionRouter.patch("/preferences", async (request, response) => {
     console.error("[progression/preferences]", error);
     response.status(503).json({
       message: error instanceof Error ? error.message : "Could not update progression preferences."
+    });
+  }
+});
+
+progressionRouter.patch("/display-name", async (request, response) => {
+  try {
+    const payload = request.body as UpdateDisplayNamePayload;
+    response.json(await progressionService.updateDisplayName(payload.playerKey, payload.displayName));
+  } catch (error) {
+    console.error("[progression/display-name]", error);
+    response.status(503).json({
+      message: error instanceof Error ? error.message : "Could not update the username."
     });
   }
 });

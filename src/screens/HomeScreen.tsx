@@ -15,6 +15,7 @@ import {
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { SoundPlaceholdersCard } from "../components/SoundPlaceholdersCard";
+import { TextField } from "../components/TextField";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import { getAchievementMeta, formatDuration, getTodayKey } from "../utils/progression";
@@ -48,13 +49,19 @@ export default function HomeScreen() {
   const isConnected = useOnlineGameStore((state) => state.isConnected);
   const errorMessage = useOnlineGameStore((state) => state.errorMessage);
   const hydrated = usePlayerProgressStore((state) => state.hydrated);
+  const displayName = usePlayerProgressStore((state) => state.displayName);
   const profile = usePlayerProgressStore((state) => state.profile);
   const leaderboard = usePlayerProgressStore((state) => state.leaderboard);
   const claimDailyReward = usePlayerProgressStore((state) => state.claimDailyReward);
   const markTutorialSeen = usePlayerProgressStore((state) => state.markTutorialSeen);
   const toggleSoundPlaceholders = usePlayerProgressStore((state) => state.toggleSoundPlaceholders);
+  const updateDisplayName = usePlayerProgressStore((state) => state.updateDisplayName);
   const [isClaimingReward, setIsClaimingReward] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [isSavingUsername, setIsSavingUsername] = useState(false);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
   const heroOpacity = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
 
@@ -120,6 +127,25 @@ export default function HomeScreen() {
     await markTutorialSeen();
   };
 
+  const openUsernameModal = () => {
+    setUsernameDraft(displayName);
+    setUsernameError(null);
+    setShowUsernameModal(true);
+  };
+
+  const handleSaveUsername = async () => {
+    try {
+      setIsSavingUsername(true);
+      setUsernameError(null);
+      await updateDisplayName(usernameDraft);
+      setShowUsernameModal(false);
+    } catch (error) {
+      setUsernameError(error instanceof Error ? error.message : "Try again in a moment.");
+    } finally {
+      setIsSavingUsername(false);
+    }
+  };
+
   return (
     <ScreenContainer>
       <Animated.View style={[styles.hero, { opacity: heroOpacity }]}>
@@ -128,6 +154,15 @@ export default function HomeScreen() {
         <Text style={styles.subtitle}>
           Same core high-low gameplay, now wrapped in progression, streaks, badges, and match tracking.
         </Text>
+        <View style={styles.usernameRow}>
+          <View style={styles.usernameChip}>
+            <Text style={styles.usernameChipLabel}>Username</Text>
+            <Text style={styles.usernameChipValue}>{displayName}</Text>
+          </View>
+          <Pressable onPress={openUsernameModal} style={({ pressed }) => [styles.editChip, pressed && styles.modeCardPressed]}>
+            <Text style={styles.editChipText}>Edit</Text>
+          </Pressable>
+        </View>
 
         <View style={styles.heroStats}>
           <View style={styles.levelCard}>
@@ -330,6 +365,46 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal animationType="fade" transparent visible={showUsernameModal}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalEyebrow}>Profile</Text>
+            <Text style={styles.modalTitle}>Choose Your Username</Text>
+            <Text style={styles.panelSubtitle}>
+              This is the name other players will see in rooms and on the leaderboard.
+            </Text>
+            <TextField
+              autoCapitalize="none"
+              label="Username"
+              maxLength={20}
+              onChangeText={(value) => {
+                setUsernameDraft(value);
+                if (usernameError) {
+                  setUsernameError(null);
+                }
+              }}
+              placeholder="player_53739"
+              value={usernameDraft}
+            />
+            {usernameError ? <Text style={styles.inlineError}>{usernameError}</Text> : null}
+            <PrimaryButton
+              disabled={usernameDraft.trim().length < 3}
+              label="Save Username"
+              loading={isSavingUsername}
+              onPress={() => void handleSaveUsername()}
+            />
+            <PrimaryButton
+              label="Cancel"
+              onPress={() => {
+                setUsernameError(null);
+                setShowUsernameModal(false);
+              }}
+              variant="secondary"
+            />
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -355,6 +430,45 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 16,
     lineHeight: 24
+  },
+  usernameRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm
+  },
+  usernameChip: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  usernameChipLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase"
+  },
+  usernameChipValue: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "800"
+  },
+  editChip: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  editChipText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "700"
   },
   heroStats: {
     gap: spacing.md
@@ -660,5 +774,10 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 20
+  },
+  inlineError: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: "600"
   }
 });

@@ -4,7 +4,8 @@ import type {
   ProgressPreferencesPayload,
   ProgressSyncResponse,
   RecordMatchPayload,
-  RecordMatchResponse
+  RecordMatchResponse,
+  UpdateDisplayNameResponse
 } from "../../shared/progression.types";
 
 const normalizeBaseUrl = (value?: string) => {
@@ -52,6 +53,15 @@ export const updateProgressPreferences = (payload: ProgressPreferencesPayload) =
   request<ProgressSyncResponse>("/api/progression/preferences", {
     method: "PATCH",
     body: JSON.stringify(payload)
+  });
+
+export const updateDisplayNameRemote = (playerKey: string, displayName: string) =>
+  request<UpdateDisplayNameResponse>("/api/progression/display-name", {
+    method: "PATCH",
+    body: JSON.stringify({
+      playerKey,
+      displayName
+    })
   });
 
 export const claimDailyRewardRemote = (playerKey: string) =>

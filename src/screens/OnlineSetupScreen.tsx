@@ -7,6 +7,7 @@ import { ScreenContainer } from "../components/ScreenContainer";
 import { TextField } from "../components/TextField";
 import { createRoom, joinRoom } from "../socket/onlineSocket";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
+import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, OnlineMode } from "../types/game.types";
 import { colors, spacing } from "../utils/theme";
 import { DEFAULT_DIFFICULTY, DIFFICULTY_CONFIG, getDifficultyRangeLabel } from "../../shared/difficulty";
@@ -15,7 +16,6 @@ type RuleMode = "classic" | "duel";
 const difficultyOrder: Difficulty[] = ["easy", "hard", "impossible"];
 
 export default function OnlineSetupScreen() {
-  const [playerName, setPlayerName] = useState("");
   const [roomId, setRoomId] = useState("");
   const [ruleMode, setRuleMode] = useState<RuleMode>("classic");
   const [difficulty, setDifficulty] = useState<Difficulty>(DEFAULT_DIFFICULTY);
@@ -25,6 +25,7 @@ export default function OnlineSetupScreen() {
   const errorMessage = useOnlineGameStore((state) => state.errorMessage);
   const setErrorMessage = useOnlineGameStore((state) => state.setErrorMessage);
   const setSession = useOnlineGameStore((state) => state.setSession);
+  const displayName = usePlayerProgressStore((state) => state.displayName);
 
   const onlineMode: OnlineMode = ruleMode;
 
@@ -33,7 +34,7 @@ export default function OnlineSetupScreen() {
       setLoadingAction("create");
       setErrorMessage(null);
 
-      const response = await createRoom(playerName.trim(), onlineMode, difficulty);
+      const response = await createRoom(displayName.trim(), onlineMode, difficulty);
       setSession(response.player, response.room, onlineMode);
       router.replace("/online-lobby");
     } catch (error) {
@@ -48,7 +49,7 @@ export default function OnlineSetupScreen() {
       setLoadingAction("join");
       setErrorMessage(null);
 
-      const response = await joinRoom(roomId.trim().toUpperCase(), playerName.trim());
+      const response = await joinRoom(roomId.trim().toUpperCase(), displayName.trim());
       setSession(response.player, response.room);
       router.replace("/online-lobby");
     } catch (error) {
@@ -58,7 +59,7 @@ export default function OnlineSetupScreen() {
     }
   };
 
-  const canCreate = playerName.trim().length >= 2;
+  const canCreate = displayName.trim().length >= 2;
   const canJoin = canCreate && roomId.trim().length >= 4;
 
   return (
@@ -76,13 +77,11 @@ export default function OnlineSetupScreen() {
       </View>
 
       <View style={styles.card}>
-        <TextField
-          autoCapitalize="words"
-          label="Your name"
-          onChangeText={setPlayerName}
-          placeholder="Enter at least 2 characters"
-          value={playerName}
-        />
+        <View style={styles.identityCard}>
+          <Text style={styles.identityLabel}>Joining as</Text>
+          <Text style={styles.identityValue}>{displayName}</Text>
+          <Text style={styles.identityText}>Your online rooms use the username from your profile.</Text>
+        </View>
 
         <View style={styles.modeRow}>
           <Pressable
@@ -208,6 +207,31 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.lg,
     gap: spacing.md
+  },
+  identityCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 18,
+    padding: spacing.md,
+    gap: spacing.xs
+  },
+  identityLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase"
+  },
+  identityValue: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "800"
+  },
+  identityText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19
   },
   modeRow: {
     gap: spacing.sm

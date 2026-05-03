@@ -5,6 +5,7 @@ import {
   bootstrapProgress,
   claimDailyRewardRemote,
   recordMatchRemote,
+  updateDisplayNameRemote,
   updateProgressPreferences
 } from "../api/progressionApi";
 import type {
@@ -20,20 +21,24 @@ import {
   buildOnlineLeaderboard,
   claimProfileDailyReward,
   createInitialProfile,
+  getDefaultDisplayName,
   normalizeProfile
 } from "../utils/progression";
 
 const PROFILE_STORAGE_KEY = "higher-lower-player-progress";
 const PLAYER_KEY_STORAGE_KEY = "higher-lower-player-key";
+const DISPLAY_NAME_STORAGE_KEY = "higher-lower-display-name";
 
 const createPlayerKey = () => `player_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 
 interface PlayerProgressStore {
   hydrated: boolean;
   playerKey: string | null;
+  displayName: string;
   profile: PlayerProfile;
   leaderboard: LeaderboardEntry[];
   hydrate: () => Promise<void>;
+  updateDisplayName: (displayName: string) => Promise<void>;
   markTutorialSeen: () => Promise<void>;
   toggleSoundPlaceholders: () => Promise<void>;
   claimDailyReward: () => Promise<{
@@ -49,9 +54,14 @@ const persistProfile = async (profile: PlayerProfile) => {
   await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
 };
 
+const persistDisplayName = async (displayName: string) => {
+  await AsyncStorage.setItem(DISPLAY_NAME_STORAGE_KEY, displayName);
+};
+
 export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => ({
   hydrated: false,
   playerKey: null,
+  displayName: "",
   profile: createInitialProfile(),
   leaderboard: buildOnlineLeaderboard(createInitialProfile()),
   hydrate: async () => {
@@ -63,7 +73,9 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     }
 
     const rawProfile = await AsyncStorage.getItem(PROFILE_STORAGE_KEY);
+    const storedDisplayName = await AsyncStorage.getItem(DISPLAY_NAME_STORAGE_KEY);
     let mergedProfile = createInitialProfile();
+    const fallbackDisplayName = storedDisplayName ?? getDefaultDisplayName(playerKey);
 
     try {
       mergedProfile = normalizeProfile(rawProfile ? (JSON.parse(rawProfile) as Partial<PlayerProfile>) : undefined);
@@ -74,6 +86,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     set({
       hydrated: true,
       playerKey,
+      displayName: fallbackDisplayName,
       profile: mergedProfile,
       leaderboard: buildOnlineLeaderboard(mergedProfile)
     });
@@ -81,20 +94,38 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     try {
       const response = await bootstrapProgress({
         playerKey,
+        displayName: fallbackDisplayName,
         localProfile: mergedProfile
       });
 
       set({
         playerKey: response.playerKey,
+        displayName: response.displayName,
         profile: response.profile,
         leaderboard: response.leaderboard
       });
 
       await AsyncStorage.setItem(PLAYER_KEY_STORAGE_KEY, response.playerKey);
       await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(response.profile));
+      await persistDisplayName(response.displayName);
     } catch {
       // Local cache remains the fallback until the server is ready.
     }
+  },
+  updateDisplayName: async (displayName) => {
+    if (!get().playerKey) {
+      throw new Error("Your profile is still loading. Try again in a moment.");
+    }
+
+    const response = await updateDisplayNameRemote(get().playerKey!, displayName);
+
+    set({
+      displayName: response.displayName,
+      profile: response.profile,
+      leaderboard: response.leaderboard
+    });
+    await persistProfile(response.profile);
+    await persistDisplayName(response.displayName);
   },
   markTutorialSeen: async () => {
     const nextProfile = applyTutorialSeen(get().profile);
@@ -113,10 +144,12 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       });
 
       set({
+        displayName: response.displayName,
         profile: response.profile,
         leaderboard: response.leaderboard
       });
       await persistProfile(response.profile);
+      await persistDisplayName(response.displayName);
     } catch {
       // Keep the local value if the backend is temporarily unavailable.
     }
@@ -141,10 +174,12 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       });
 
       set({
+        displayName: response.displayName,
         profile: response.profile,
         leaderboard: response.leaderboard
       });
       await persistProfile(response.profile);
+      await persistDisplayName(response.displayName);
     } catch {
       // The local toggle should keep working even if sync is down.
     }
@@ -169,10 +204,12 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       const response = await claimDailyRewardRemote(get().playerKey!);
 
       set({
+        displayName: response.displayName,
         profile: response.profile,
         leaderboard: response.leaderboard
       });
       await persistProfile(response.profile);
+      await persistDisplayName(response.displayName);
 
       return {
         claimed: response.claimed,
@@ -209,10 +246,12 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       });
 
       set({
+        displayName: response.displayName,
         profile: response.profile,
         leaderboard: response.leaderboard
       });
       await persistProfile(response.profile);
+      await persistDisplayName(response.displayName);
 
       return response.record;
     } catch {

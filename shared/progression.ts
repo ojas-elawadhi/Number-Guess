@@ -12,6 +12,8 @@ import type {
 } from "./progression.types";
 
 export const MAX_HISTORY_ITEMS = 20;
+export const DISPLAY_NAME_MIN_LENGTH = 3;
+export const DISPLAY_NAME_MAX_LENGTH = 20;
 
 const difficultyMultipliers: Record<Difficulty, number> = {
   easy: 1,
@@ -117,6 +119,38 @@ export const createInitialProfile = (updatedAt = new Date().toISOString()): Play
   lastMatchSummary: null,
   updatedAt
 });
+
+export const getDefaultDisplayName = (playerKey: string) => {
+  let seed = 0;
+
+  for (let index = 0; index < playerKey.length; index += 1) {
+    seed = (seed * 31 + playerKey.charCodeAt(index)) % 100000;
+  }
+
+  return `player_${`${seed}`.padStart(5, "0")}`;
+};
+
+export const normalizeDisplayName = (value: string) => value.trim().replace(/\s+/g, " ");
+
+export const normalizeDisplayNameLookup = (value: string) => normalizeDisplayName(value).toLowerCase();
+
+export const validateDisplayName = (value: string) => {
+  const normalized = normalizeDisplayName(value);
+
+  if (normalized.length < DISPLAY_NAME_MIN_LENGTH || normalized.length > DISPLAY_NAME_MAX_LENGTH) {
+    throw new Error(`Username must be ${DISPLAY_NAME_MIN_LENGTH}-${DISPLAY_NAME_MAX_LENGTH} characters long.`);
+  }
+
+  if (!/^[a-zA-Z0-9_ ]+$/.test(normalized)) {
+    throw new Error("Username can only use letters, numbers, spaces, and underscores.");
+  }
+
+  if (normalized.toLowerCase() === "you") {
+    throw new Error("Choose a different username.");
+  }
+
+  return normalized;
+};
 
 export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): PlayerProfile => {
   const baseProfile = createInitialProfile();
