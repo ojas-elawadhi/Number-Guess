@@ -447,32 +447,28 @@ export const getPlayerOnlineScore = (profile: PlayerProfile) =>
 
 export const buildOnlineLeaderboard = (profile: PlayerProfile): LeaderboardEntry[] => {
   const playerOnlinePoints = getPlayerOnlineScore(profile);
+  const hasOnlineActivity =
+    profile.stats.category.online.matches > 0 ||
+    playerOnlinePoints > 0 ||
+    profile.stats.category.online.wins > 0;
+
+  if (!hasOnlineActivity) {
+    return [];
+  }
+
   const playerScore = playerOnlinePoints + profile.bestWinStreak * 8 + profile.level * 16;
-  const seeded = [
-    { id: "nova", name: "Nova Lynx", points: 1420, streak: 7, level: 12 },
-    { id: "pulse", name: "Pulse K", points: 1310, streak: 4, level: 11 },
-    { id: "zen", name: "Zen Orbit", points: 1180, streak: 3, level: 10 },
-    { id: "arc", name: "Arc Vega", points: 1040, streak: 2, level: 9 },
-    { id: "mira", name: "Mira Byte", points: 920, streak: 1, level: 8 }
-  ];
 
   return [
-    ...seeded,
     {
       id: "you",
       name: "You",
       points: playerScore,
       streak: profile.currentWinStreak,
       level: profile.level,
-      isPlayer: true
+      isPlayer: true,
+      rank: 1
     }
-  ]
-    .sort((left, right) => right.points - left.points)
-    .map((entry, index) => ({
-      ...entry,
-      rank: index + 1
-    }))
-    .slice(0, 6);
+  ];
 };
 
 export const getAchievementMeta = (achievementId: AchievementId) =>

@@ -231,7 +231,10 @@ export default function HomeScreen() {
 
           <View style={styles.panel}>
             <Text style={styles.panelTitle}>Leaderboard</Text>
-            <Text style={styles.panelSubtitle}>Online standings preview based on your tracked online results.</Text>
+            <Text style={styles.panelSubtitle}>Online standings based on real tracked online results.</Text>
+            {leaderboard.length === 0 ? (
+              <Text style={styles.emptyText}>No online leaderboard entries yet.</Text>
+            ) : (
             <View style={styles.leaderboardList}>
               {leaderboard.slice(0, 4).map((entry) => (
                 <View key={entry.id} style={styles.leaderboardRow}>
@@ -246,6 +249,7 @@ export default function HomeScreen() {
                 </View>
               ))}
             </View>
+            )}
           </View>
         </View>
 
