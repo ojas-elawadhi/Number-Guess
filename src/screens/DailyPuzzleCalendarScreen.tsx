@@ -71,7 +71,7 @@ export default function DailyPuzzleCalendarScreen() {
       }
     };
 
-    load().catch(() => {});
+    load().catch(() => { });
 
     return () => {
       isMounted = false;
@@ -381,8 +381,8 @@ export default function DailyPuzzleCalendarScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: colors.backgroundAlt,
-    gap: spacing.sm
+    // backgroundColor: colors.backgroundAlt,
+    // gap: spacing.sm
   },
   loadingScreen: {
     alignItems: "center",
