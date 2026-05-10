@@ -4,17 +4,23 @@ import { create } from "zustand";
 import {
   bootstrapProgress,
   claimDailyRewardRemote,
+  fetchDailyPuzzleStatusRemote,
   recordMatchRemote,
+  submitDailyPuzzleGuessRemote,
   updateDisplayNameRemote,
   updateProgressPreferences
 } from "../api/progressionApi";
 import type {
+  DailyPuzzleGuessResponse,
+  DailyPuzzleStatusResponse,
   LeaderboardEntry,
   MatchInput,
   MatchRecord,
-  PlayerProfile
+  PlayerProfile,
+  ProgressSyncResponse
 } from "../types/progression.types";
 import {
+  applyDailyPuzzleCompletion,
   applyRecordedMatch,
   applySoundPlaceholdersEnabled,
   applyTutorialSeen,
@@ -24,6 +30,7 @@ import {
   getDefaultDisplayName,
   normalizeProfile
 } from "../utils/progression";
+import { getLocalTodayKey } from "../utils/dailyPuzzle";
 
 const PROFILE_STORAGE_KEY = "higher-lower-player-progress";
 const PLAYER_KEY_STORAGE_KEY = "higher-lower-player-key";
@@ -37,6 +44,8 @@ interface PlayerProgressStore {
   displayName: string;
   profile: PlayerProfile;
   leaderboard: LeaderboardEntry[];
+  dailyPuzzleTodayKey: string | null;
+  dailyPuzzleMaxNumber: number;
   hydrate: () => Promise<void>;
   updateDisplayName: (displayName: string) => Promise<void>;
   markTutorialSeen: () => Promise<void>;
@@ -48,6 +57,19 @@ interface PlayerProgressStore {
     streakDays: number;
   }>;
   recordMatch: (input: MatchInput) => Promise<MatchRecord>;
+  fetchDailyPuzzleStatus: (dateKey: string) => Promise<DailyPuzzleStatusResponse>;
+  submitDailyPuzzleGuess: (input: {
+    dateKey: string;
+    guess: number;
+    attempts: number;
+    durationMs: number;
+  }) => Promise<DailyPuzzleGuessResponse>;
+  saveDailyPuzzleCompletionLocal: (input: {
+    dateKey: string;
+    attempts: number;
+    durationMs: number;
+    recordId: string | null;
+  }) => Promise<void>;
 }
 
 const persistProfile = async (profile: PlayerProfile) => {
@@ -58,12 +80,44 @@ const persistDisplayName = async (displayName: string) => {
   await AsyncStorage.setItem(DISPLAY_NAME_STORAGE_KEY, displayName);
 };
 
+const applyRemoteSync = async (
+  set: (partial: Partial<PlayerProgressStore>) => void,
+  get: () => PlayerProgressStore,
+  response: ProgressSyncResponse & {
+    todayKey?: string;
+    maxNumber?: number;
+  },
+  options?: {
+    updateDailyPuzzleTodayKey?: boolean;
+  }
+) => {
+  const normalizedProfile = normalizeProfile(response.profile);
+
+  set({
+    playerKey: response.playerKey,
+    displayName: response.displayName,
+    profile: normalizedProfile,
+    leaderboard: response.leaderboard,
+    dailyPuzzleTodayKey:
+      options?.updateDailyPuzzleTodayKey === false
+        ? get().dailyPuzzleTodayKey
+        : response.todayKey ?? get().dailyPuzzleTodayKey,
+    dailyPuzzleMaxNumber: response.maxNumber ?? get().dailyPuzzleMaxNumber
+  });
+
+  await AsyncStorage.setItem(PLAYER_KEY_STORAGE_KEY, response.playerKey);
+  await persistProfile(normalizedProfile);
+  await persistDisplayName(response.displayName);
+};
+
 export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => ({
   hydrated: false,
   playerKey: null,
   displayName: "",
   profile: createInitialProfile(),
   leaderboard: buildOnlineLeaderboard(createInitialProfile()),
+  dailyPuzzleTodayKey: null,
+  dailyPuzzleMaxNumber: 9999,
   hydrate: async () => {
     let playerKey = await AsyncStorage.getItem(PLAYER_KEY_STORAGE_KEY);
 
@@ -98,16 +152,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
         localProfile: mergedProfile
       });
 
-      set({
-        playerKey: response.playerKey,
-        displayName: response.displayName,
-        profile: response.profile,
-        leaderboard: response.leaderboard
-      });
-
-      await AsyncStorage.setItem(PLAYER_KEY_STORAGE_KEY, response.playerKey);
-      await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(response.profile));
-      await persistDisplayName(response.displayName);
+      await applyRemoteSync(set, get, response);
     } catch {
       // Local cache remains the fallback until the server is ready.
     }
@@ -118,13 +163,14 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     }
 
     const response = await updateDisplayNameRemote(get().playerKey!, displayName);
+    const normalizedProfile = normalizeProfile(response.profile);
 
     set({
       displayName: response.displayName,
-      profile: response.profile,
+      profile: normalizedProfile,
       leaderboard: response.leaderboard
     });
-    await persistProfile(response.profile);
+    await persistProfile(normalizedProfile);
     await persistDisplayName(response.displayName);
   },
   markTutorialSeen: async () => {
@@ -142,13 +188,14 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
         playerKey: get().playerKey!,
         tutorialSeen: true
       });
+      const normalizedProfile = normalizeProfile(response.profile);
 
       set({
         displayName: response.displayName,
-        profile: response.profile,
+        profile: normalizedProfile,
         leaderboard: response.leaderboard
       });
-      await persistProfile(response.profile);
+      await persistProfile(normalizedProfile);
       await persistDisplayName(response.displayName);
     } catch {
       // Keep the local value if the backend is temporarily unavailable.
@@ -172,13 +219,14 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
         playerKey: get().playerKey!,
         soundPlaceholdersEnabled: nextProfile.soundPlaceholdersEnabled
       });
+      const normalizedProfile = normalizeProfile(response.profile);
 
       set({
         displayName: response.displayName,
-        profile: response.profile,
+        profile: normalizedProfile,
         leaderboard: response.leaderboard
       });
-      await persistProfile(response.profile);
+      await persistProfile(normalizedProfile);
       await persistDisplayName(response.displayName);
     } catch {
       // The local toggle should keep working even if sync is down.
@@ -202,13 +250,14 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
 
     try {
       const response = await claimDailyRewardRemote(get().playerKey!);
+      const normalizedProfile = normalizeProfile(response.profile);
 
       set({
         displayName: response.displayName,
-        profile: response.profile,
+        profile: normalizedProfile,
         leaderboard: response.leaderboard
       });
-      await persistProfile(response.profile);
+      await persistProfile(normalizedProfile);
       await persistDisplayName(response.displayName);
 
       return {
@@ -245,18 +294,52 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
         input
       });
 
-      set({
-        displayName: response.displayName,
-        profile: response.profile,
-        leaderboard: response.leaderboard
-      });
-      await persistProfile(response.profile);
-      await persistDisplayName(response.displayName);
+      await applyRemoteSync(set, get, response);
 
       return response.record;
     } catch {
       return localResult.record;
     }
+  },
+  fetchDailyPuzzleStatus: async (dateKey) => {
+    if (!get().playerKey) {
+      throw new Error("Your profile is still loading. Try again in a moment.");
+    }
+
+    const response = await fetchDailyPuzzleStatusRemote(get().playerKey!, dateKey);
+    await applyRemoteSync(set, get, response, {
+      updateDailyPuzzleTodayKey: dateKey === getLocalTodayKey()
+    });
+    return response;
+  },
+  submitDailyPuzzleGuess: async (input) => {
+    if (!get().playerKey) {
+      throw new Error("Your profile is still loading. Try again in a moment.");
+    }
+
+    const response = await submitDailyPuzzleGuessRemote({
+      playerKey: get().playerKey!,
+      ...input
+    });
+
+    await applyRemoteSync(set, get, response, {
+      updateDailyPuzzleTodayKey: input.dateKey === getLocalTodayKey()
+    });
+    return response;
+  },
+  saveDailyPuzzleCompletionLocal: async (input) => {
+    const result = applyDailyPuzzleCompletion(
+      get().profile,
+      input.dateKey,
+      input.attempts,
+      input.durationMs,
+      input.recordId
+    );
+
+    set({
+      profile: result.profile
+    });
+    await persistProfile(result.profile);
   }
 }));
 

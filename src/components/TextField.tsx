@@ -1,6 +1,6 @@
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
-import { colors, spacing } from "../utils/theme";
+import { colors, radii, spacing } from "../utils/theme";
 
 interface TextFieldProps {
   label: string;
@@ -33,7 +33,7 @@ export function TextField({
         maxLength={maxLength}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
+        placeholderTextColor="#aaa7b6"
         style={[styles.input, !editable && styles.inputDisabled]}
         value={value}
       />
@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 16,
+    borderRadius: radii.md,
     backgroundColor: colors.surface,
     color: colors.text,
     fontSize: 16,

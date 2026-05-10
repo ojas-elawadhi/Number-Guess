@@ -1,131 +1,76 @@
 import { router } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-import { PrimaryButton } from "../components/PrimaryButton";
+import { DifficultyOptionCard } from "../components/DifficultyOptionCard";
+import { TopBar } from "../components/GameKit";
 import { ScreenContainer } from "../components/ScreenContainer";
 import type { Difficulty } from "../types/game.types";
 import { colors, spacing } from "../utils/theme";
-import { DEFAULT_DIFFICULTY, DIFFICULTY_CONFIG, getDifficultyRangeLabel } from "../../shared/difficulty";
-import { useState } from "react";
 
 const difficultyOrder: Difficulty[] = ["easy", "hard", "impossible"];
 
 export default function PracticeSetupScreen() {
-  const [difficulty, setDifficulty] = useState<Difficulty>(DEFAULT_DIFFICULTY);
-
   return (
-    <ScreenContainer>
-      <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backLink, pressed && styles.backLinkPressed]}>
-        <Text style={styles.backText}>Back</Text>
-      </Pressable>
+    <ScreenContainer contentStyle={styles.screen}>
+      <TopBar
+        accent={colors.practice}
+        label="Single Player"
+        onBack={() => router.back()}
+        title="HIGHER LOWER"
+        variant="header-only"
+      />
 
-      <View style={styles.hero}>
-        <Text style={styles.eyebrow}>Single Player</Text>
-        <Text style={styles.title}>Choose Difficulty</Text>
-        <Text style={styles.subtitle}>
-          Practice keeps the rules simple. Pick the number range you want to play with, then start guessing.
-        </Text>
+      <View style={styles.badgeRow}>
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>Single Player</Text>
+        </View>
       </View>
 
-      <View style={styles.card}>
-        <View style={styles.modeRow}>
-          {difficultyOrder.map((currentDifficulty) => (
-            <Pressable
-              key={currentDifficulty}
-              onPress={() => setDifficulty(currentDifficulty)}
-              style={({ pressed }) => [
-                styles.modeCard,
-                difficulty === currentDifficulty && styles.modeCardActive,
-                pressed && styles.modeCardPressed
-              ]}
-            >
-              <Text style={styles.modeTitle}>{DIFFICULTY_CONFIG[currentDifficulty].label}</Text>
-              <Text style={styles.modeText}>Range {getDifficultyRangeLabel(currentDifficulty)}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <PrimaryButton
-          label={`Play ${DIFFICULTY_CONFIG[difficulty].label}`}
-          onPress={() => {
-            router.push({
-              pathname: "/practice-game",
-              params: { difficulty }
-            });
-          }}
-        />
+      <View style={styles.stack}>
+        {difficultyOrder.map((currentDifficulty) => (
+          <DifficultyOptionCard
+            difficulty={currentDifficulty}
+            key={currentDifficulty}
+            onPress={() => {
+              router.push({
+                pathname: "/single-player-game",
+                params: { difficulty: currentDifficulty }
+              });
+            }}
+          />
+        ))}
       </View>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  backLink: {
-    alignSelf: "flex-start",
-    marginTop: spacing.md
-  },
-  backLinkPressed: {
-    opacity: 0.8
-  },
-  backText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: "600"
-  },
-  hero: {
-    gap: spacing.sm
-  },
-  eyebrow: {
-    color: colors.accent,
-    fontSize: 14,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1
-  },
-  title: {
-    color: colors.text,
-    fontSize: 40,
-    fontWeight: "800"
-  },
-  subtitle: {
-    color: colors.textMuted,
-    fontSize: 16,
-    lineHeight: 24
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
+  screen: {
     gap: spacing.md
   },
-  modeRow: {
-    gap: spacing.sm
+  badgeRow: {
+    alignItems: "center"
   },
-  modeCard: {
-    backgroundColor: colors.surfaceAlt,
+  badge: {
+    alignItems: "center",
+    backgroundColor: "rgba(46, 204, 113, 0.08)",
+    borderColor: "rgba(46, 204, 113, 0.22)",
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 18,
-    padding: spacing.md,
-    gap: spacing.xs
+    justifyContent: "center",
+    minHeight: 38,
+    paddingHorizontal: spacing.lg
   },
-  modeCardActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.surface
-  },
-  modeCardPressed: {
-    opacity: 0.9
-  },
-  modeTitle: {
-    color: colors.text,
+  badgeText: {
+    color: colors.practice,
     fontSize: 16,
-    fontWeight: "700"
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textTransform: "uppercase"
   },
-  modeText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20
+  stack: {
+    flex: 1,
+    gap: spacing.md,
+    justifyContent: "center"
   }
 });

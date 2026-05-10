@@ -1,7 +1,7 @@
-import type { Difficulty } from "./game.types";
+import type { Difficulty, GuessFeedback } from "./game.types";
 
 export type MatchCategory = "single-player" | "vs-ai" | "online";
-export type MatchMode = "practice" | "classic" | "duel";
+export type MatchMode = "practice" | "classic" | "duel" | "daily";
 export type MatchOutcome = "win" | "loss" | "tie";
 export type AchievementId =
   | "first-win"
@@ -11,7 +11,11 @@ export type AchievementId =
   | "quick-reader"
   | "ai-slayer"
   | "online-contender"
-  | "daily-dedication";
+  | "daily-dedication"
+  | "daily-starter"
+  | "calendar-climber"
+  | "calendar-collector"
+  | "perfect-month";
 
 export interface ScoreBreakdown {
   base: number;
@@ -83,6 +87,17 @@ export interface LastRewardSummary {
   streakDays: number;
 }
 
+export interface DailyPuzzleCompletion {
+  attempts: number;
+  durationMs: number;
+  completedAt: string;
+  recordId: string | null;
+}
+
+export interface DailyPuzzleState {
+  completedByDate: Record<string, DailyPuzzleCompletion>;
+}
+
 export interface PlayerProfile {
   xp: number;
   level: number;
@@ -95,6 +110,7 @@ export interface PlayerProfile {
   tutorialSeen: boolean;
   soundPlaceholdersEnabled: boolean;
   dailyReward: DailyRewardState;
+  dailyPuzzle: DailyPuzzleState;
   lastRewardSummary: LastRewardSummary | null;
   lastMatchSummary: MatchRecord | null;
   updatedAt: string;
@@ -143,6 +159,19 @@ export interface RecordMatchPayload {
   input: MatchInput;
 }
 
+export interface DailyPuzzleStatusPayload {
+  playerKey: string;
+  dateKey?: string;
+}
+
+export interface DailyPuzzleGuessPayload {
+  playerKey: string;
+  dateKey: string;
+  guess: number;
+  attempts: number;
+  durationMs: number;
+}
+
 export interface ProgressSyncResponse {
   playerKey: string;
   displayName: string;
@@ -165,3 +194,18 @@ export interface RecordMatchResponse extends ProgressSyncResponse {
 }
 
 export interface UpdateDisplayNameResponse extends ProgressSyncResponse {}
+
+export interface DailyPuzzleStatusResponse extends ProgressSyncResponse {
+  todayKey: string;
+  maxNumber: number;
+  todayCompletion: DailyPuzzleCompletion | null;
+}
+
+export interface DailyPuzzleGuessResponse extends ProgressSyncResponse {
+  todayKey: string;
+  maxNumber: number;
+  feedback: GuessFeedback | "already-solved";
+  solved: boolean;
+  completion: DailyPuzzleCompletion | null;
+  record: MatchRecord | null;
+}

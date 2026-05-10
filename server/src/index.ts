@@ -5,6 +5,7 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 
+import { dailyPuzzleRouter } from "./controllers/daily-puzzle.controller";
 import { getDatabaseHealth, getHealth } from "./controllers/health.controller";
 import { progressionRouter } from "./controllers/progression.controller";
 import { registerGameSocketHandlers } from "./sockets/game.socket";
@@ -37,6 +38,7 @@ app.get("/", (_request, response) => {
 app.get("/health", getHealth);
 app.get("/health/db", getDatabaseHealth);
 app.use("/api/progression", progressionRouter);
+app.use("/api/daily-puzzle", dailyPuzzleRouter);
 
 const httpServer = createServer(app);
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {

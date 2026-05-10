@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 
 import type { Player } from "../types/game.types";
-import { colors, spacing } from "../utils/theme";
+import { colors, radii, spacing } from "../utils/theme";
 
 interface PlayerListProps {
   players: Player[];
@@ -19,9 +19,12 @@ export function PlayerList({ players, hostId, winnerId, winnerIds = [] }: Player
 
         return (
           <View key={player.id} style={styles.row}>
-            <View>
+            <View style={styles.identity}>
+              <View style={styles.dot} />
+              <View>
               <Text style={styles.name}>{player.name}</Text>
               <Text style={styles.meta}>{isHost ? "Host" : "Player"}</Text>
+              </View>
             </View>
             {isWinner ? <Text style={styles.badge}>Winner</Text> : null}
           </View>
@@ -33,17 +36,30 @@ export function PlayerList({ players, hostId, winnerId, winnerIds = [] }: Player
 
 const styles = StyleSheet.create({
   container: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm
   },
   row: {
     backgroundColor: colors.surface,
-    borderRadius: 16,
+    borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.surfaceMuted,
+    flexBasis: "48%",
+    minHeight: 92,
     padding: spacing.md,
-    flexDirection: "row",
+    justifyContent: "center"
+  },
+  identity: {
     alignItems: "center",
-    justifyContent: "space-between"
+    flexDirection: "row",
+    gap: spacing.sm
+  },
+  dot: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.pill,
+    height: 44,
+    width: 44
   },
   name: {
     color: colors.text,
@@ -53,10 +69,14 @@ const styles = StyleSheet.create({
   meta: {
     color: colors.textMuted,
     fontSize: 13,
-    marginTop: 4
+    fontWeight: "800",
+    marginTop: 4,
+    textTransform: "uppercase"
   },
   badge: {
-    color: colors.success,
-    fontWeight: "700"
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: spacing.sm
   }
 });

@@ -1,4 +1,12 @@
+import path from "path";
+
 import { PrismaClient } from "@prisma/client";
+import dotenv from "dotenv";
+
+dotenv.config({
+  path: path.resolve(__dirname, "../../.env"),
+  override: true
+});
 
 declare global {
   // eslint-disable-next-line no-var

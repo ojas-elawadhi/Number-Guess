@@ -155,5 +155,9 @@ export const useOnlineGameStore = create<OnlineGameStore>((set) => ({
       personalSecretNumber: null,
       errorMessage: null
     })),
-  resetAll: () => set(initialState)
+  resetAll: () =>
+    set((state) => ({
+      ...initialState,
+      isConnected: state.isConnected
+    }))
 }));

@@ -55,10 +55,10 @@ export function useCountdownOverlay(initialValue = 3) {
         return;
       }
 
-      setCountdownValue(currentValue);
+        setCountdownValue(currentValue);
       pulse(() => {
         if (stepIndex === sequence.length - 1) {
-          setCountdownValue("GO");
+          setCountdownValue("GO!");
           pulse(() => {
             setCountdownValue(null);
           });

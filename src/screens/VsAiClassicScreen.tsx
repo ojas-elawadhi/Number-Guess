@@ -1,19 +1,17 @@
+import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { AiOpponentCard } from "../components/AiOpponentCard";
 import { ConfettiBurst } from "../components/ConfettiBurst";
-import { CountdownOverlay } from "../components/CountdownOverlay";
-import { PrimaryButton } from "../components/PrimaryButton";
+import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
-import { TextField } from "../components/TextField";
-import { useCountdownOverlay } from "../hooks/useCountdownOverlay";
+import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
 import type { MatchRecord } from "../types/progression.types";
-import { colors, spacing } from "../utils/theme";
 import { formatDuration } from "../utils/progression";
+import { colors, radii, spacing } from "../utils/theme";
 import { getDifficultyConfig, getDifficultyRangeLabel, parseDifficulty } from "../../shared/difficulty";
 
 interface AiClassicRoundEntry {
@@ -25,23 +23,14 @@ interface AiClassicRoundEntry {
 
 type ClassicWinner = "player" | "ai" | "tie" | null;
 
+const keypadRows = [
+  ["1", "2", "3"],
+  ["4", "5", "6"],
+  ["7", "8", "9"],
+  ["backspace", "0", "clear"]
+] as const;
+
 const randomBetween = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-const formatFeedback = (result: GuessFeedback) => {
-  if (result === "higher") {
-    return "Higher";
-  }
-
-  if (result === "lower") {
-    return "Lower";
-  }
-
-  if (result === "correct") {
-    return "Correct";
-  }
-
-  return "No Guess";
-};
 
 export default function VsAiClassicScreen() {
   const params = useLocalSearchParams<{ difficulty?: string }>();
@@ -49,13 +38,8 @@ export default function VsAiClassicScreen() {
   const difficultyConfig = getDifficultyConfig(difficulty);
   const digitLimit = String(difficultyConfig.maxNumber).length;
   const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
-  const {
-    countdownActive,
-    countdownOpacity,
-    countdownScale,
-    countdownValue,
-    startCountdown
-  } = useCountdownOverlay();
+  const countdown = useGameStartCountdown();
+  const { countdownActive, startCountdown } = countdown;
   const startTimeRef = useRef(Date.now());
   const recordedMatchRef = useRef(false);
   const [targetNumber, setTargetNumber] = useState(() => randomBetween(1, difficultyConfig.maxNumber));
@@ -70,13 +54,61 @@ export default function VsAiClassicScreen() {
   const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
 
   const isComplete = winner !== null;
+  const emptyGuessValue =
+    difficulty === "impossible" ? "_ _ _ _" : difficulty === "hard" ? "- - -" : "- -";
+  const bannerTone =
+    winner === "player"
+      ? "player"
+      : winner === "ai"
+        ? "ai"
+        : winner === "tie"
+          ? "tie"
+          : lastRound?.playerResult === "higher"
+            ? "higher"
+            : lastRound?.playerResult === "lower"
+              ? "lower"
+              : "ready";
+  const bannerTitle =
+    bannerTone === "player"
+      ? "YOU WIN"
+      : bannerTone === "ai"
+        ? "AI WINS"
+        : bannerTone === "tie"
+          ? "TIE"
+          : bannerTone === "higher"
+            ? "HIGHER"
+            : bannerTone === "lower"
+              ? "LOWER"
+              : "READY";
+  const bannerIcon =
+    bannerTone === "player"
+      ? "checkmark"
+      : bannerTone === "ai"
+        ? "hardware-chip"
+        : bannerTone === "tie"
+          ? "remove"
+          : bannerTone === "higher"
+            ? "arrow-up"
+            : "arrow-down";
+  const bannerColor =
+    bannerTone === "player"
+      ? "#1fc46d"
+      : bannerTone === "ai"
+        ? "#ff9d99"
+        : bannerTone === "tie"
+          ? "#b1b7c2"
+          : bannerTone === "higher"
+            ? "#ff8a6a"
+            : "#61b7ff";
+  const historyItems = history.slice(0, 3).reverse();
+  const ctaDisabled = countdownActive || (!isComplete && guess.length === 0);
 
   useEffect(() => {
     startCountdown();
   }, [startCountdown]);
 
   useEffect(() => {
-    if (!isComplete || recordedMatchRef.current === true) {
+    if (!isComplete || recordedMatchRef.current) {
       return;
     }
 
@@ -90,31 +122,18 @@ export default function VsAiClassicScreen() {
       outcome,
       attempts: history.length,
       durationMs: Date.now() - startTimeRef.current,
-      opponentName: "Nova Lynx",
-      opponentPersona: "Pattern hunter"
+      opponentName: "Nova AI",
+      opponentPersona: "Nova AI"
     })
       .then(setMatchSummary)
-      .catch(() => {
-        // Keep match flow intact even if progression persistence fails.
-      });
+      .catch(() => {});
   }, [difficulty, history.length, isComplete, recordMatch, winner]);
-
-  const latestFeedback = useMemo(() => {
-    if (!lastRound) {
-      return `You and the AI are chasing the same hidden number in the ${getDifficultyRangeLabel(difficulty)} range. Submit one guess each round and use only high or low feedback to narrow it down.`;
-    }
-
-    const playerLine = `Your guess ${lastRound.playerGuess}: ${formatFeedback(lastRound.playerResult)}`;
-    const aiLine = `AI guess: ${lastRound.aiGuess}`;
-
-    return `${playerLine} ${aiLine}`;
-  }, [difficulty, lastRound]);
 
   const handleSubmitGuess = () => {
     const parsedGuess = Number(guess);
 
     if (!Number.isInteger(parsedGuess) || parsedGuess < 1 || parsedGuess > difficultyConfig.maxNumber) {
-      setErrorMessage(`Enter a whole number between 1 and ${difficultyConfig.maxNumber}.`);
+      setErrorMessage(`Use 1-${difficultyConfig.maxNumber}.`);
       return;
     }
 
@@ -123,16 +142,10 @@ export default function VsAiClassicScreen() {
     const aiGuess = randomBetween(aiMin, aiMax);
     const aiResult: GuessFeedback =
       aiGuess === targetNumber ? "correct" : aiGuess < targetNumber ? "higher" : "lower";
-
-    const roundEntry: AiClassicRoundEntry = {
-      roundNumber,
-      playerGuess: parsedGuess,
-      playerResult,
-      aiGuess
-    };
+    const roundEntry: AiClassicRoundEntry = { roundNumber, playerGuess: parsedGuess, playerResult, aiGuess };
 
     setLastRound(roundEntry);
-    setHistory((currentHistory) => [roundEntry, ...currentHistory].slice(0, 12));
+    setHistory((currentHistory) => [roundEntry, ...currentHistory].slice(0, 8));
     setGuess("");
     setErrorMessage(null);
 
@@ -176,264 +189,300 @@ export default function VsAiClassicScreen() {
     startCountdown();
   };
 
-  return (
-    <ScreenContainer>
-      <ConfettiBurst visible={winner === "player" || winner === "tie"} />
-      {countdownValue !== null ? (
-        <CountdownOverlay
-          label="Match Starts In"
-          opacity={countdownOpacity}
-          scale={countdownScale}
-          value={countdownValue}
-        />
-      ) : null}
+  const appendDigit = (digit: string) => {
+    if (countdownActive || isComplete || guess.length >= digitLimit) {
+      return;
+    }
 
-      <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backLink, pressed && styles.backLinkPressed]}>
-        <Text style={styles.backText}>Back</Text>
+    setGuess((currentGuess) => `${currentGuess}${digit}`);
+    setErrorMessage(null);
+  };
+
+  const removeDigit = () => {
+    if (countdownActive || isComplete) {
+      return;
+    }
+
+    setGuess((currentGuess) => currentGuess.slice(0, -1));
+    setErrorMessage(null);
+  };
+
+  const clearDigit = () => {
+    if (countdownActive || isComplete) {
+      return;
+    }
+
+    setGuess("");
+    setErrorMessage(null);
+  };
+
+  const renderKey = (key: (typeof keypadRows)[number][number]) => {
+    const disabled = countdownActive || isComplete;
+    const label =
+      key === "backspace" ? (
+        <Ionicons color="#6b7075" name="backspace-outline" size={20} />
+      ) : key === "clear" ? (
+        <Ionicons color="#6b7075" name="close" size={20} />
+      ) : (
+        <Text style={styles.keyText}>{key}</Text>
+      );
+
+    const onPress =
+      key === "backspace"
+        ? removeDigit
+        : key === "clear"
+          ? clearDigit
+          : () => appendDigit(key);
+
+    return (
+      <Pressable
+        disabled={disabled}
+        key={key}
+        onPress={onPress}
+        style={({ pressed }) => [styles.keyButton, pressed && !disabled && styles.keyButtonPressed, disabled && styles.keyButtonDisabled]}
+      >
+        {label}
       </Pressable>
+    );
+  };
 
-      <View style={styles.hero}>
-        <Text style={styles.eyebrow}>VS AI Classic</Text>
-        <Text style={styles.title}>Race To The Number</Text>
-        <Text style={styles.subtitle}>
-          You and the AI are guessing the same hidden number in the {getDifficultyRangeLabel(difficulty)} range. Whoever finds it first wins.
-        </Text>
+  return (
+    <ScreenContainer contentStyle={styles.screen}>
+      <ConfettiBurst visible={winner === "player" || winner === "tie"} />
+      <GameStartCountdown controller={countdown} />
+
+      <View style={styles.topRow}>
+        <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+          <Ionicons color="#636b72" name="arrow-back" size={22} />
+        </Pressable>
+
+        <View style={styles.miniHistory}>
+          {historyItems.length === 0 ? (
+            <Text style={styles.historyPlaceholder}>Nova AI search {aiMin}-{aiMax}</Text>
+          ) : (
+            historyItems.map((entry, index) => (
+              <View key={`${entry.playerGuess}-${index}`} style={styles.historyChip}>
+                <Text style={styles.historyGuess}>{entry.playerGuess}</Text>
+                <Ionicons
+                  color={entry.playerResult === "higher" ? "#ff8a6a" : entry.playerResult === "lower" ? "#61b7ff" : "#1fc46d"}
+                  name={entry.playerResult === "higher" ? "arrow-up" : entry.playerResult === "lower" ? "arrow-down" : "checkmark"}
+                  size={12}
+                />
+              </View>
+            ))
+          )}
+        </View>
       </View>
 
-      <AiOpponentCard
-        name="Nova Lynx"
-        personality="Fast starter, calm finisher, and always chasing patterns in the range."
-        title="Shared-Target Rival"
-      />
-
-      <View style={styles.statusRow}>
-        <View style={[styles.statusPill, countdownActive && styles.statusPillAccent]}>
-          <Text style={styles.statusPillText}>
-            {countdownActive ? "Match starting" : isComplete ? "Match complete" : "Your turn"}
-          </Text>
-        </View>
-        <View style={styles.statusPill}>
-          <Text style={styles.statusPillText}>
-            {winner === null ? `AI guess ${lastRound?.aiGuess ?? "—"}` : `Winner: ${winner === "ai" ? "AI" : winner === "player" ? "You" : "Tie"}`}
-          </Text>
-        </View>
+      <View style={[styles.bannerCard, { backgroundColor: bannerColor }]}>
+        <Ionicons color="#0d3f68" name={bannerIcon} size={22} />
+        <Text style={styles.bannerText}>{bannerTitle}</Text>
       </View>
 
-      <View style={styles.card}>
-        <View style={styles.roundHeader}>
-          <Text style={styles.roundTitle}>Round {roundNumber}</Text>
-          <Text style={styles.roundMeta}>{difficultyConfig.label} range</Text>
+      <View style={styles.guessPanel}>
+        <Text style={styles.rangeLabel}>Shared Range {getDifficultyRangeLabel(difficulty)}</Text>
+        <View style={styles.guessPill}>
+          <Text style={styles.guessValue}>{guess.length > 0 ? guess : emptyGuessValue}</Text>
+          {!countdownActive && !isComplete ? <View style={styles.caret} /> : null}
         </View>
-
-        <Text style={styles.status}>
-          {isComplete
-            ? winner === "tie"
-              ? "You and the AI both found the number in the same round."
-              : winner === "player"
-                ? "You reached the hidden number first."
-                : "The AI reached the hidden number first."
-            : "Lock in your guess and the AI will answer with one guess of its own."}
-        </Text>
-
-        <TextField
-          editable={!isComplete && !countdownActive}
-          keyboardType="numeric"
-          label="Your guess"
-          maxLength={digitLimit}
-          onChangeText={setGuess}
-          placeholder={countdownActive ? "Get ready..." : isComplete ? "Round complete" : "Pick a number"}
-          value={guess}
-        />
-
-        <PrimaryButton
-          disabled={isComplete || countdownActive}
-          label={countdownActive ? "Starting..." : isComplete ? "Classic Finished" : "Lock In Guess"}
-          onPress={handleSubmitGuess}
-        />
-
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+        <Text style={styles.helperText}>
+          {isComplete
+            ? matchSummary
+              ? `${bannerTitle} | +${matchSummary.points} pts | ${formatDuration(matchSummary.durationMs)}`
+              : bannerTitle
+            : `Round ${roundNumber}`}
+        </Text>
       </View>
 
-      <View style={styles.feedbackCard}>
-        <Text style={styles.sectionTitle}>Latest feedback</Text>
-        <Text style={styles.feedbackText}>{latestFeedback}</Text>
-      </View>
+      <View style={styles.bottomSpacer} />
 
-      {isComplete ? (
-        <View style={styles.resultCard}>
-          <Text style={styles.resultTitle}>
-            {winner === "tie" ? "It’s a tie." : winner === "player" ? "You win." : "AI wins."}
-          </Text>
-          <Text style={styles.resultText}>
-            {matchSummary
-              ? `+${matchSummary.points} points • +${matchSummary.xpEarned} XP • ${formatDuration(matchSummary.durationMs)}`
-              : "Scoring your match..."}
-          </Text>
-          <PrimaryButton label="Rematch" onPress={handlePlayAgain} />
-        </View>
-      ) : null}
-
-      <View style={styles.feedbackCard}>
-        <Text style={styles.sectionTitle}>Round history</Text>
-        {history.length === 0 ? (
-          <Text style={styles.feedbackText}>No rounds yet.</Text>
-        ) : (
-          history.map((entry) => (
-            <View key={entry.roundNumber} style={styles.historyRow}>
-              <Text style={styles.historyRound}>Round {entry.roundNumber}</Text>
-              <Text style={styles.historyText}>
-                You: {entry.playerGuess}
-                {" -> "}
-                {entry.playerResult}
-              </Text>
-              <Text style={styles.historyText}>AI: {entry.aiGuess}</Text>
+      <View style={styles.bottomControls}>
+        <View style={styles.keypadWrap}>
+          {keypadRows.map((row, rowIndex) => (
+            <View key={rowIndex} style={styles.keyRow}>
+              {row.map(renderKey)}
             </View>
-          ))
-        )}
+          ))}
+        </View>
+
+        <Pressable
+          disabled={ctaDisabled}
+          onPress={isComplete ? handlePlayAgain : handleSubmitGuess}
+          style={({ pressed }) => [
+            styles.guessButton,
+            pressed && !ctaDisabled && styles.guessButtonPressed,
+            ctaDisabled && styles.guessButtonDisabled
+          ]}
+        >
+          <Text style={styles.guessButtonText}>{isComplete ? "REMATCH" : "LOCK >"}</Text>
+        </Pressable>
       </View>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  backLink: {
-    alignSelf: "flex-start",
-    marginTop: spacing.md
+  screen: {
+    flex: 1,
+    paddingBottom: spacing.md,
+    paddingTop: spacing.sm
   },
-  backLinkPressed: {
-    opacity: 0.8
-  },
-  backText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: "600"
-  },
-  hero: {
-    gap: spacing.sm
-  },
-  eyebrow: {
-    color: colors.accent,
-    fontSize: 14,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1
-  },
-  title: {
-    color: colors.text,
-    fontSize: 36,
-    fontWeight: "800"
-  },
-  subtitle: {
-    color: colors.textMuted,
-    fontSize: 16,
-    lineHeight: 24
-  },
-  statusRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm
-  },
-  statusPill: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8
-  },
-  statusPillAccent: {
-    borderColor: colors.accent
-  },
-  statusPillText: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: "700"
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    gap: spacing.md
-  },
-  roundHeader: {
+  topRow: {
     alignItems: "center",
     flexDirection: "row",
-    justifyContent: "space-between"
+    minHeight: 30
   },
-  roundTitle: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: "700"
+  backButton: {
+    alignItems: "center",
+    height: 30,
+    justifyContent: "center",
+    width: 30
   },
-  roundMeta: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: "600"
+  miniHistory: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "center",
+    paddingRight: 30
   },
-  status: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20
-  },
-  feedbackCard: {
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 20,
-    padding: spacing.lg,
-    gap: spacing.sm
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: "700"
-  },
-  feedbackText: {
-    color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22
-  },
-  resultCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.success,
-    borderRadius: 24,
-    padding: spacing.lg,
-    gap: spacing.md
-  },
-  resultTitle: {
-    color: colors.text,
-    fontSize: 22,
+  historyPlaceholder: {
+    color: "#9ca3a8",
+    fontSize: 11,
     fontWeight: "800"
   },
-  resultText: {
-    color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22
+  historyChip: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 2
   },
-  historyRow: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.xs
+  historyGuess: {
+    color: "#8b9298",
+    fontSize: 11,
+    fontWeight: "900"
   },
-  historyRound: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "700"
+  bannerCard: {
+    alignItems: "center",
+    alignSelf: "center",
+    borderBottomColor: "rgba(13, 63, 104, 0.35)",
+    borderBottomWidth: 5,
+    borderRadius: radii.pill,
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "center",
+    marginTop: spacing.sm,
+    minHeight: 44,
+    minWidth: 168,
+    paddingHorizontal: spacing.lg
   },
-  historyText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20
+  bannerText: {
+    color: "#0d3f68",
+    fontSize: 18,
+    fontWeight: "900"
+  },
+  guessPanel: {
+    alignItems: "center",
+    gap: spacing.sm
+  },
+  rangeLabel: {
+    color: "#9aa1a7",
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  guessPill: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "#61b7ff",
+    borderRadius: radii.pill,
+    borderWidth: 4,
+    flexDirection: "row",
+    justifyContent: "center",
+    minHeight: 70,
+    minWidth: 182,
+    paddingHorizontal: spacing.lg
+  },
+  guessValue: {
+    color: "#15181b",
+    fontSize: 42,
+    fontWeight: "400"
+  },
+  caret: {
+    backgroundColor: "#61b7ff",
+    borderRadius: 2,
+    height: 42,
+    marginLeft: 2,
+    width: 4
   },
   error: {
     color: colors.danger,
-    fontSize: 14,
-    fontWeight: "600"
+    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center"
+  },
+  helperText: {
+    color: "#6d757b",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center"
+  },
+  bottomSpacer: {
+    flex: 1
+  },
+  bottomControls: {
+    gap: spacing.sm
+  },
+  keypadWrap: {
+    backgroundColor: "#ffffff",
+    borderRadius: 28,
+    gap: spacing.sm,
+    padding: spacing.sm
+  },
+  keyRow: {
+    flexDirection: "row",
+    gap: spacing.sm
+  },
+  keyButton: {
+    alignItems: "center",
+    backgroundColor: "#e6e7e8",
+    borderRadius: radii.pill,
+    flex: 1,
+    height: 44,
+    justifyContent: "center"
+  },
+  keyButtonPressed: {
+    transform: [{ scale: 0.98 }]
+  },
+  keyButtonDisabled: {
+    opacity: 0.55
+  },
+  keyText: {
+    color: "#2d2f31",
+    fontSize: 18,
+    fontWeight: "800"
+  },
+  guessButton: {
+    alignItems: "center",
+    backgroundColor: "#047a37",
+    borderBottomColor: "#025a29",
+    borderBottomWidth: 6,
+    borderRadius: radii.pill,
+    height: 54,
+    justifyContent: "center"
+  },
+  guessButtonPressed: {
+    transform: [{ scale: 0.99 }]
+  },
+  guessButtonDisabled: {
+    opacity: 0.5
+  },
+  guessButtonText: {
+    color: "#ffffff",
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: 1
+  },
+  pressed: {
+    opacity: 0.82
   }
 });

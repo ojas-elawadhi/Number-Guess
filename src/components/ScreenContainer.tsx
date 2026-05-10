@@ -1,19 +1,38 @@
 import type { PropsWithChildren } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, spacing } from "../utils/theme";
 
-export function ScreenContainer({ children }: PropsWithChildren) {
+interface ScreenContainerProps extends PropsWithChildren {
+  scroll?: boolean;
+  contentStyle?: StyleProp<ViewStyle>;
+}
+
+export function ScreenContainer({ children, contentStyle, scroll = false }: ScreenContainerProps) {
+  const content = <View style={[styles.inner, contentStyle]}>{children}</View>;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.keyboardContainer}
       >
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.inner}>{children}</View>
-        </ScrollView>
+        {scroll ? (
+          <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+            {content}
+          </ScrollView>
+        ) : (
+          <View style={styles.fixedContent}>{content}</View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -27,13 +46,17 @@ const styles = StyleSheet.create({
   keyboardContainer: {
     flex: 1
   },
-  content: {
+  scrollContent: {
     flexGrow: 1,
-    padding: spacing.lg
+    padding: spacing.md
+  },
+  fixedContent: {
+    flex: 1,
+    padding: spacing.md
   },
   inner: {
     flex: 1,
-    gap: spacing.lg
+    gap: spacing.sm
   }
 });
 

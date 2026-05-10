@@ -1,13 +1,13 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
 
-import { colors, spacing } from "../utils/theme";
+import { colors, radii, shadows, spacing } from "../utils/theme";
 
 interface PrimaryButtonProps {
   label: string;
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "ghost" | "success";
 }
 
 export function PrimaryButton({
@@ -25,15 +25,20 @@ export function PrimaryButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        variant === "secondary" ? styles.secondaryButton : styles.primaryButton,
+        variant === "secondary" && styles.secondaryButton,
+        variant === "ghost" && styles.ghostButton,
+        variant === "success" && styles.successButton,
+        variant === "primary" && styles.primaryButton,
         isDisabled && styles.disabledButton,
         pressed && !isDisabled && styles.pressedButton
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={colors.text} />
+        <ActivityIndicator color={variant === "secondary" || variant === "ghost" ? colors.accent : "#ffffff"} />
       ) : (
-        <Text style={styles.label}>{label}</Text>
+        <Text style={[styles.label, (variant === "secondary" || variant === "ghost") && styles.secondaryLabel]}>
+          {label}
+        </Text>
       )}
     </Pressable>
   );
@@ -41,19 +46,30 @@ export function PrimaryButton({
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 54,
-    borderRadius: 18,
+    minHeight: 72,
+    borderRadius: radii.pill,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.md
+    paddingHorizontal: spacing.md,
+    ...shadows.tactile
   },
   primaryButton: {
-    backgroundColor: colors.accent
+    backgroundColor: colors.darkSurface
   },
   secondaryButton: {
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border
+    borderColor: colors.surfaceMuted,
+    shadowOpacity: 0.06
+  },
+  ghostButton: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.surfaceMuted,
+    shadowOpacity: 0
+  },
+  successButton: {
+    backgroundColor: colors.accent
   },
   disabledButton: {
     opacity: 0.55
@@ -62,9 +78,13 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }]
   },
   label: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "700"
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "900",
+    letterSpacing: 1
+  },
+  secondaryLabel: {
+    color: colors.text
   }
 });
 

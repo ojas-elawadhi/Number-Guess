@@ -3,6 +3,7 @@ import { useEffect } from "react";
 
 import { connectSocket } from "../src/socket/onlineSocket";
 import { usePlayerProgressStore } from "../src/store/usePlayerProgressStore";
+import { colors } from "../src/utils/theme";
 
 export default function RootLayout() {
   const hydrateProgress = usePlayerProgressStore((state) => state.hydrate);
@@ -19,7 +20,7 @@ export default function RootLayout() {
       screenOptions={{
         headerShown: false,
         contentStyle: {
-          backgroundColor: "#08111f"
+          backgroundColor: colors.background
         }
       }}
     />

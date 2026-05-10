@@ -1,49 +1,31 @@
-import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Alert,
-  Animated,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  View
-} from "react-native";
+import { router } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Animated, Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 
+import { BottomTabs, MiniCard, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
-import { SoundPlaceholdersCard } from "../components/SoundPlaceholdersCard";
 import { TextField } from "../components/TextField";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
-import { getAchievementMeta, formatDuration, getTodayKey } from "../utils/progression";
-import { colors, spacing } from "../utils/theme";
+import { formatDuration, getAchievementMeta, getTodayKey } from "../utils/progression";
+import { colors, radii, shadows, spacing } from "../utils/theme";
 
-const modeCards = [
-  {
-    key: "practice",
-    title: "Single Player",
-    description: "Practice the core loop on your own, then choose a range.",
-    icon: "person-outline" as const,
-    route: "/practice"
-  },
-  {
-    key: "vs-ai",
-    title: "VS AI",
-    description: "Pick Classic or Duel, choose a difficulty, and face an AI rival.",
-    icon: "sparkles-outline" as const,
-    route: "/vs-ai"
-  },
-  {
-    key: "online",
-    title: "Online",
-    description: "Create or join a room, track streaks, and climb the online board.",
-    icon: "globe-outline" as const,
-    route: "/online"
-  }
-];
+type HomeTab = "play" | "stats" | "profile" | "settings";
+
+const titleLetters = [
+  { accent: "#f28f67", letter: "C" },
+  { accent: "#5db5f5", letter: "O" },
+  { accent: "#9dc95b", letter: "D" },
+  { accent: "#f7b33d", letter: "E" },
+  { accent: "#d979bc", letter: "W" },
+  { accent: "#ee6b62", letter: "A" },
+  { accent: "#7cc8ff", letter: "R" },
+  { accent: "#a98ee8", letter: "S" }
+] as const;
+
+const XP_RING_SEGMENTS = 40;
 
 export default function HomeScreen() {
   const isConnected = useOnlineGameStore((state) => state.isConnected);
@@ -56,29 +38,23 @@ export default function HomeScreen() {
   const markTutorialSeen = usePlayerProgressStore((state) => state.markTutorialSeen);
   const toggleSoundPlaceholders = usePlayerProgressStore((state) => state.toggleSoundPlaceholders);
   const updateDisplayName = usePlayerProgressStore((state) => state.updateDisplayName);
+
+  const [activeTab, setActiveTab] = useState<HomeTab>("play");
   const [isClaimingReward, setIsClaimingReward] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
-  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState("");
   const [isSavingUsername, setIsSavingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState<string | null>(null);
-  const heroOpacity = useRef(new Animated.Value(0)).current;
-  const cardOpacity = useRef(new Animated.Value(0)).current;
+  const fadeIn = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.stagger(90, [
-      Animated.timing(heroOpacity, {
-        duration: 420,
-        toValue: 1,
-        useNativeDriver: true
-      }),
-      Animated.timing(cardOpacity, {
-        duration: 420,
-        toValue: 1,
-        useNativeDriver: true
-      })
-    ]).start();
-  }, [cardOpacity, heroOpacity]);
+    Animated.timing(fadeIn, {
+      duration: 280,
+      toValue: 1,
+      useNativeDriver: true
+    }).start();
+  }, [fadeIn]);
 
   useEffect(() => {
     if (hydrated && !profile.tutorialSeen) {
@@ -86,37 +62,33 @@ export default function HomeScreen() {
     }
   }, [hydrated, profile.tutorialSeen]);
 
-  const xpIntoLevel = useMemo(() => {
-    const previousLevelThreshold = Math.max(0, Math.pow(profile.level - 1, 2) * 140);
-    const nextLevelThreshold = Math.pow(profile.level, 2) * 140;
-    const earnedInsideLevel = profile.xp - previousLevelThreshold;
-    const neededInsideLevel = Math.max(1, nextLevelThreshold - previousLevelThreshold);
-    return Math.min(1, earnedInsideLevel / neededInsideLevel);
-  }, [profile.level, profile.xp]);
-
-  const recentMatches = profile.history.slice(0, 3);
-  const unlockedAchievements = profile.achievements
-    .map((achievementId) => getAchievementMeta(achievementId))
-    .filter((achievement): achievement is NonNullable<typeof achievement> => achievement !== null)
-    .slice(0, 4);
   const lastClaimedToday =
     profile.dailyReward.lastClaimedOn !== null &&
     profile.dailyReward.lastClaimedOn === getTodayKey();
-
+  const latestMatch = profile.history[0] ?? null;
+  const bestBadge = profile.achievements
+    .map((achievementId) => getAchievementMeta(achievementId))
+    .find((achievement): achievement is NonNullable<typeof achievement> => achievement !== null);
+  const playerRank = leaderboard.find((entry) => entry.isPlayer)?.rank ?? null;
+  const currentLevelFloorXp = 140 * (Math.max(1, profile.level) - 1) ** 2;
+  const nextLevelFloorXp = 140 * Math.max(1, profile.level) ** 2;
+  const levelXpSpan = Math.max(1, nextLevelFloorXp - currentLevelFloorXp);
+  const levelProgress = Math.min(1, Math.max(0, (profile.xp - currentLevelFloorXp) / levelXpSpan));
+  const filledRingSegments = Math.max(1, Math.round(levelProgress * XP_RING_SEGMENTS));
+  const today = new Date();
+  const dailyMonth = today.toLocaleString("en-US", { month: "short" }).toUpperCase();
+  const dailyDay = today.getDate();
   const handleClaimDailyReward = async () => {
     try {
       setIsClaimingReward(true);
       const reward = await claimDailyReward();
 
       if (!reward.claimed) {
-        Alert.alert("Daily reward already claimed", "Come back tomorrow for your next reward.");
+        Alert.alert("Already claimed", "Come back tomorrow.");
         return;
       }
 
-      Alert.alert(
-        "Daily reward claimed",
-        `+${reward.points} points, +${reward.xp} XP, day ${reward.streakDays} streak.`
-      );
+      Alert.alert("Daily reward", `+${reward.points} pts, +${reward.xp} XP`);
     } finally {
       setIsClaimingReward(false);
     }
@@ -127,10 +99,10 @@ export default function HomeScreen() {
     await markTutorialSeen();
   };
 
-  const openUsernameModal = () => {
+  const openProfileModal = () => {
     setUsernameDraft(displayName);
     setUsernameError(null);
-    setShowUsernameModal(true);
+    setShowProfileModal(true);
   };
 
   const handleSaveUsername = async () => {
@@ -138,255 +110,295 @@ export default function HomeScreen() {
       setIsSavingUsername(true);
       setUsernameError(null);
       await updateDisplayName(usernameDraft);
-      setShowUsernameModal(false);
+      setShowProfileModal(false);
     } catch (error) {
-      setUsernameError(error instanceof Error ? error.message : "Try again in a moment.");
+      setUsernameError(error instanceof Error ? error.message : "Try again.");
     } finally {
       setIsSavingUsername(false);
     }
   };
 
   return (
-    <ScreenContainer>
-      <Animated.View style={[styles.hero, { opacity: heroOpacity }]}>
-        <Text style={styles.eyebrow}>Higher or Lower</Text>
-        <Text style={styles.title}>Guess Smart. Climb Fast.</Text>
-        <Text style={styles.subtitle}>
-          Same core high-low gameplay, now wrapped in progression, streaks, badges, and match tracking.
-        </Text>
-        <View style={styles.usernameRow}>
-          <View style={styles.usernameChip}>
-            <Text style={styles.usernameChipLabel}>Username</Text>
-            <Text style={styles.usernameChipValue}>{displayName}</Text>
-          </View>
-          <Pressable onPress={openUsernameModal} style={({ pressed }) => [styles.editChip, pressed && styles.modeCardPressed]}>
-            <Text style={styles.editChipText}>Edit</Text>
+    <ScreenContainer contentStyle={styles.screen}>
+      <Animated.View style={[styles.shell, { opacity: fadeIn }]}>
+        <View style={styles.topBar}>
+          <Pressable onPress={openProfileModal} style={({ pressed }) => [styles.profileCrest, pressed && styles.pressed]}>
+            <View style={styles.levelBurstShadow} />
+            <View style={styles.levelBurst}>
+              <View style={[styles.levelBurstLayer, styles.levelBurstLayerA]} />
+              <View style={[styles.levelBurstLayer, styles.levelBurstLayerB]} />
+              <Text style={styles.levelBurstText}>{profile.level}</Text>
+            </View>
+
+            <View style={styles.profileMedallion}>
+              <View style={styles.profileRingBase}>
+                {Array.from({ length: XP_RING_SEGMENTS }).map((_, index) => {
+                  const angle = (360 / XP_RING_SEGMENTS) * index;
+
+                  return (
+                    <View
+                      key={index}
+                      style={[
+                        styles.profileRingSegment,
+                        index < filledRingSegments ? styles.profileRingSegmentFilled : styles.profileRingSegmentEmpty,
+                        {
+                          transform: [
+                            { translateX: -2 },
+                            { translateY: -3.5 },
+                            { rotate: `${angle}deg` },
+                            { translateY: -24 }
+                          ]
+                        }
+                      ]}
+                    />
+                  );
+                })}
+              </View>
+
+              <View style={styles.profileRingInner}>
+                <View style={styles.profileAvatarCore}>
+                  <View style={styles.profileAvatarGlow} />
+                  <Ionicons color="#173d64" name="school" size={20} />
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.profileShield}>
+              <Ionicons color="#7a8794" name="shield-half" size={14} />
+              <Text style={styles.profileShieldText}>{displayName.slice(0, 1).toUpperCase()}</Text>
+            </View>
           </Pressable>
         </View>
 
-        <View style={styles.heroStats}>
-          <View style={styles.levelCard}>
-            <View style={styles.levelRing}>
-              <Text style={styles.levelValue}>{profile.level}</Text>
-              <Text style={styles.levelLabel}>LVL</Text>
-            </View>
-            <View style={styles.levelCopy}>
-              <Text style={styles.levelTitle}>Player Progress</Text>
-              <Text style={styles.levelText}>{profile.xp} XP earned</Text>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${Math.max(10, xpIntoLevel * 100)}%` }]} />
-              </View>
-            </View>
-          </View>
+        <View style={styles.rule} />
 
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryValue}>{profile.totalPoints}</Text>
-              <Text style={styles.summaryLabel}>Total Points</Text>
-            </View>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryValue}>{profile.currentWinStreak}</Text>
-              <Text style={styles.summaryLabel}>Win Streak</Text>
-            </View>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryValue}>{profile.stats.wins}</Text>
-              <Text style={styles.summaryLabel}>Wins</Text>
-            </View>
-          </View>
-        </View>
-      </Animated.View>
-
-      <Animated.View style={[styles.stack, { opacity: cardOpacity }]}>
-        <View style={styles.primaryGrid}>
-          {modeCards.map((card) => (
-            <Pressable
-              key={card.key}
-              onPress={() => router.push(card.route as never)}
-              style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
-            >
-              <View style={styles.modeIconWrap}>
-                <Ionicons color={colors.text} name={card.icon} size={22} />
-              </View>
-              <Text style={styles.modeTitle}>{card.title}</Text>
-              <Text style={styles.modeText}>{card.description}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={styles.dashboardRow}>
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Daily Reward</Text>
-            <Text style={styles.panelSubtitle}>
-              {lastClaimedToday
-                ? `Claimed today. Reward streak: ${profile.dailyReward.streakDays} days.`
-                : `Ready to claim. Current reward streak: ${profile.dailyReward.streakDays} days.`}
-            </Text>
-            <PrimaryButton
-              disabled={lastClaimedToday}
-              label={lastClaimedToday ? "Claimed Today" : "Claim Daily Reward"}
-              loading={isClaimingReward}
-              onPress={handleClaimDailyReward}
-            />
-          </View>
-
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Leaderboard</Text>
-            <Text style={styles.panelSubtitle}>Online standings based on real tracked online results.</Text>
-            {leaderboard.length === 0 ? (
-              <Text style={styles.emptyText}>No online leaderboard entries yet.</Text>
-            ) : (
-            <View style={styles.leaderboardList}>
-              {leaderboard.slice(0, 4).map((entry) => (
-                <View key={entry.id} style={styles.leaderboardRow}>
-                  <Text style={styles.leaderboardRank}>#{entry.rank}</Text>
-                  <View style={styles.leaderboardNameWrap}>
-                    <Text style={[styles.leaderboardName, entry.isPlayer && styles.leaderboardNameHighlight]}>
-                      {entry.name}
-                    </Text>
-                    <Text style={styles.leaderboardMeta}>Lvl {entry.level} • Streak {entry.streak}</Text>
+        <View style={styles.mainPane}>
+          {activeTab === "play" ? (
+            <View style={[styles.tabPane, styles.playPane]}>
+              <View style={styles.wordmarkWrap}>
+                <View style={styles.wordmark}>
+                  <View style={styles.wordRow}>
+                    {titleLetters.map((item, index) => (
+                      <View
+                        key={item.letter}
+                        style={[
+                          styles.wordBubble,
+                          index === 3 && styles.wordBreakAfter,
+                          { backgroundColor: item.accent }
+                        ]}
+                      >
+                        <Text style={styles.wordBubbleText}>{item.letter}</Text>
+                      </View>
+                    ))}
                   </View>
-                  <Text style={styles.leaderboardPoints}>{entry.points}</Text>
                 </View>
-              ))}
-            </View>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.dashboardRow}>
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Achievements</Text>
-            <Text style={styles.panelSubtitle}>
-              {unlockedAchievements.length === 0
-                ? "Your first badge is waiting on the next win."
-                : "Unlocked badges from your best runs so far."}
-            </Text>
-            <View style={styles.badgeWrap}>
-              {unlockedAchievements.length === 0 ? (
-                <Text style={styles.emptyText}>No badges unlocked yet.</Text>
-              ) : (
-                unlockedAchievements.map((achievement) => (
-                  <View key={achievement.id} style={styles.badgeCard}>
-                    <Ionicons color={colors.accent} name={achievement.icon as never} size={18} />
-                    <Text style={styles.badgeTitle}>{achievement.title}</Text>
-                    <Text style={styles.badgeText}>{achievement.description}</Text>
-                  </View>
-                ))
-              )}
-            </View>
-          </View>
-
-          <View style={styles.panel}>
-            <View style={styles.panelHeader}>
-              <View>
-                <Text style={styles.panelTitle}>Recent Matches</Text>
-                <Text style={styles.panelSubtitle}>Your latest scored runs across practice, AI, and online play.</Text>
               </View>
-              <Pressable onPress={() => setShowTutorial(true)} style={({ pressed }) => [styles.tutorialLink, pressed && styles.modeCardPressed]}>
-                <Text style={styles.tutorialLinkText}>Tutorial</Text>
+
+              <View style={styles.modeStack}>
+                <ModeTile accent={colors.practice} compact icon="person-outline" onPress={() => router.push("/single-player")} subtitle="Endless Mode" title="Single Player" />
+                <ModeTile accent={colors.ai} compact icon="hardware-chip-outline" onPress={() => router.push("/vs-ai")} subtitle="Practice & Learn" title="VS AI" />
+                <ModeTile accent={colors.online} compact icon="globe-outline" onPress={() => router.push("/online")} subtitle="Ranked Match" title="Online" />
+              </View>
+
+              <Pressable onPress={() => router.push("/daily-puzzle")} style={({ pressed }) => [styles.dailyCard, pressed && styles.pressed]}>
+                <View style={styles.dailyCopy}>
+                  <Text style={styles.dailyTitle}>Daily Puzzle</Text>
+                </View>
+                <View style={styles.dailyDateWrap}>
+                  <View style={styles.dailyDateInner}>
+                    <View style={styles.dailyCalendarTop}>
+                      <View style={styles.dailyCalendarRingLeft} />
+                      <View style={styles.dailyCalendarRingRight} />
+                      <Text style={styles.dailyDateMonth}>{dailyMonth}</Text>
+                    </View>
+                    <View style={styles.dailyCalendarBottom}>
+                      <Text style={styles.dailyDateDay}>{dailyDay}</Text>
+                    </View>
+                  </View>
+                </View>
+                <View style={styles.dailyCardGhost} />
               </Pressable>
             </View>
-            {recentMatches.length === 0 ? (
-              <Text style={styles.emptyText}>No matches recorded yet.</Text>
-            ) : (
-              recentMatches.map((match) => (
-                <View key={match.id} style={styles.historyCard}>
-                  <View style={styles.historyHeader}>
-                    <Text style={styles.historyTitle}>
-                      {match.category === "single-player"
-                        ? "Practice"
-                        : match.category === "vs-ai"
-                          ? `VS AI ${match.mode === "classic" ? "Classic" : "Duel"}`
-                          : `Online ${match.mode === "classic" ? "Classic" : "Duel"}`}
-                    </Text>
-                    <Text style={styles.historyPoints}>+{match.points}</Text>
-                  </View>
-                  <Text style={styles.historyMeta}>
-                    {match.outcome.toUpperCase()} • {match.attempts} attempts • {formatDuration(match.durationMs)}
-                  </Text>
-                  <Text style={styles.historyMeta}>
-                    {match.opponentName} • {match.difficulty}
-                  </Text>
+          ) : null}
+
+          {activeTab === "stats" ? (
+            <View style={styles.tabPane}>
+              <View style={styles.panelRow}>
+                <View style={styles.panelWide}>
+                  <Text style={styles.panelTitle}>Daily Reward</Text>
+                  <Text style={styles.panelValue}>{lastClaimedToday ? "Claimed Today" : `Day ${profile.dailyReward.streakDays + 1}`}</Text>
+                  <PrimaryButton
+                    disabled={lastClaimedToday}
+                    label={lastClaimedToday ? "CLAIMED" : "CLAIM REWARD"}
+                    loading={isClaimingReward}
+                    onPress={handleClaimDailyReward}
+                  />
                 </View>
-              ))
-            )}
-          </View>
+
+                <View style={styles.panelMiniColumn}>
+                  <View style={styles.panelMini}>
+                    <Text style={styles.panelMiniLabel}>Match</Text>
+                    <Text style={[styles.panelMiniValue, { color: colors.accent }]}>
+                      {latestMatch ? latestMatch.outcome : "Ready"}
+                    </Text>
+                  </View>
+                  <View style={styles.panelMini}>
+                    <Text style={styles.panelMiniLabel}>Rank</Text>
+                    <Text style={[styles.panelMiniValue, { color: colors.danger }]}>
+                      {playerRank ? `#${playerRank}` : "--"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.panelCard}>
+                <Text style={styles.panelTitle}>Recent Match</Text>
+                <Text style={styles.panelValue}>
+                  {latestMatch
+                    ? `${latestMatch.outcome.toUpperCase()}  +${latestMatch.points}`
+                    : "No matches yet"}
+                </Text>
+                <Text style={styles.panelSubtext}>
+                  {latestMatch
+                    ? `${formatDuration(latestMatch.durationMs)}  ${latestMatch.difficulty}`
+                    : "Play any mode to record your first run."}
+                </Text>
+              </View>
+
+              <View style={styles.panelCard}>
+                <Text style={styles.panelTitle}>Leaderboard</Text>
+                {leaderboard.slice(0, 3).map((entry) => (
+                  <View key={entry.id} style={styles.leaderRow}>
+                    <Text style={styles.leaderRank}>#{entry.rank}</Text>
+                    <Text numberOfLines={1} style={styles.leaderName}>{entry.name}</Text>
+                    <Text style={styles.leaderPoints}>{entry.points}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {activeTab === "profile" ? (
+            <View style={styles.tabPane}>
+              <View style={styles.profileCard}>
+                <View style={styles.profileHeader}>
+                  <View style={styles.profileAvatar}>
+                    <Text style={styles.avatarText}>{displayName.slice(0, 2).toUpperCase()}</Text>
+                  </View>
+                  <View style={styles.profileCopy}>
+                    <Text style={styles.profileName}>{displayName}</Text>
+                    <Text style={styles.profileSubtext}>Level {profile.level}</Text>
+                  </View>
+                  <PrimaryButton label="EDIT" onPress={openProfileModal} variant="secondary" />
+                </View>
+
+                <View style={styles.profileStatsRow}>
+                  <MiniCard accent={colors.accent} label="Best Streak" value={profile.bestWinStreak} />
+                  <MiniCard accent={colors.online} label="Matches" value={profile.stats.matches} />
+                  <MiniCard accent={colors.danger} label="Badges" value={profile.achievements.length} />
+                </View>
+              </View>
+
+              <View style={styles.panelCard}>
+                <Text style={styles.panelTitle}>Achievement</Text>
+                <Text style={styles.panelValue}>{bestBadge ? bestBadge.title : "First Win"}</Text>
+                <Text style={styles.panelSubtext}>
+                  {bestBadge ? bestBadge.description : "Win a match to unlock your first badge."}
+                </Text>
+              </View>
+
+              <View style={styles.panelCard}>
+                <Text style={styles.panelTitle}>Connection</Text>
+                <View style={styles.profileStatusRow}>
+                  <StatusPill label={isConnected ? "Server Ready" : "Connecting"} tone={isConnected ? "success" : "neutral"} />
+                  <StatusPill label={profile.soundPlaceholdersEnabled ? "Audio On" : "Audio Off"} tone="neutral" />
+                </View>
+                <Text style={[styles.panelSubtext, errorMessage && styles.errorText]}>
+                  {errorMessage ?? "Profile settings and progression are synced here."}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {activeTab === "settings" ? (
+            <View style={styles.tabPane}>
+              <View style={styles.panelCard}>
+                <Text style={styles.panelTitle}>Settings</Text>
+                <View style={styles.modalSwitchRow}>
+                  <Text style={styles.modalSwitchLabel}>Audio</Text>
+                  <Switch
+                    onValueChange={() => {
+                      toggleSoundPlaceholders().catch(() => { });
+                    }}
+                    thumbColor="#ffffff"
+                    trackColor={{ false: colors.surfaceMuted, true: colors.practice }}
+                    value={profile.soundPlaceholdersEnabled}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.panelCard}>
+                <Text style={styles.panelTitle}>Help</Text>
+                <View style={styles.settingsActionRow}>
+                  <View style={styles.settingsActionCopy}>
+                    <Text style={styles.settingsActionTitle}>Tutorial</Text>
+                    <Text style={styles.panelSubtext}>Replay the onboarding tips anytime.</Text>
+                  </View>
+                  <PrimaryButton label="OPEN" onPress={() => setShowTutorial(true)} variant="secondary" />
+                </View>
+              </View>
+
+              <View style={styles.panelCard}>
+                <Text style={styles.panelTitle}>Profile Shortcuts</Text>
+                <View style={styles.settingsActionRow}>
+                  <View style={styles.settingsActionCopy}>
+                    <Text style={styles.settingsActionTitle}>Display Name</Text>
+                    <Text style={styles.panelSubtext}>Update how your name appears in matches.</Text>
+                  </View>
+                  <PrimaryButton label="EDIT" onPress={openProfileModal} variant="secondary" />
+                </View>
+              </View>
+
+              <View style={styles.panelCard}>
+                <Text style={styles.panelTitle}>Connection</Text>
+                <View style={styles.profileStatusRow}>
+                  <StatusPill label={isConnected ? "Server Ready" : "Connecting"} tone={isConnected ? "success" : "neutral"} />
+                  <StatusPill label={profile.soundPlaceholdersEnabled ? "Audio On" : "Audio Off"} tone="neutral" />
+                </View>
+                <Text style={[styles.panelSubtext, errorMessage && styles.errorText]}>
+                  {errorMessage ?? "Settings are stored locally and sync when the server is available."}
+                </Text>
+              </View>
+            </View>
+          ) : null}
         </View>
 
-        <View style={styles.dashboardRow}>
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Progress Summary</Text>
-            <Text style={styles.panelSubtitle}>
-              Matches: {profile.stats.matches} • Best streak: {profile.bestWinStreak} • Average attempts:{" "}
-              {profile.stats.matches === 0 ? "0" : (profile.stats.totalAttempts / profile.stats.matches).toFixed(1)}
-            </Text>
-            <Text style={styles.connection}>
-              {isConnected ? "Server connected" : "Connecting to server..."}
-            </Text>
-            {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-          </View>
-
-          <View style={styles.panel}>
-            <View style={styles.soundHeader}>
-              <View>
-                <Text style={styles.panelTitle}>Audio Hooks</Text>
-                <Text style={styles.panelSubtitle}>Placeholder sound events are mapped without changing gameplay.</Text>
-              </View>
-              <Switch
-                onValueChange={() => {
-                  toggleSoundPlaceholders().catch(() => {
-                    // Placeholder toggle should not block the rest of the UI.
-                  });
-                }}
-                thumbColor={profile.soundPlaceholdersEnabled ? colors.text : "#dbe7f7"}
-                trackColor={{ false: colors.border, true: colors.accentDark }}
-                value={profile.soundPlaceholdersEnabled}
-              />
-            </View>
-            <SoundPlaceholdersCard enabled={profile.soundPlaceholdersEnabled} />
-          </View>
+        <View style={styles.bottomDock}>
+          <BottomTabs activeTab={activeTab} onChange={setActiveTab} />
         </View>
       </Animated.View>
 
       <Modal animationType="fade" transparent visible={showTutorial}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalEyebrow}>First-Time Tutorial</Text>
-            <Text style={styles.modalTitle}>How the Game Flows</Text>
-            <View style={styles.tutorialStep}>
-              <Text style={styles.tutorialStepTitle}>1. Pick a category</Text>
-              <Text style={styles.tutorialStepText}>Single Player for practice, VS AI for local rivalry, Online for room battles.</Text>
-            </View>
-            <View style={styles.tutorialStep}>
-              <Text style={styles.tutorialStepTitle}>2. Choose the range</Text>
-              <Text style={styles.tutorialStepText}>Easy is 1-99, Hard is 1-999, and Impossible is 1-9999.</Text>
-            </View>
-            <View style={styles.tutorialStep}>
-              <Text style={styles.tutorialStepTitle}>3. Read only high or low</Text>
-              <Text style={styles.tutorialStepText}>Core rules stay the same. You only get high/low feedback and win by finding the number first.</Text>
-            </View>
-            <PrimaryButton label="Let’s Play" onPress={() => void closeTutorial()} />
+            <Text style={styles.modalTitle}>Find the number</Text>
+            <Text style={styles.modalText}>Guess. Read higher or lower. Keep going.</Text>
+            <PrimaryButton label="PLAY" onPress={() => void closeTutorial()} variant="success" />
           </View>
         </View>
       </Modal>
 
-      <Modal animationType="fade" transparent visible={showUsernameModal}>
+      <Modal animationType="fade" transparent visible={showProfileModal}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalEyebrow}>Profile</Text>
-            <Text style={styles.modalTitle}>Choose Your Username</Text>
-            <Text style={styles.panelSubtitle}>
-              This is the name other players will see in rooms and on the leaderboard.
-            </Text>
+            <Text style={styles.modalTitle}>Profile</Text>
             <TextField
               autoCapitalize="none"
-              label="Username"
+              label="Display name"
               maxLength={20}
               onChangeText={(value) => {
                 setUsernameDraft(value);
-                if (usernameError) {
-                  setUsernameError(null);
-                }
+                setUsernameError(null);
               }}
               placeholder="player_53739"
               value={usernameDraft}
@@ -394,18 +406,12 @@ export default function HomeScreen() {
             {usernameError ? <Text style={styles.inlineError}>{usernameError}</Text> : null}
             <PrimaryButton
               disabled={usernameDraft.trim().length < 3}
-              label="Save Username"
+              label="SAVE"
               loading={isSavingUsername}
               onPress={() => void handleSaveUsername()}
+              variant="success"
             />
-            <PrimaryButton
-              label="Cancel"
-              onPress={() => {
-                setUsernameError(null);
-                setShowUsernameModal(false);
-              }}
-              variant="secondary"
-            />
+            <PrimaryButton label="CANCEL" onPress={() => setShowProfileModal(false)} variant="secondary" />
           </View>
         </View>
       </Modal>
@@ -414,374 +420,525 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  hero: {
-    gap: spacing.md,
-    marginTop: spacing.sm
+  screen: {
+    paddingBottom: 0
   },
-  eyebrow: {
-    color: colors.accent,
+  shell: {
+    flex: 1
+  },
+  topBar: {
+    alignItems: "center",
+    height: 52,
+    justifyContent: "center",
+    position: "relative",
+    zIndex: 2
+  },
+  profileCrest: {
+    alignItems: "center",
+    height: 76,
+    justifyContent: "flex-start",
+    position: "absolute",
+    top: -4,
+    width: 72,
+    zIndex: 3
+  },
+  levelBurstShadow: {
+    backgroundColor: "rgba(24, 79, 124, 0.18)",
+    borderRadius: 10,
+    height: 30,
+    position: "absolute",
+    top: 10,
+    transform: [{ rotate: "14deg" }],
+    width: 30
+  },
+  levelBurst: {
+    alignItems: "center",
+    height: 32,
+    justifyContent: "center",
+    position: "absolute",
+    top: 8,
+    width: 32,
+    zIndex: 4
+  },
+  levelBurstLayer: {
+    backgroundColor: "#66d8ff",
+    borderColor: "#287fc2",
+    borderRadius: 8,
+    borderWidth: 2.5,
+    height: 24,
+    position: "absolute",
+    width: 24
+  },
+  levelBurstLayerA: {
+    transform: [{ rotate: "45deg" }]
+  },
+  levelBurstLayerB: {
+    transform: [{ rotate: "0deg" }]
+  },
+  levelBurstText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "900",
+    textShadowColor: "rgba(25, 35, 66, 0.55)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 2
+  },
+  profileMedallion: {
+    alignItems: "center",
+    backgroundColor: "#f0a690",
+    borderRadius: 999,
+    height: 54,
+    justifyContent: "center",
+    marginTop: 20,
+    padding: 4,
+    width: 54
+  },
+  profileRingBase: {
+    alignItems: "center",
+    backgroundColor: "#c96744",
+    borderRadius: 999,
+    height: 46,
+    justifyContent: "center",
+    position: "absolute",
+    width: 46
+  },
+  profileRingSegment: {
+    borderRadius: 999,
+    height: 7,
+    left: "50%",
+    position: "absolute",
+    top: "50%",
+    width: 4
+  },
+  profileRingSegmentFilled: {
+    backgroundColor: "#19d6e9"
+  },
+  profileRingSegmentEmpty: {
+    backgroundColor: "#ba5f3e"
+  },
+  profileRingInner: {
+    alignItems: "center",
+    backgroundColor: "#f7c8ba",
+    borderRadius: 999,
+    height: 40,
+    justifyContent: "center",
+    width: 40
+  },
+  profileAvatarCore: {
+    alignItems: "center",
+    backgroundColor: "#5aa6ff",
+    borderRadius: 999,
+    height: 36,
+    justifyContent: "center",
+    overflow: "hidden",
+    width: 36
+  },
+  profileAvatarGlow: {
+    backgroundColor: "rgba(255, 255, 255, 0.35)",
+    borderRadius: 999,
+    height: 20,
+    left: 8,
+    position: "absolute",
+    top: 4,
+    width: 20
+  },
+  profileShield: {
+    alignItems: "center",
+    bottom: 0,
+    height: 18,
+    justifyContent: "center",
+    position: "absolute",
+    width: 18,
+    zIndex: 4
+  },
+  profileShieldText: {
+    color: "#7a8794",
+    fontSize: 6,
+    fontWeight: "900",
+    position: "absolute",
+    top: 5
+  },
+  wordmarkWrap: {
+    alignItems: "center",
+    marginBottom: spacing.xs
+  },
+  wordmark: {
+    alignItems: "center",
+    gap: spacing.xs
+  },
+  wordRow: {
+    flexDirection: "row",
+    gap: spacing.xxs
+  },
+  wordBubble: {
+    alignItems: "center",
+    borderRadius: radii.pill,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+    ...shadows.tactile
+  },
+  wordBreakAfter: {
+    marginRight: 4
+  },
+  wordBubbleText: {
+    color: "#ffffff",
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: 0.8
+  },
+  heroCaption: {
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: "700",
-    letterSpacing: 1,
-    textTransform: "uppercase"
+    textAlign: "center"
   },
-  title: {
-    color: colors.text,
-    fontSize: 42,
-    fontWeight: "900"
+  rule: {
+    backgroundColor: colors.surfaceMuted,
+    height: 4,
+    marginHorizontal: -spacing.md,
+    marginTop: 0,
+    position: "relative",
+    zIndex: 1
   },
-  subtitle: {
-    color: colors.textMuted,
-    fontSize: 16,
-    lineHeight: 24
+  mainPane: {
+    flex: 1,
+    paddingTop: spacing.md
   },
-  usernameRow: {
-    alignItems: "center",
-    flexDirection: "row",
+  tabPane: {
+    flex: 1,
     gap: spacing.sm
   },
-  usernameChip: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-    borderRadius: 999,
-    borderWidth: 1,
-    flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm
+  playPane: {
+    justifyContent: "center"
   },
-  usernameChipLabel: {
-    color: colors.textMuted,
+  dailyCard: {
+    alignItems: "center",
+    backgroundColor: "#ffe28c",
+    borderBottomColor: "rgba(140, 90, 0, 0.08)",
+    borderBottomWidth: 6,
+    borderColor: "transparent",
+    borderRadius: radii.lg,
+    flexDirection: "row",
+    gap: spacing.sm,
+    minHeight: 64,
+    overflow: "hidden",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    position: "relative",
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 7
+  },
+  dailyCardGhost: {
+    backgroundColor: "rgba(140, 90, 0, 0.08)",
+    borderRadius: 999,
+    bottom: -18,
+    height: 84,
+    position: "absolute",
+    right: -12,
+    width: 84
+  },
+  dailyCopy: {
+    alignItems: "center",
+    bottom: 0,
+    justifyContent: "center",
+    left: 0,
+    paddingHorizontal: spacing.sm,
+    paddingRight: 56,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 1,
+  },
+  dailyTitle: {
+    color: "#8b5a00",
+    fontSize: 19,
+    fontWeight: "900",
+    lineHeight: 22,
+    textAlign: "center",
+    textTransform: "uppercase"
+  },
+  dailyDateWrap: {
+    alignItems: "center",
+    bottom: 0,
+    justifyContent: "center",
+    position: "absolute",
+    right: 6,
+    top: 5,
+    width: 58,
+    zIndex: 1
+  },
+  dailyDateInner: {
+    alignItems: "center"
+  },
+  dailyCalendarTop: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderTopLeftRadius: 7,
+    borderTopRightRadius: 7,
+    justifyContent: "center",
+    minHeight: 15,
+    paddingHorizontal: 5,
+    paddingTop: 1,
+    position: "relative",
+    width: 44
+  },
+  dailyCalendarRingLeft: {
+    backgroundColor: "#ffffff",
+    borderRadius: radii.pill,
+    height: 7,
+    left: 8,
+    position: "absolute",
+    top: -3,
+    width: 5
+  },
+  dailyCalendarRingRight: {
+    backgroundColor: "#ffffff",
+    borderRadius: radii.pill,
+    height: 7,
+    position: "absolute",
+    right: 8,
+    top: -3,
+    width: 5
+  },
+  dailyCalendarBottom: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderTopColor: "#f0b13a",
+    borderTopWidth: 1.5,
+    borderBottomLeftRadius: 7,
+    borderBottomRightRadius: 7,
+    justifyContent: "center",
+    minHeight: 24,
+    width: 44
+  },
+  dailyDateMonth: {
+    color: "#f0a500",
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+    textTransform: "uppercase"
+  },
+  dailyDateDay: {
+    color: "#f0a500",
+    fontSize: 18,
+    fontWeight: "900",
+    lineHeight: 20
+  },
+  dailyBadgeMonth: {
+    color: "#ffffff",
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "900",
     letterSpacing: 0.8,
     textTransform: "uppercase"
   },
-  usernameChipValue: {
+  dailyBadgeDay: {
+    color: "#ffffff",
+    fontSize: 24,
+    fontWeight: "900",
+    lineHeight: 28
+  },
+  avatarText: {
     color: colors.text,
-    fontSize: 16,
-    fontWeight: "800"
+    fontSize: 20,
+    fontWeight: "900"
   },
-  editChip: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm
+  modeStack: {
+    gap: spacing.sm
   },
-  editChipText: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: "700"
+  panelRow: {
+    flexDirection: "row",
+    gap: spacing.sm
   },
-  heroStats: {
-    gap: spacing.md
+  panelWide: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    flex: 1.25,
+    gap: spacing.sm,
+    padding: spacing.md,
+    ...shadows.card
   },
-  levelCard: {
+  panelMiniColumn: {
+    flex: 1,
+    gap: spacing.sm
+  },
+  panelMini: {
     alignItems: "center",
     backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 28,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: spacing.md,
-    padding: spacing.lg
-  },
-  levelRing: {
-    alignItems: "center",
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.accent,
-    borderRadius: 34,
-    borderWidth: 2,
-    height: 68,
+    borderRadius: radii.lg,
+    flex: 1,
     justifyContent: "center",
-    width: 68
+    padding: spacing.sm,
+    ...shadows.card
   },
-  levelValue: {
+  panelMiniLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  panelMiniValue: {
+    fontSize: 20,
+    fontWeight: "900",
+    marginTop: spacing.xs
+  },
+  panelCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    gap: spacing.xs,
+    padding: spacing.md,
+    ...shadows.card
+  },
+  panelTitle: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  panelValue: {
     color: colors.text,
     fontSize: 22,
     fontWeight: "900"
   },
-  levelLabel: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.8
-  },
-  levelCopy: {
-    flex: 1,
-    gap: 6
-  },
-  levelTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: "800"
-  },
-  levelText: {
-    color: colors.textMuted,
-    fontSize: 14
-  },
-  progressTrack: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 999,
-    height: 8,
-    overflow: "hidden"
-  },
-  progressFill: {
-    backgroundColor: colors.accent,
-    borderRadius: 999,
-    height: "100%"
-  },
-  summaryRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm
-  },
-  summaryCard: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    flex: 1,
-    minWidth: 96,
-    padding: spacing.md
-  },
-  summaryValue: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: "800"
-  },
-  summaryLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: "600"
-  },
-  stack: {
-    gap: spacing.lg
-  },
-  primaryGrid: {
-    gap: spacing.sm
-  },
-  modeCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 24,
-    borderWidth: 1,
-    gap: spacing.sm,
-    padding: spacing.lg
-  },
-  modeCardPressed: {
-    opacity: 0.92
-  },
-  modeIconWrap: {
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 16,
-    height: 42,
-    justifyContent: "center",
-    width: 42
-  },
-  modeTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: "800"
-  },
-  modeText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20
-  },
-  dashboardRow: {
-    gap: spacing.sm
-  },
-  panel: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 24,
-    borderWidth: 1,
-    gap: spacing.md,
-    padding: spacing.lg
-  },
-  panelHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between"
-  },
-  panelTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: "800"
-  },
-  panelSubtitle: {
+  panelSubtext: {
     color: colors.textMuted,
     fontSize: 13,
-    lineHeight: 19
-  },
-  leaderboardList: {
-    gap: spacing.sm
-  },
-  leaderboardRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing.sm
-  },
-  leaderboardRank: {
-    color: colors.accent,
-    fontSize: 15,
-    fontWeight: "800",
-    width: 28
-  },
-  leaderboardNameWrap: {
-    flex: 1
-  },
-  leaderboardName: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "700"
-  },
-  leaderboardNameHighlight: {
-    color: colors.accent
-  },
-  leaderboardMeta: {
-    color: colors.textMuted,
-    fontSize: 12
-  },
-  leaderboardPoints: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "800"
-  },
-  badgeWrap: {
-    gap: spacing.sm
-  },
-  badgeCard: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    gap: 4,
-    padding: spacing.md
-  },
-  badgeTitle: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "700"
-  },
-  badgeText: {
-    color: colors.textMuted,
-    fontSize: 12,
+    fontWeight: "700",
     lineHeight: 18
   },
-  historyCard: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    gap: 4,
-    padding: spacing.md
-  },
-  historyHeader: {
+  leaderRow: {
     alignItems: "center",
     flexDirection: "row",
-    justifyContent: "space-between"
+    gap: spacing.sm,
+    minHeight: 28
   },
-  historyTitle: {
+  leaderRank: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: "900",
+    width: 28
+  },
+  leaderName: {
     color: colors.text,
-    fontSize: 14,
-    fontWeight: "700"
-  },
-  historyPoints: {
-    color: colors.success,
-    fontSize: 14,
+    flex: 1,
+    fontSize: 15,
     fontWeight: "800"
   },
-  historyMeta: {
-    color: colors.textMuted,
-    fontSize: 12
-  },
-  emptyText: {
-    color: colors.textMuted,
-    fontSize: 14
-  },
-  tutorialLink: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 8
-  },
-  tutorialLinkText: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: "700"
-  },
-  connection: {
-    color: colors.textMuted,
-    fontSize: 13
-  },
-  error: {
-    color: colors.danger,
+  leaderPoints: {
+    color: colors.accent,
     fontSize: 14,
-    fontWeight: "600"
+    fontWeight: "900"
   },
-  soundHeader: {
+  profileCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    gap: spacing.md,
+    padding: spacing.md,
+    ...shadows.card
+  },
+  profileHeader: {
     alignItems: "center",
     flexDirection: "row",
-    justifyContent: "space-between",
-    gap: spacing.md
+    gap: spacing.sm
+  },
+  profileAvatar: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.practice,
+    borderRadius: radii.pill,
+    borderWidth: 3,
+    height: 72,
+    justifyContent: "center",
+    width: 72
+  },
+  profileCopy: {
+    flex: 1
+  },
+  profileName: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: "900"
+  },
+  profileSubtext: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: "700"
+  },
+  profileStatsRow: {
+    flexDirection: "row",
+    gap: spacing.xs
+  },
+  profileStatusRow: {
+    flexDirection: "row",
+    gap: spacing.xs
+  },
+  settingsActionRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between"
+  },
+  settingsActionCopy: {
+    flex: 1,
+    gap: 4
+  },
+  settingsActionTitle: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: "900"
+  },
+  bottomDock: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs
   },
   modalBackdrop: {
     alignItems: "center",
-    backgroundColor: "rgba(8, 17, 31, 0.82)",
+    backgroundColor: "rgba(25, 28, 29, 0.2)",
     flex: 1,
     justifyContent: "center",
     padding: spacing.lg
   },
   modalCard: {
     backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 28,
-    borderWidth: 1,
+    borderRadius: radii.xl,
     gap: spacing.md,
-    maxWidth: 460,
-    padding: spacing.xl,
-    width: "100%"
-  },
-  modalEyebrow: {
-    color: colors.accent,
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textTransform: "uppercase"
+    maxWidth: 420,
+    padding: spacing.lg,
+    width: "100%",
+    ...shadows.tactile
   },
   modalTitle: {
     color: colors.text,
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "900"
   },
-  tutorialStep: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    gap: 4,
-    padding: spacing.md
+  modalText: {
+    color: colors.textMuted,
+    fontSize: 15,
+    lineHeight: 22
   },
-  tutorialStepTitle: {
+  modalSwitchRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  modalSwitchLabel: {
     color: colors.text,
     fontSize: 15,
     fontWeight: "800"
   },
-  tutorialStepText: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 20
-  },
   inlineError: {
     color: colors.danger,
     fontSize: 13,
-    fontWeight: "600"
+    fontWeight: "800"
+  },
+  errorText: {
+    color: colors.danger
+  },
+  pressed: {
+    opacity: 0.84
   }
 });

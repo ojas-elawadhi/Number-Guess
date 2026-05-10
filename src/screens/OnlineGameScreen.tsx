@@ -1,15 +1,20 @@
-import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
-import { TextField } from "../components/TextField";
 import { makeGuess, setSecretNumber } from "../socket/onlineSocket";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
-import { colors, spacing } from "../utils/theme";
+import { colors, radii, spacing } from "../utils/theme";
 import { DIFFICULTY_CONFIG, getDifficultyRangeLabel } from "../../shared/difficulty";
+
+const keypadRows = [
+  ["1", "2", "3"],
+  ["4", "5", "6"],
+  ["7", "8", "9"],
+  ["backspace", "0", "clear"]
+] as const;
 
 export default function OnlineGameScreen() {
   const [guess, setGuess] = useState("");
@@ -19,6 +24,7 @@ export default function OnlineGameScreen() {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [showRoundSummary, setShowRoundSummary] = useState(false);
   const [canNavigateToResult, setCanNavigateToResult] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const player = useOnlineGameStore((state) => state.player);
   const room = useOnlineGameStore((state) => state.room);
@@ -28,13 +34,30 @@ export default function OnlineGameScreen() {
   const errorMessage = useOnlineGameStore((state) => state.errorMessage);
   const setErrorMessage = useOnlineGameStore((state) => state.setErrorMessage);
   const setPersonalSecretNumber = useOnlineGameStore((state) => state.setPersonalSecretNumber);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const previousOpponentReadyRef = useRef(false);
   const previousRoundStatusRef = useRef<string | null>(null);
   const previousSummaryRoundRef = useRef<number | null>(null);
   const roundSummaryOpacity = useRef(new Animated.Value(0)).current;
   const roundSummaryTranslateY = useRef(new Animated.Value(-12)).current;
   const roundSummaryBackdropOpacity = useRef(new Animated.Value(0)).current;
+
+  const mode = room?.mode ?? "classic";
+  const difficulty = room?.difficulty ?? "easy";
+  const maxNumber = room?.maxNumber ?? DIFFICULTY_CONFIG[difficulty].maxNumber;
+  const digitLimit = String(maxNumber).length;
+  const submittedPlayerIds = room?.submittedPlayerIds ?? [];
+  const secretSubmittedPlayerIds = room?.secretSubmittedPlayerIds ?? [];
+  const roundDurationSeconds = room?.roundDurationSeconds ?? 15;
+  const hasSubmitted = player ? submittedPlayerIds.includes(player.id) : false;
+  const hasSubmittedSecret = player ? secretSubmittedPlayerIds.includes(player.id) : false;
+  const opponentHasSubmittedSecret = player
+    ? secretSubmittedPlayerIds.some((playerId) => playerId !== player.id)
+    : false;
+  const isCollecting = room?.roundStatus === "collecting";
+  const isSecretSetup = mode === "duel" && room?.roundStatus === "setup";
+  const secondsRemaining = room?.roundEndsAt
+    ? Math.max(0, Math.ceil((room.roundEndsAt - currentTime) / 1000))
+    : 0;
 
   useEffect(() => {
     if (!player || !room) {
@@ -101,62 +124,22 @@ export default function OnlineGameScreen() {
 
     const timeout = setTimeout(() => {
       setToastMessage(null);
-    }, 2800);
+    }, 2600);
 
     return () => {
       clearTimeout(timeout);
     };
   }, [toastMessage]);
 
-  const latestFeedback = !lastGuessResult
-    ? room?.mode === "duel"
-      ? "Submit one guess per round to learn whether your opponent's secret number is higher, lower, or correct."
-      : `Submit one number from ${getDifficultyRangeLabel(room?.difficulty ?? "easy")} this round to get higher, lower, or correct feedback when the timer ends.`
-    : lastGuessResult.result === "missed"
-      ? `You missed round ${lastGuessResult.roundNumber}.`
-      : room?.mode === "duel"
-        ? `Round ${lastGuessResult.roundNumber}: your guess of ${lastGuessResult.guess} against your opponent's number is ${lastGuessResult.result}.`
-        : `Round ${lastGuessResult.roundNumber}: your guess of ${lastGuessResult.guess} is ${lastGuessResult.result}.`;
-
-  if (!room || !player) {
-    return null;
-  }
-
-  const mode = room.mode ?? "classic";
-  const difficulty = room.difficulty ?? "easy";
-  const maxNumber = room.maxNumber ?? DIFFICULTY_CONFIG[difficulty].maxNumber;
-  const digitLimit = String(maxNumber).length;
-  const submittedPlayerIds = room.submittedPlayerIds ?? [];
-  const secretSubmittedPlayerIds = room.secretSubmittedPlayerIds ?? [];
-  const roundDurationSeconds = room.roundDurationSeconds ?? 15;
-  const hasSubmitted = submittedPlayerIds.includes(player.id);
-  const hasSubmittedSecret = secretSubmittedPlayerIds.includes(player.id);
-  const opponentHasSubmittedSecret = secretSubmittedPlayerIds.some((playerId) => playerId !== player.id);
-  const isCollecting = room.roundStatus === "collecting";
-  const isSecretSetup = mode === "duel" && room.roundStatus === "setup";
-  const secondsRemaining = room.roundEndsAt
-    ? Math.max(0, Math.ceil((room.roundEndsAt - currentTime) / 1000))
-    : 0;
-  const roundSummaryHint =
-    !lastGuessResult || mode !== "duel"
-      ? null
-      : lastGuessResult.result === "missed"
-        ? { label: "No Guess", icon: "remove" as const, color: colors.textMuted }
-        : lastGuessResult.result === "higher"
-          ? { label: "Higher", icon: "arrow-up" as const, color: colors.success }
-          : lastGuessResult.result === "lower"
-            ? { label: "Lower", icon: "arrow-down" as const, color: colors.danger }
-            : { label: "Correct", icon: "checkmark" as const, color: colors.success };
-
   useEffect(() => {
-    if (mode !== "duel") {
+    if (!room || mode !== "duel") {
       previousOpponentReadyRef.current = false;
-      previousRoundStatusRef.current = room.roundStatus;
+      previousRoundStatusRef.current = room?.roundStatus ?? null;
       return;
     }
 
     if (opponentHasSubmittedSecret && !previousOpponentReadyRef.current && room.roundStatus === "setup") {
-      setToastMessage("Your opponent has locked in a secret number.");
+      setToastMessage("Opponent locked in.");
     }
 
     if (
@@ -164,15 +147,15 @@ export default function OnlineGameScreen() {
       previousRoundStatusRef.current === "setup" &&
       personalSecretNumber !== null
     ) {
-      setToastMessage("Your opponent is ready. Round 1 has started.");
+      setToastMessage("Round 1 started.");
     }
 
     previousOpponentReadyRef.current = opponentHasSubmittedSecret;
     previousRoundStatusRef.current = room.roundStatus;
-  }, [mode, opponentHasSubmittedSecret, personalSecretNumber, room.roundStatus]);
+  }, [mode, opponentHasSubmittedSecret, personalSecretNumber, room]);
 
   useEffect(() => {
-    if (mode !== "duel" || !lastGuessResult) {
+    if (!room || mode !== "duel" || !lastGuessResult) {
       return;
     }
 
@@ -208,22 +191,22 @@ export default function OnlineGameScreen() {
           useNativeDriver: true
         })
       ]),
-      Animated.delay(5000),
+      Animated.delay(2600),
       Animated.parallel([
         Animated.timing(roundSummaryBackdropOpacity, {
-          duration: 240,
+          duration: 220,
           easing: Easing.in(Easing.cubic),
           toValue: 0,
           useNativeDriver: true
         }),
         Animated.timing(roundSummaryOpacity, {
-          duration: 240,
+          duration: 220,
           easing: Easing.in(Easing.cubic),
           toValue: 0,
           useNativeDriver: true
         }),
         Animated.timing(roundSummaryTranslateY, {
-          duration: 240,
+          duration: 220,
           easing: Easing.in(Easing.cubic),
           toValue: -8,
           useNativeDriver: true
@@ -240,20 +223,104 @@ export default function OnlineGameScreen() {
         setCanNavigateToResult(true);
       }
     });
-  }, [
-    mode,
-    lastGuessResult,
-    room.gameState,
-    roundSummaryBackdropOpacity,
-    roundSummaryOpacity,
-    roundSummaryTranslateY
-  ]);
+  }, [lastGuessResult, mode, room, roundSummaryBackdropOpacity, roundSummaryOpacity, roundSummaryTranslateY]);
+
+  if (!room || !player) {
+    return null;
+  }
+
+  const activeValue = isSecretSetup ? secretNumber : guess;
+  const emptyGuessValue =
+    difficulty === "impossible" ? "_ _ _ _" : difficulty === "hard" ? "- - -" : "- -";
+  const historyItems = guessHistory.slice(0, 3).reverse();
+  const inputLocked = isSecretSetup ? hasSubmittedSecret : !isCollecting || hasSubmitted;
+  const ctaDisabled = inputLocked || activeValue.length === 0 || isSubmitting || isSubmittingSecret;
+  const feedbackResult = lastGuessResult?.result ?? null;
+  const bannerTone =
+    isSecretSetup
+      ? hasSubmittedSecret
+        ? "locked"
+        : "setup"
+      : feedbackResult === "correct"
+        ? "correct"
+        : feedbackResult === "higher"
+          ? "higher"
+          : feedbackResult === "lower"
+            ? "lower"
+            : hasSubmitted
+              ? "locked"
+              : isCollecting
+                ? "turn"
+                : "waiting";
+  const bannerTitle =
+    bannerTone === "setup"
+      ? "SET SECRET"
+      : bannerTone === "locked"
+        ? "LOCKED"
+        : bannerTone === "correct"
+          ? "CORRECT!"
+          : bannerTone === "higher"
+            ? "HIGHER"
+            : bannerTone === "lower"
+              ? "LOWER"
+              : bannerTone === "turn"
+                ? "YOUR TURN"
+                : "WAITING";
+  const bannerIcon =
+    bannerTone === "setup" || bannerTone === "locked"
+      ? "lock-closed"
+      : bannerTone === "correct"
+        ? "checkmark"
+        : bannerTone === "higher"
+          ? "arrow-up"
+          : bannerTone === "lower"
+            ? "arrow-down"
+            : bannerTone === "turn"
+              ? "flash"
+              : "timer-outline";
+  const bannerColor =
+    bannerTone === "setup"
+      ? "#7fd6ff"
+      : bannerTone === "locked"
+        ? "#87f56c"
+        : bannerTone === "correct"
+          ? "#1fc46d"
+          : bannerTone === "higher"
+            ? "#ff8a6a"
+            : bannerTone === "lower"
+              ? "#61b7ff"
+              : bannerTone === "turn"
+                ? "#7fd6ff"
+                : "#d7dce0";
+  const bannerTextColor = bannerTone === "waiting" ? "#5d656c" : "#0d3f68";
+  const helperText = isSecretSetup
+    ? hasSubmittedSecret
+      ? `${secretSubmittedPlayerIds.length}/2 ready`
+      : `Secret range ${getDifficultyRangeLabel(difficulty)}`
+    : isCollecting
+      ? `Round ${room.roundNumber} | ${secondsRemaining}s left`
+      : `Locked ${submittedPlayerIds.length}/${room.players.length}`;
+  const rangeLabel = isSecretSetup
+    ? `Choose your secret ${getDifficultyRangeLabel(difficulty)}`
+    : mode === "duel" && personalSecretNumber !== null
+      ? `Your secret ${personalSecretNumber}`
+      : `Shared range ${getDifficultyRangeLabel(difficulty)}`;
+  const roundSummaryHint =
+    !lastGuessResult
+      ? null
+      : lastGuessResult.result === "missed"
+        ? { label: "No Guess", icon: "remove" as const, color: "#9aa1a7" }
+        : lastGuessResult.result === "higher"
+          ? { label: "Higher", icon: "arrow-up" as const, color: "#ff8a6a" }
+          : lastGuessResult.result === "lower"
+            ? { label: "Lower", icon: "arrow-down" as const, color: "#61b7ff" }
+            : { label: "Correct", icon: "checkmark" as const, color: "#1fc46d" };
 
   const handleSubmitSecretNumber = async () => {
     const parsedSecretNumber = Number(secretNumber);
 
     if (!Number.isInteger(parsedSecretNumber) || parsedSecretNumber < 1 || parsedSecretNumber > maxNumber) {
-      setErrorMessage(`Enter a whole number between 1 and ${maxNumber} for your secret number.`);
+      setErrorMessage(`Use 1-${maxNumber}.`);
       return;
     }
 
@@ -262,9 +329,9 @@ export default function OnlineGameScreen() {
       setErrorMessage(null);
       await setSecretNumber(room.roomId, parsedSecretNumber);
       setPersonalSecretNumber(parsedSecretNumber);
-      setToastMessage("Your secret number is locked in.");
+      setToastMessage("Secret locked.");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Could not lock in your secret number.");
+      setErrorMessage(error instanceof Error ? error.message : "Could not lock secret.");
     } finally {
       setIsSubmittingSecret(false);
     }
@@ -272,19 +339,19 @@ export default function OnlineGameScreen() {
 
   const handleSubmitGuess = async () => {
     if (!isCollecting) {
-      setErrorMessage("Wait for the next round to start.");
+      setErrorMessage("Wait for the round.");
       return;
     }
 
     if (hasSubmitted) {
-      setErrorMessage("You already locked in a guess this round.");
+      setErrorMessage("Already locked.");
       return;
     }
 
     const parsedGuess = Number(guess);
 
     if (!Number.isInteger(parsedGuess) || parsedGuess < 1 || parsedGuess > maxNumber) {
-      setErrorMessage(`Enter a whole number between 1 and ${maxNumber}.`);
+      setErrorMessage(`Use 1-${maxNumber}.`);
       return;
     }
 
@@ -294,141 +361,156 @@ export default function OnlineGameScreen() {
       await makeGuess(room.roomId, parsedGuess);
       setGuess("");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Could not submit guess.");
+      setErrorMessage(error instanceof Error ? error.message : "Could not submit.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const appendDigit = (digit: string) => {
+    if (inputLocked || activeValue.length >= digitLimit) {
+      return;
+    }
+
+    if (isSecretSetup) {
+      setSecretNumberInput((currentValue) => `${currentValue}${digit}`);
+    } else {
+      setGuess((currentValue) => `${currentValue}${digit}`);
+    }
+
+    setErrorMessage(null);
+  };
+
+  const removeDigit = () => {
+    if (inputLocked) {
+      return;
+    }
+
+    if (isSecretSetup) {
+      setSecretNumberInput((currentValue) => currentValue.slice(0, -1));
+    } else {
+      setGuess((currentValue) => currentValue.slice(0, -1));
+    }
+
+    setErrorMessage(null);
+  };
+
+  const clearDigit = () => {
+    if (inputLocked) {
+      return;
+    }
+
+    if (isSecretSetup) {
+      setSecretNumberInput("");
+    } else {
+      setGuess("");
+    }
+
+    setErrorMessage(null);
+  };
+
+  const renderKey = (key: (typeof keypadRows)[number][number]) => {
+    const disabled = inputLocked;
+    const label =
+      key === "backspace" ? (
+        <Ionicons color="#6b7075" name="backspace-outline" size={20} />
+      ) : key === "clear" ? (
+        <Ionicons color="#6b7075" name="close" size={20} />
+      ) : (
+        <Text style={styles.keyText}>{key}</Text>
+      );
+
+    const onPress =
+      key === "backspace"
+        ? removeDigit
+        : key === "clear"
+          ? clearDigit
+          : () => appendDigit(key);
+
+    return (
+      <Pressable
+        disabled={disabled}
+        key={key}
+        onPress={onPress}
+        style={({ pressed }) => [styles.keyButton, pressed && !disabled && styles.keyButtonPressed, disabled && styles.keyButtonDisabled]}
+      >
+        {label}
+      </Pressable>
+    );
+  };
+
   return (
-    <ScreenContainer>
-      <View style={styles.header}>
-        <Text style={styles.label}>{isSecretSetup ? "Secret setup" : "Round live"}</Text>
-        {mode === "duel" && personalSecretNumber !== null ? (
-          <View style={styles.secretBanner}>
-            <Text style={styles.secretBannerLabel}>Your secret number</Text>
-            <Text style={styles.secretBannerValue}>{personalSecretNumber}</Text>
-          </View>
-        ) : null}
-        {toastMessage ? (
-          <View style={styles.toast}>
-            <Text style={styles.toastText}>{toastMessage}</Text>
-          </View>
-        ) : null}
-        <Text style={styles.title}>
-          {mode === "duel" ? (isSecretSetup ? "Choose your secret number" : "Guess your opponent's number") : "Guess the target number"}
-        </Text>
-        <Text style={styles.subtitle}>
-          {mode === "duel"
-            ? isSecretSetup
-              ? `Pick a number from ${getDifficultyRangeLabel(difficulty)}. Your opponent will try to guess it while you try to guess theirs.`
-              : `Each round lasts ${roundDurationSeconds} seconds. Submit one number from ${getDifficultyRangeLabel(difficulty)} to guess your opponent's secret.`
-            : `Each round lasts ${roundDurationSeconds} seconds. Submit one number from ${getDifficultyRangeLabel(difficulty)} before time runs out.`}
-        </Text>
+    <ScreenContainer contentStyle={styles.screen}>
+      {toastMessage ? <Text style={styles.toastText}>{toastMessage}</Text> : null}
+
+      <View style={styles.topRow}>
+        <View style={styles.edgeSpacer} />
+        <View style={styles.miniHistory}>
+          {historyItems.length === 0 ? (
+            <Text style={styles.historyPlaceholder}>
+              {isSecretSetup ? `Room ${room.roomId}` : `${mode === "duel" ? "Duel" : "Classic"} | R${room.roundNumber}`}
+            </Text>
+          ) : (
+            historyItems.map((entry, index) => (
+              <View key={`${entry.roundNumber}-${entry.guess ?? "missed"}-${index}`} style={styles.historyChip}>
+                <Text style={styles.historyGuess}>{entry.guess ?? "-"}</Text>
+                <Ionicons
+                  color={entry.result === "higher" ? "#ff8a6a" : entry.result === "lower" ? "#61b7ff" : entry.result === "correct" ? "#1fc46d" : "#9aa1a7"}
+                  name={entry.result === "higher" ? "arrow-up" : entry.result === "lower" ? "arrow-down" : entry.result === "correct" ? "checkmark" : "remove"}
+                  size={12}
+                />
+              </View>
+            ))
+          )}
+        </View>
+        <View style={styles.edgeSpacer} />
       </View>
 
-      <View style={styles.statusRow}>
-        <View style={[styles.statusPill, isCollecting && styles.statusPillAccent]}>
-          <Text style={styles.statusPillText}>
-            {isSecretSetup
-              ? hasSubmittedSecret
-                ? "Secret locked"
-                : "Choose secret"
-              : hasSubmitted
-                ? "Guess locked"
-                : isCollecting
-                  ? "Your turn"
-                  : "Waiting"}
-          </Text>
-        </View>
-        <View style={styles.statusPill}>
-          <Text style={styles.statusPillText}>
-            {isSecretSetup ? `Range ${getDifficultyRangeLabel(difficulty)}` : isCollecting ? `${secondsRemaining}s left` : "Resolving"}
-          </Text>
-        </View>
+      <View style={[styles.bannerCard, { backgroundColor: bannerColor }]}>
+        <Ionicons color={bannerTextColor} name={bannerIcon} size={22} />
+        <Text style={[styles.bannerText, { color: bannerTextColor }]}>{bannerTitle}</Text>
       </View>
 
-      <View style={styles.card}>
-        {isSecretSetup ? (
-          <>
-            <Text style={styles.status}>
-              {hasSubmittedSecret
-                ? opponentHasSubmittedSecret
-                  ? "Both secret numbers are ready. Starting the duel..."
-                  : "Your secret number is locked in. Waiting for the other player."
-                : opponentHasSubmittedSecret
-                  ? "Your opponent already picked a secret number. Choose yours to begin."
-                  : "Choose your secret number before round 1 can begin."}
-            </Text>
-            <TextField
-              editable={!hasSubmittedSecret}
-              keyboardType="numeric"
-              label="Your secret number"
-              maxLength={digitLimit}
-              onChangeText={setSecretNumberInput}
-              placeholder={hasSubmittedSecret ? "Secret number saved" : "Pick a secret number"}
-              value={secretNumber}
-            />
-            <PrimaryButton
-              disabled={hasSubmittedSecret}
-              label={hasSubmittedSecret ? "Secret Locked In" : "Lock In Secret Number"}
-              loading={isSubmittingSecret}
-              onPress={handleSubmitSecretNumber}
-            />
-          </>
-        ) : (
-          <>
-            <View style={styles.roundHeader}>
-              <Text style={styles.roundTitle}>Round {room.roundNumber}</Text>
-              <Text style={styles.timer}>
-                {isCollecting ? `${secondsRemaining}s left` : "Checking guesses..."}
-              </Text>
-            </View>
-            <Text style={styles.status}>
-              {isCollecting
-                ? hasSubmitted
-                  ? "Your guess is locked in for this round."
-                  : "You can submit one guess this round."
-                : "Round closed. Feedback is on the way."}
-            </Text>
-            <TextField
-              editable={isCollecting && !hasSubmitted}
-              keyboardType="numeric"
-              label={mode === "duel" ? "Your guess for the other player" : "Your guess"}
-              maxLength={digitLimit}
-              onChangeText={setGuess}
-              placeholder={isCollecting && !hasSubmitted ? "Pick a number" : "Wait for the next round"}
-              value={guess}
-            />
-            <PrimaryButton
-              disabled={!isCollecting || hasSubmitted}
-              label={hasSubmitted ? "Guess Submitted" : "Lock In Guess"}
-              loading={isSubmitting}
-              onPress={handleSubmitGuess}
-            />
-          </>
-        )}
+      <View style={styles.guessPanel}>
+        <Text style={styles.rangeLabel}>{rangeLabel}</Text>
+        <View style={styles.guessPill}>
+          <Text style={styles.guessValue}>{activeValue.length > 0 ? activeValue : emptyGuessValue}</Text>
+          {!inputLocked ? <View style={styles.caret} /> : null}
+        </View>
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+        <Text style={styles.helperText}>{helperText}</Text>
       </View>
 
-      <View style={styles.feedbackCard}>
-        <Text style={styles.sectionTitle}>Latest feedback</Text>
-        <Text style={styles.feedbackText}>{latestFeedback}</Text>
-      </View>
+      <View style={styles.bottomSpacer} />
 
-      <View style={styles.feedbackCard}>
-        <Text style={styles.sectionTitle}>Previous guesses</Text>
-        {guessHistory.length === 0 ? (
-          <Text style={styles.feedbackText}>No guesses yet.</Text>
-        ) : (
-          guessHistory.map((entry, index) => (
-            <Text key={`${entry.roundNumber}-${entry.guess ?? "missed"}-${index}`} style={styles.historyItem}>
-              Round {entry.roundNumber}
-              {": "}
-              {entry.guess === null ? "missed" : `${entry.guess} -> ${entry.result}`}
-            </Text>
-          ))
-        )}
+      <View style={styles.bottomControls}>
+        <View style={styles.keypadWrap}>
+          {keypadRows.map((row, rowIndex) => (
+            <View key={rowIndex} style={styles.keyRow}>
+              {row.map(renderKey)}
+            </View>
+          ))}
+        </View>
+
+        <Pressable
+          disabled={ctaDisabled}
+          onPress={isSecretSetup ? handleSubmitSecretNumber : handleSubmitGuess}
+          style={({ pressed }) => [
+            styles.guessButton,
+            pressed && !ctaDisabled && styles.guessButtonPressed,
+            ctaDisabled && styles.guessButtonDisabled
+          ]}
+        >
+          <Text style={styles.guessButtonText}>
+            {isSecretSetup
+              ? isSubmittingSecret
+                ? "LOCKING..."
+                : "SET SECRET >"
+              : isSubmitting
+                ? "LOCKING..."
+                : "GUESS >"}
+          </Text>
+        </Pressable>
       </View>
 
       {showRoundSummary && mode === "duel" && lastGuessResult ? (
@@ -442,21 +524,15 @@ export default function OnlineGameScreen() {
               }
             ]}
           >
-            <Text style={styles.roundSummaryTitle}>Round {lastGuessResult.roundNumber} completed</Text>
-            <Text style={styles.roundSummaryPrimary}>
-              Your guess: {lastGuessResult.guess ?? "No guess"}
-            </Text>
+            <Text style={styles.roundSummaryTitle}>Round {lastGuessResult.roundNumber}</Text>
+            <Text style={styles.roundSummaryPrimary}>You: {lastGuessResult.guess ?? "-"}</Text>
             {roundSummaryHint ? (
               <View style={styles.roundSummaryHintRow}>
                 <Ionicons color={roundSummaryHint.color} name={roundSummaryHint.icon} size={18} />
-                <Text style={[styles.roundSummaryHint, { color: roundSummaryHint.color }]}>
-                  {roundSummaryHint.label}
-                </Text>
+                <Text style={[styles.roundSummaryHint, { color: roundSummaryHint.color }]}>{roundSummaryHint.label}</Text>
               </View>
             ) : null}
-            <Text style={styles.roundSummarySecondary}>
-              Opponent guess: {lastGuessResult.opponentGuess ?? "No guess"}
-            </Text>
+            <Text style={styles.roundSummarySecondary}>Rival: {lastGuessResult.opponentGuess ?? "-"}</Text>
           </Animated.View>
         </Animated.View>
       ) : null}
@@ -465,186 +541,203 @@ export default function OnlineGameScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    marginTop: spacing.lg,
-    gap: spacing.xs
-  },
-  label: {
-    color: colors.accent,
-    fontSize: 14,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1
-  },
-  title: {
-    color: colors.text,
-    fontSize: 32,
-    fontWeight: "800"
-  },
-  subtitle: {
-    color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22
-  },
-  secretBanner: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderRadius: 18,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: 4
-  },
-  secretBannerLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.8
-  },
-  secretBannerValue: {
-    color: colors.text,
-    fontSize: 28,
-    fontWeight: "800"
-  },
-  toast: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.success,
-    borderRadius: 14,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm
+  screen: {
+    flex: 1,
+    paddingBottom: spacing.md,
+    paddingTop: spacing.sm
   },
   toastText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "600"
+    color: "#6d757b",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center"
+  },
+  topRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    minHeight: 30
+  },
+  edgeSpacer: {
+    width: 30
+  },
+  miniHistory: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "center"
+  },
+  historyPlaceholder: {
+    color: "#9ca3a8",
+    fontSize: 11,
+    fontWeight: "800"
+  },
+  historyChip: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 2
+  },
+  historyGuess: {
+    color: "#8b9298",
+    fontSize: 11,
+    fontWeight: "900"
+  },
+  bannerCard: {
+    alignItems: "center",
+    alignSelf: "center",
+    borderBottomColor: "rgba(13, 63, 104, 0.24)",
+    borderBottomWidth: 5,
+    borderRadius: radii.pill,
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "center",
+    marginTop: spacing.sm,
+    minHeight: 44,
+    minWidth: 176,
+    paddingHorizontal: spacing.lg
+  },
+  bannerText: {
+    fontSize: 18,
+    fontWeight: "900"
+  },
+  guessPanel: {
+    alignItems: "center",
+    gap: spacing.sm
+  },
+  rangeLabel: {
+    color: "#9aa1a7",
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  guessPill: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "#61b7ff",
+    borderRadius: radii.pill,
+    borderWidth: 4,
+    flexDirection: "row",
+    justifyContent: "center",
+    minHeight: 70,
+    minWidth: 200,
+    paddingHorizontal: spacing.lg
+  },
+  guessValue: {
+    color: "#15181b",
+    fontSize: 42,
+    fontWeight: "400"
+  },
+  caret: {
+    backgroundColor: "#61b7ff",
+    borderRadius: 2,
+    height: 42,
+    marginLeft: 2,
+    width: 4
+  },
+  error: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center"
+  },
+  helperText: {
+    color: "#6d757b",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center"
+  },
+  bottomSpacer: {
+    flex: 1
+  },
+  bottomControls: {
+    gap: spacing.sm
+  },
+  keypadWrap: {
+    backgroundColor: "#ffffff",
+    borderRadius: 28,
+    gap: spacing.sm,
+    padding: spacing.sm
+  },
+  keyRow: {
+    flexDirection: "row",
+    gap: spacing.sm
+  },
+  keyButton: {
+    alignItems: "center",
+    backgroundColor: "#e6e7e8",
+    borderRadius: radii.pill,
+    flex: 1,
+    height: 44,
+    justifyContent: "center"
+  },
+  keyButtonPressed: {
+    transform: [{ scale: 0.98 }]
+  },
+  keyButtonDisabled: {
+    opacity: 0.55
+  },
+  keyText: {
+    color: "#2d2f31",
+    fontSize: 18,
+    fontWeight: "800"
+  },
+  guessButton: {
+    alignItems: "center",
+    backgroundColor: "#047a37",
+    borderBottomColor: "#025a29",
+    borderBottomWidth: 6,
+    borderRadius: radii.pill,
+    height: 54,
+    justifyContent: "center"
+  },
+  guessButtonPressed: {
+    transform: [{ scale: 0.99 }]
+  },
+  guessButtonDisabled: {
+    opacity: 0.5
+  },
+  guessButtonText: {
+    color: "#ffffff",
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: 1
   },
   roundSummaryOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
-    backgroundColor: "rgba(8, 17, 31, 0.62)",
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
     justifyContent: "center",
     padding: spacing.lg
   },
   roundSummaryPopup: {
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderRadius: 20,
-    maxWidth: 420,
-    padding: spacing.lg,
+    backgroundColor: "#ffffff",
+    borderRadius: radii.xl,
     gap: spacing.xs,
-    shadowColor: "#000000",
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: {
-      width: 0,
-      height: 10
-    },
-    elevation: 8
+    maxWidth: 360,
+    padding: spacing.lg,
+    width: "100%"
   },
   roundSummaryTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: "800"
+    color: "#15181b",
+    fontSize: 22,
+    fontWeight: "900"
   },
   roundSummaryPrimary: {
-    color: colors.text,
+    color: "#15181b",
     fontSize: 18,
-    fontWeight: "700"
-  },
-  roundSummaryHint: {
-    fontSize: 15,
-    fontWeight: "600",
-    lineHeight: 20
+    fontWeight: "900"
   },
   roundSummaryHintRow: {
     alignItems: "center",
     flexDirection: "row",
     gap: spacing.xs
   },
-  roundSummarySecondary: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 24,
-    padding: spacing.lg,
-    gap: spacing.md
-  },
-  statusRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm
-  },
-  statusPill: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8
-  },
-  statusPillAccent: {
-    borderColor: colors.accent
-  },
-  statusPillText: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: "700"
-  },
-  roundHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between"
-  },
-  roundTitle: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: "700"
-  },
-  timer: {
-    color: colors.accent,
-    fontSize: 18,
-    fontWeight: "800"
-  },
-  status: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20
-  },
-  feedbackCard: {
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 20,
-    padding: spacing.lg,
-    gap: spacing.sm
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: "700"
-  },
-  feedbackText: {
-    color: colors.textMuted,
+  roundSummaryHint: {
     fontSize: 15,
-    lineHeight: 22
+    fontWeight: "900"
   },
-  historyItem: {
-    color: colors.text,
-    fontSize: 15
-  },
-  error: {
-    color: colors.danger,
+  roundSummarySecondary: {
+    color: "#6d757b",
     fontSize: 14,
-    fontWeight: "600"
+    fontWeight: "800"
   }
 });

@@ -1,9 +1,9 @@
 import { Animated, StyleSheet, Text, View } from "react-native";
 
-import { colors, spacing } from "../utils/theme";
+import { colors, radii, shadows, spacing } from "../utils/theme";
 
 interface CountdownOverlayProps {
-  label: string;
+  label?: string;
   value: string | number;
   opacity: Animated.Value;
   scale: Animated.Value;
@@ -16,45 +16,65 @@ export function CountdownOverlay({
   scale
 }: CountdownOverlayProps) {
   return (
-    <Animated.View style={[styles.overlay, { opacity }]}>
-      <Animated.View style={[styles.card, { transform: [{ scale }] }]}>
-        <Text style={styles.label}>{label}</Text>
-        <Text style={styles.value}>{value}</Text>
+    <View style={styles.overlay}>
+      <Animated.View style={[styles.card, { opacity, transform: [{ scale }] }]}>
+        {label ? <Text style={styles.label}>{label}</Text> : null}
+        <View style={[styles.valueWrap, !label && styles.valueWrapSolo]}>
+          <Text style={[styles.value, value === "GO" && styles.valueGo]}>{value}</Text>
+        </View>
       </Animated.View>
-    </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
-    backgroundColor: "rgba(8, 17, 31, 0.78)",
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    bottom: -spacing.md,
     justifyContent: "center",
+    left: -spacing.md,
     padding: spacing.lg,
+    position: "absolute",
+    right: -spacing.md,
+    top: -spacing.md,
     zIndex: 50
   },
   card: {
     alignItems: "center",
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.accent,
-    borderRadius: 28,
-    borderWidth: 1,
-    gap: spacing.sm,
-    minWidth: 220,
+    backgroundColor: "transparent",
+    minWidth: 190,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg
   },
   label: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 1,
+    color: "rgba(255, 255, 255, 0.82)",
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 1.2,
     textTransform: "uppercase"
   },
+  valueWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 88,
+    minWidth: 120
+  },
+  valueWrapSolo: {
+    minHeight: 108,
+    minWidth: 132
+  },
   value: {
-    color: colors.text,
-    fontSize: 56,
-    fontWeight: "900"
+    color: "#ffffff",
+    fontSize: 68,
+    fontWeight: "900",
+    letterSpacing: 1,
+    textShadowColor: "rgba(0, 0, 0, 0.28)",
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 8
+  },
+  valueGo: {
+    color: "#ffffff",
+    fontSize: 62
   }
 });

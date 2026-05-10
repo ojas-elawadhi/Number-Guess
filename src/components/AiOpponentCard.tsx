@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 
-import { colors, spacing } from "../utils/theme";
+import { colors, radii, shadows, spacing } from "../utils/theme";
 
 interface AiOpponentCardProps {
   name: string;
@@ -22,8 +22,8 @@ export function AiOpponentCard({
     .slice(0, 2);
 
   return (
-    <View style={styles.card}>
-      <View style={[styles.avatar, { borderColor: accentColor }]}>
+    <View style={[styles.card, { borderColor: accentColor }]}>
+      <View style={[styles.avatar, { backgroundColor: accentColor }]}>
         <Text style={styles.avatarText}>{initials}</Text>
       </View>
       <View style={styles.body}>
@@ -38,25 +38,24 @@ export function AiOpponentCard({
 const styles = StyleSheet.create({
   card: {
     alignItems: "center",
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 20,
+    borderRadius: radii.lg,
     borderWidth: 1,
     flexDirection: "row",
     gap: spacing.md,
-    padding: spacing.md
+    padding: spacing.md,
+    ...shadows.card
   },
   avatar: {
     alignItems: "center",
-    backgroundColor: colors.surface,
-    borderRadius: 22,
-    borderWidth: 2,
+    borderRadius: 24,
     height: 44,
     justifyContent: "center",
     width: 44
   },
   avatarText: {
-    color: colors.text,
+    color: "#ffffff",
     fontSize: 16,
     fontWeight: "800"
   },
@@ -70,7 +69,7 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   title: {
-    color: colors.accent,
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "700",
     textTransform: "uppercase",

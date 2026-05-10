@@ -3,14 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { ConfettiBurst } from "../components/ConfettiBurst";
-import { PlayerList } from "../components/PlayerList";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { MatchRecord } from "../types/progression.types";
-import { colors, spacing } from "../utils/theme";
-import { formatDuration } from "../utils/progression";
+import { colors, radii, shadows, spacing } from "../utils/theme";
 
 export default function OnlineResultScreen() {
   const player = useOnlineGameStore((state) => state.player);
@@ -21,6 +19,13 @@ export default function OnlineResultScreen() {
   const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
   const recordedMatchRef = useRef(false);
   const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
+
+  const winnerIds = room?.winnerIds ?? [];
+  const winners = room?.players.filter((currentPlayer) => winnerIds.includes(currentPlayer.id)) ?? [];
+  const winner = room?.players.find((currentPlayer) => currentPlayer.id === room.winner) ?? null;
+  const isTie = winners.length > 1;
+  const didPlayerWin = player ? winnerIds.includes(player.id) : false;
+  const opponent = room?.players.find((currentPlayer) => currentPlayer.id !== player?.id);
 
   useEffect(() => {
     if (!player || !room) {
@@ -33,19 +38,8 @@ export default function OnlineResultScreen() {
     }
   }, [player, room]);
 
-  if (!room || !player) {
-    return null;
-  }
-
-  const winnerIds = room.winnerIds ?? [];
-  const winners = room.players.filter((currentPlayer) => winnerIds.includes(currentPlayer.id));
-  const winner = room.players.find((currentPlayer) => currentPlayer.id === room.winner) ?? null;
-  const isTie = winners.length > 1;
-  const didPlayerWin = winnerIds.includes(player.id);
-  const opponent = room.players.find((currentPlayer) => currentPlayer.id !== player.id);
-
   useEffect(() => {
-    if (recordedMatchRef.current) {
+    if (!player || !room || recordedMatchRef.current) {
       return;
     }
 
@@ -66,22 +60,29 @@ export default function OnlineResultScreen() {
       opponentPersona: room.mode === "duel" ? "Room duel rival" : "Room classic rival"
     })
       .then(setMatchSummary)
-      .catch(() => {
-        // Results should still render even if local progression persistence fails.
-      });
+      .catch(() => {});
   }, [
     didPlayerWin,
     guessHistory,
     isTie,
     matchStartedAt,
     opponent?.name,
-    player.id,
+    player,
     recordMatch,
-    room.difficulty,
-    room.mode,
-    room.roundDurationSeconds,
-    room.roundNumber
+    room
   ]);
+
+  if (!room || !player) {
+    return null;
+  }
+
+  const rankedPlayers = [...room.players].sort((left, right) => {
+    const leftScore = winnerIds.includes(left.id) ? 0 : left.id === player.id ? 1 : 2;
+    const rightScore = winnerIds.includes(right.id) ? 0 : right.id === player.id ? 1 : 2;
+    return leftScore - rightScore;
+  });
+
+  const podiumPlayers = rankedPlayers.slice(0, 3);
 
   const handleRematch = () => {
     resetRoundState();
@@ -89,92 +90,184 @@ export default function OnlineResultScreen() {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer contentStyle={styles.screen}>
       <ConfettiBurst visible={didPlayerWin || isTie} />
 
-      <View style={styles.hero}>
-        <Text style={styles.label}>Match Finished</Text>
-        <Text style={styles.title}>
-          {isTie ? "It’s a tie!" : didPlayerWin ? "You win!" : winner ? `${winner.name} wins!` : "Game complete"}
+      <View style={styles.header}>
+        <Text style={[styles.victory, !didPlayerWin && !isTie && styles.lossText]}>
+          {isTie ? "TIE GAME" : didPlayerWin ? "VICTORY" : "DEFEAT"}
         </Text>
-        <Text style={styles.subtitle}>
-          {isTie
-            ? "Both players guessed correctly in the same round."
-            : didPlayerWin
-              ? "Your read on the range beat the room this time."
-              : "The other side found the number first. Queue up another rematch when you’re ready."}
-        </Text>
+        <Text style={styles.subtitle}>MATCH COMPLETED</Text>
       </View>
 
-      <View style={styles.resultCard}>
-        <Text style={styles.sectionTitle}>Match rewards</Text>
-        <Text style={styles.resultLine}>
-          {matchSummary
-            ? `+${matchSummary.points} points • +${matchSummary.xpEarned} XP • ${formatDuration(matchSummary.durationMs)}`
-            : "Scoring your online match..."}
-        </Text>
-        <Text style={styles.resultLine}>
-          Attempts: {guessHistory.filter((entry) => entry.guess !== null).length} • Difficulty: {room.difficulty}
-        </Text>
+      <View style={styles.podiumRow}>
+        {podiumPlayers[1] ? (
+          <View style={[styles.podiumCard, styles.podiumSide]}>
+            <Text style={styles.podiumRank}>2</Text>
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarText}>{podiumPlayers[1].name.slice(0, 2).toUpperCase()}</Text>
+            </View>
+            <Text numberOfLines={1} style={styles.podiumName}>{podiumPlayers[1].name}</Text>
+            <Text style={styles.podiumXp}>+300 XP</Text>
+          </View>
+        ) : <View style={styles.podiumSpacer} />}
+
+        <View style={[styles.podiumCard, styles.podiumWinner, (!didPlayerWin && !isTie) && styles.podiumLoser]}>
+          <Text style={styles.podiumRank}>1</Text>
+          <View style={[styles.avatarCircle, styles.winnerAvatar]}>
+            <Text style={styles.avatarText}>{(winner?.name ?? player.name).slice(0, 2).toUpperCase()}</Text>
+          </View>
+          <Text numberOfLines={1} style={styles.podiumName}>{winner?.name ?? player.name}</Text>
+          <View style={styles.xpPill}>
+            <Text style={styles.xpPillText}>{matchSummary ? `+${matchSummary.xpEarned} XP` : "+500 XP"}</Text>
+          </View>
+        </View>
+
+        {podiumPlayers[2] ? (
+          <View style={[styles.podiumCard, styles.podiumSide]}>
+            <Text style={styles.podiumRank}>3</Text>
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarText}>{podiumPlayers[2].name.slice(0, 2).toUpperCase()}</Text>
+            </View>
+            <Text numberOfLines={1} style={styles.podiumName}>{podiumPlayers[2].name}</Text>
+            <Text style={styles.podiumXp}>+150 XP</Text>
+          </View>
+        ) : <View style={styles.podiumSpacer} />}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Players</Text>
-        <PlayerList hostId={room.hostId} players={room.players} winnerId={room.winner} winnerIds={winnerIds} />
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryText}>{matchSummary ? `+${matchSummary.points} points` : "Scoring..."}</Text>
+        <Text style={styles.summaryText}>Difficulty {room.difficulty}</Text>
+        <Text style={styles.summaryText}>Round {room.roundNumber}</Text>
       </View>
 
-      <PrimaryButton label="Rematch In Lobby" onPress={handleRematch} />
-      <PrimaryButton label="Back Home" onPress={() => router.replace("/")} variant="secondary" />
+      <View style={styles.spacer} />
+
+      <PrimaryButton label="REMATCH" onPress={handleRematch} variant="success" />
+      <PrimaryButton label="HOME" onPress={() => router.replace("/")} variant="secondary" />
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: {
-    marginTop: spacing.xl,
-    gap: spacing.sm
+  screen: {
+    gap: spacing.md
   },
-  label: {
-    color: colors.success,
-    fontSize: 14,
-    fontWeight: "700",
-    textTransform: "uppercase",
+  header: {
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: spacing.lg
+  },
+  victory: {
+    color: colors.accent,
+    fontSize: 52,
+    fontWeight: "900",
     letterSpacing: 1
   },
-  title: {
-    color: colors.text,
-    fontSize: 34,
-    fontWeight: "800"
+  lossText: {
+    color: colors.danger
   },
   subtitle: {
     color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 2
   },
-  resultCard: {
+  podiumRow: {
+    alignItems: "flex-end",
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "center"
+  },
+  podiumCard: {
+    alignItems: "center",
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.success,
-    borderRadius: 24,
-    padding: spacing.lg,
-    gap: spacing.sm
+    borderRadius: radii.lg,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
+    width: "31%",
+    ...shadows.card
   },
-  resultLine: {
+  podiumSide: {
+    minHeight: 220
+  },
+  podiumWinner: {
+    backgroundColor: colors.practice,
+    minHeight: 320
+  },
+  podiumLoser: {
+    backgroundColor: colors.higher
+  },
+  podiumRank: {
+    backgroundColor: colors.surface,
+    borderColor: colors.surfaceMuted,
+    borderRadius: radii.pill,
+    borderWidth: 2,
     color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20
+    fontSize: 20,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 24,
-    padding: spacing.lg,
-    gap: spacing.md
+  avatarCircle: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.surface,
+    borderRadius: radii.pill,
+    borderWidth: 6,
+    height: 84,
+    justifyContent: "center",
+    width: 84
   },
-  sectionTitle: {
+  winnerAvatar: {
+    height: 106,
+    width: 106
+  },
+  avatarText: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: "900"
+  },
+  podiumName: {
     color: colors.text,
     fontSize: 18,
+    fontWeight: "800"
+  },
+  podiumXp: {
+    color: colors.textMuted,
+    fontSize: 14,
     fontWeight: "700"
+  },
+  xpPill: {
+    backgroundColor: colors.accentDark,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  xpPillText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "900"
+  },
+  podiumSpacer: {
+    width: "31%"
+  },
+  summaryCard: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    gap: spacing.xs,
+    padding: spacing.md
+  },
+  summaryText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  spacer: {
+    flex: 1
   }
 });

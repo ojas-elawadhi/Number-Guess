@@ -1,20 +1,22 @@
-import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
+import { router, useLocalSearchParams, useRootNavigationState } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
-import { PlayerList } from "../components/PlayerList";
-import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
+import { TopBar } from "../components/GameKit";
 import { leaveRoom, startGame } from "../socket/onlineSocket";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
-import { colors, spacing } from "../utils/theme";
-import { DIFFICULTY_CONFIG, getDifficultyRangeLabel } from "../../shared/difficulty";
+import { colors, radii, spacing } from "../utils/theme";
+import { DIFFICULTY_CONFIG } from "../../shared/difficulty";
 
 export default function OnlineLobbyScreen() {
+  const params = useLocalSearchParams<{ returnTo?: string; mode?: string }>();
+  const rootNavigationState = useRootNavigationState();
   const [isStarting, setIsStarting] = useState(false);
   const [copySuccessMessage, setCopySuccessMessage] = useState<string | null>(null);
+  const [isLeaving, setIsLeaving] = useState(false);
 
   const player = useOnlineGameStore((state) => state.player);
   const room = useOnlineGameStore((state) => state.room);
@@ -31,226 +33,427 @@ export default function OnlineLobbyScreen() {
   }, [player, room]);
 
   useEffect(() => {
+    if (!rootNavigationState?.key) {
+      return;
+    }
+
     if (!player || !room) {
-      router.replace("/");
       return;
     }
 
     if (room.gameState === "playing") {
       router.replace("/online-game");
     }
-  }, [player, room]);
+  }, [player, room, rootNavigationState?.key]);
+
+  const handleReturnToOnline = () => {
+    router.replace("/online");
+  };
 
   if (!room || !player) {
-    return null;
+    return (
+      <ScreenContainer contentStyle={styles.screen}>
+        <TopBar
+          accent={colors.online}
+          label="Lobby"
+          onBack={handleReturnToOnline}
+          title="HIGHER LOWER"
+          variant="header-only"
+        />
+
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>Room not open anymore</Text>
+          <Text style={styles.emptyText}>Go back to Online and enter the room code again, or create a new room.</Text>
+        </View>
+
+        <View style={styles.spacer} />
+
+        <Pressable onPress={handleReturnToOnline} style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}>
+          <Text style={styles.primaryActionText}>BACK TO ONLINE</Text>
+        </Pressable>
+      </ScreenContainer>
+    );
   }
 
-  const winnerIds = room.winnerIds ?? [];
   const mode = room.mode ?? "classic";
   const difficulty = room.difficulty ?? "easy";
-  const maxNumber = room.maxNumber ?? DIFFICULTY_CONFIG[difficulty].maxNumber;
   const maxPlayers = room.maxPlayers ?? (mode === "duel" ? 2 : 6);
-  const lastWinner = room.players.find((currentPlayer) => currentPlayer.id === room.winner);
-  const hasTie = winnerIds.length > 1;
   const canStart = mode === "duel" ? room.players.length === 2 : room.players.length >= 2;
-  const roomModeLabel = `${mode === "duel" ? "Online Duel" : "Online Classic"} • ${DIFFICULTY_CONFIG[difficulty].label}`;
-  const infoMessage =
-    mode === "duel"
-      ? room.players.length < 2
-        ? room.players.length === 1
-          ? "Waiting for other player to join the duel."
-          : "Duel mode needs exactly 2 players before the host can start."
-        : `Each player chooses a secret number in the 1-${maxNumber} range, then both players get one guess per 15-second round to crack the other number.`
-      : room.players.length < 2
-        ? "At least 2 players are needed to start."
-        : `Everyone gets one guess per 15-second round in the ${getDifficultyRangeLabel(difficulty)} range. After each round, players learn whether their guess was higher or lower.`;
-
+  const lastWinner = room.players.find((currentPlayer) => currentPlayer.id === room.winner);
   const handleStartGame = async () => {
     try {
       setIsStarting(true);
       setErrorMessage(null);
       await startGame(room.roomId);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Could not start the game.");
+      setErrorMessage(error instanceof Error ? error.message : "Could not start.");
     } finally {
       setIsStarting(false);
     }
   };
 
-  const handleBackToHome = async () => {
+  const handleLeaveRoom = async () => {
     try {
+      setIsLeaving(true);
       setErrorMessage(null);
       await leaveRoom(room.roomId);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Could not leave the room.");
+      setIsLeaving(false);
+      setErrorMessage(error instanceof Error ? error.message : "Could not leave.");
       return;
     }
 
     resetAll();
-    router.replace("/");
+
+    if (params.returnTo === "/online-difficulty") {
+      router.replace({
+        pathname: "/online-difficulty",
+        params: { mode: params.mode === "duel" ? "duel" : "classic" }
+      });
+      return;
+    }
+
+    router.replace("/online");
   };
 
   const handleCopyCode = async () => {
     await Clipboard.setStringAsync(room.roomId);
-    setCopySuccessMessage("Code copied");
+    setCopySuccessMessage("Copied");
   };
 
   const handleShareCode = async () => {
     await Share.share({
-      message: `Join my Higher or Lower online room with code: ${room.roomId}`
+      message: `Join my Code Wars room: ${room.roomId}`
     });
   };
 
   return (
-    <ScreenContainer>
-      <View style={styles.header}>
-        <Text style={styles.label}>Lobby</Text>
-        <Text style={styles.mode}>{roomModeLabel}</Text>
-        <View style={styles.codeRow}>
-          <Text style={styles.code}>{room.roomId}</Text>
-          <View style={styles.codeActions}>
-            <Pressable
-              accessibilityLabel="Copy room code"
-              onPress={handleCopyCode}
-              style={({ pressed }) => [styles.codeAction, pressed && styles.codeActionPressed]}
-            >
-              <Ionicons color={colors.text} name="copy-outline" size={18} />
-            </Pressable>
-            <Pressable
-              accessibilityLabel="Share room code"
-              onPress={handleShareCode}
-              style={({ pressed }) => [styles.codeAction, pressed && styles.codeActionPressed]}
-            >
-              <Ionicons color={colors.text} name="share-social-outline" size={18} />
-            </Pressable>
+    <ScreenContainer contentStyle={styles.screen}>
+      <TopBar
+        accent={colors.online}
+        label="Lobby"
+        onBack={handleLeaveRoom}
+        title="HIGHER LOWER"
+        variant="header-only"
+      />
+
+      <View style={styles.roomPanel}>
+        <View style={styles.roomMetaRow}>
+          <View style={styles.summaryPill}>
+            <Text numberOfLines={1} style={styles.summaryText}>
+              {`${mode === "duel" ? "Duel Match" : "Classic Match"} - ${DIFFICULTY_CONFIG[difficulty].label}`}
+            </Text>
+          </View>
+          <View style={styles.countPill}>
+            <Text style={styles.countText}>{room.players.length}/{maxPlayers}</Text>
           </View>
         </View>
-        <Text style={styles.copy}>Share this code so other players can join.</Text>
-        {copySuccessMessage ? <Text style={styles.copySuccess}>{copySuccessMessage}</Text> : null}
+
+        <View style={styles.roomCodeWrap}>
+          <Text style={styles.roomCode}>{room.roomId}</Text>
+        </View>
+
+        <View style={styles.copyRow}>
+          <Pressable onPress={handleCopyCode} style={({ pressed }) => [styles.utilityButton, pressed && styles.pressed]}>
+            <Ionicons color="#123a6a" name="copy-outline" size={20} />
+            <Text style={styles.utilityText}>{copySuccessMessage ?? "Copy Code"}</Text>
+          </Pressable>
+          <Pressable onPress={handleShareCode} style={({ pressed }) => [styles.utilityButton, pressed && styles.pressed]}>
+            <Ionicons color="#123a6a" name="share-social-outline" size={20} />
+            <Text style={styles.utilityText}>Share Link</Text>
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Players</Text>
-        {mode === "classic" ? <Text style={styles.copy}>{room.players.length}/{maxPlayers} joined</Text> : null}
-        <PlayerList hostId={room.hostId} players={room.players} winnerId={room.winner} winnerIds={winnerIds} />
+      <View style={styles.playersGrid}>
+        {room.players.map((slotPlayer) => {
+          const isSlotHost = slotPlayer.id === room.hostId;
+
+          return (
+            <View key={slotPlayer.id} style={styles.playerCard}>
+              <View style={styles.avatarCircle}>
+                <Text style={styles.avatarText}>{slotPlayer.name.slice(0, 2).toUpperCase()}</Text>
+              </View>
+
+              <View style={styles.playerCopy}>
+                <Text numberOfLines={1} style={styles.playerName}>
+                  {slotPlayer.name}
+                </Text>
+                <View style={styles.playerStatusPill}>
+                  <Text style={styles.playerStatusText}>{isSlotHost ? "HOST" : "JOINED"}</Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
       </View>
 
-      {hasTie ? (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>Last result: tie game.</Text>
-        </View>
-      ) : lastWinner ? (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>Last winner: {lastWinner.name}</Text>
-        </View>
-      ) : null}
+      {lastWinner ? <Text style={styles.infoText}>Last winner: {lastWinner.name}</Text> : null}
+      {!isHost ? <Text style={styles.infoText}>Waiting for host to start.</Text> : null}
+      {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
-      <View style={styles.section}>
-        <Text style={styles.info}>{infoMessage}</Text>
+      <View style={styles.spacer} />
 
+      <View style={styles.actionRow}>
         {isHost ? (
-          <PrimaryButton
-            disabled={!canStart}
-            label="Start Game"
-            loading={isStarting}
+          <Pressable
+            disabled={!canStart || isStarting}
             onPress={handleStartGame}
-          />
+            style={({ pressed }) => [
+              styles.primaryAction,
+              (!canStart || isStarting) && styles.actionDisabled,
+              pressed && canStart && !isStarting && styles.pressed
+            ]}
+          >
+            <Text style={styles.primaryActionText}>{isStarting ? "STARTING..." : "START"}</Text>
+          </Pressable>
         ) : (
-          <View style={styles.notice}>
-            <Text style={styles.noticeText}>Waiting for the host to start the match.</Text>
+          <View style={[styles.primaryAction, styles.primaryActionWaiting]}>
+            <Text style={styles.primaryActionText}>WAITING</Text>
           </View>
         )}
 
-        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-
-        <PrimaryButton
-          label="Back to Home"
-          onPress={handleBackToHome}
-          variant="secondary"
-        />
+        <Pressable onPress={handleLeaveRoom} style={({ pressed }) => [styles.exitAction, pressed && styles.pressed]}>
+          <Ionicons color="#20242b" name="exit-outline" size={24} />
+          <Text style={styles.exitText}>Exit</Text>
+        </Pressable>
       </View>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    marginTop: spacing.lg,
-    gap: spacing.xs
-  },
-  codeRow: {
-    gap: spacing.sm
-  },
-  label: {
-    color: colors.accent,
-    fontSize: 14,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1
-  },
-  mode: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: "600"
-  },
-  code: {
-    color: colors.text,
-    fontSize: 36,
-    fontWeight: "800"
-  },
-  codeActions: {
-    flexDirection: "row",
-    gap: spacing.sm
-  },
-  codeAction: {
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    width: 42,
-    height: 42
-  },
-  codeActionPressed: {
-    opacity: 0.85
-  },
-  copy: {
-    color: colors.textMuted,
-    fontSize: 15
-  },
-  copySuccess: {
-    color: colors.success,
-    fontSize: 13,
-    fontWeight: "600"
-  },
-  section: {
+  screen: {
+    flex: 1,
     gap: spacing.md
   },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: "700"
+  roomPanel: {
+    backgroundColor: "#ffffff",
+    borderColor: "rgba(92, 184, 253, 0.35)",
+    borderRadius: 22,
+    borderWidth: 1.5,
+    gap: spacing.xs,
+    padding: spacing.sm,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 3
   },
-  notice: {
-    backgroundColor: colors.surfaceAlt,
+  roomMetaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs
+  },
+  summaryPill: {
+    alignItems: "center",
+    backgroundColor: "#eef1f4",
+    borderRadius: radii.pill,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 36,
+    paddingHorizontal: spacing.sm
+  },
+  summaryText: {
+    color: "#5c666f",
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  countPill: {
+    alignItems: "center",
+    backgroundColor: "#eef1f4",
+    borderRadius: radii.pill,
+    justifyContent: "center",
+    minHeight: 36,
+    minWidth: 60,
+    paddingHorizontal: spacing.sm
+  },
+  countText: {
+    color: "#4f5963",
+    fontSize: 13,
+    fontWeight: "900"
+  },
+  roomCodeWrap: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: colors.online,
+    borderRadius: radii.pill,
+    borderWidth: 3,
+    justifyContent: "center",
+    marginTop: spacing.xs,
+    minHeight: 82,
+    paddingHorizontal: spacing.md
+  },
+  roomCode: {
+    color: "#123a6a",
+    fontSize: 36,
+    fontWeight: "900",
+    letterSpacing: 2
+  },
+  copyRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.xs
+  },
+  utilityButton: {
+    alignItems: "center",
+    backgroundColor: "#d8efff",
+    borderBottomColor: "rgba(18, 58, 106, 0.2)",
+    borderBottomWidth: 4,
+    borderRadius: 16,
+    flex: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    height: 42,
+    justifyContent: "center",
+    paddingHorizontal: spacing.xs
+  },
+  utilityText: {
+    color: "#123a6a",
+    fontSize: 14,
+    fontWeight: "900"
+  },
+  playersGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm
+  },
+  playerCard: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "rgba(92, 184, 253, 0.18)",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 18,
-    padding: spacing.md
+    flexBasis: "48%",
+    flexDirection: "row",
+    gap: spacing.sm,
+    minHeight: 108,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 4
   },
-  noticeText: {
-    color: colors.text,
-    fontSize: 14
+  avatarCircle: {
+    alignItems: "center",
+    backgroundColor: "#edf6ff",
+    borderColor: "rgba(92, 184, 253, 0.28)",
+    borderRadius: radii.pill,
+    borderWidth: 2,
+    height: 62,
+    justifyContent: "center",
+    width: 62
   },
-  info: {
-    color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22
+  avatarText: {
+    color: "#123a6a",
+    fontSize: 18,
+    fontWeight: "900"
+  },
+  playerCopy: {
+    flex: 1,
+    gap: spacing.xs,
+    justifyContent: "center"
+  },
+  playerName: {
+    color: "#15181b",
+    fontSize: 18,
+    fontWeight: "800"
+  },
+  playerStatusPill: {
+    alignSelf: "flex-start",
+    borderRadius: radii.pill,
+    backgroundColor: "#677382",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6
+  },
+  playerStatusText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textTransform: "uppercase"
+  },
+  emptyState: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: radii.xl,
+    gap: spacing.sm,
+    padding: spacing.lg
+  },
+  emptyTitle: {
+    color: "#15181b",
+    fontSize: 20,
+    fontWeight: "900",
+    textAlign: "center"
+  },
+  emptyText: {
+    color: "#6d757b",
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center"
+  },
+  infoText: {
+    color: "#6d757b",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center"
   },
   error: {
     color: colors.danger,
-    fontSize: 14,
-    fontWeight: "600"
+    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center"
+  },
+  spacer: {
+    flex: 1
+  },
+  actionRow: {
+    alignItems: "flex-end",
+    flexDirection: "row",
+    gap: spacing.sm
+  },
+  primaryAction: {
+    alignItems: "center",
+    backgroundColor: "#10db6d",
+    borderBottomColor: "#07a551",
+    borderBottomWidth: 6,
+    borderRadius: 22,
+    flex: 1,
+    height: 72,
+    justifyContent: "center"
+  },
+  primaryActionWaiting: {
+    opacity: 0.7
+  },
+  primaryActionText: {
+    color: "#ffffff",
+    fontSize: 26,
+    fontWeight: "900",
+    letterSpacing: 1
+  },
+  exitAction: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "#20242b",
+    borderRadius: 22,
+    borderWidth: 2,
+    gap: 4,
+    height: 72,
+    justifyContent: "center",
+    minWidth: 96,
+    paddingHorizontal: spacing.sm
+  },
+  exitText: {
+    color: "#20242b",
+    fontSize: 16,
+    fontWeight: "900"
+  },
+  actionDisabled: {
+    opacity: 0.5
+  },
+  pressed: {
+    transform: [{ scale: 0.99 }]
   }
 });

@@ -2,6 +2,7 @@ import type { Difficulty } from "./game.types";
 import type {
   AchievementDefinition,
   AchievementId,
+  DailyPuzzleCompletion,
   LeaderboardEntry,
   MatchInput,
   MatchOutcome,
@@ -69,6 +70,30 @@ export const achievements: AchievementDefinition[] = [
     title: "Daily Dedication",
     description: "Claim daily rewards 3 days in a row.",
     icon: "calendar-outline"
+  },
+  {
+    id: "daily-starter",
+    title: "Daily Starter",
+    description: "Clear your first daily puzzle.",
+    icon: "sparkles-outline"
+  },
+  {
+    id: "calendar-climber",
+    title: "Calendar Climber",
+    description: "Clear 3 daily puzzles in a single month.",
+    icon: "bar-chart-outline"
+  },
+  {
+    id: "calendar-collector",
+    title: "Calendar Collector",
+    description: "Clear 10 daily puzzles in a single month.",
+    icon: "albums-outline"
+  },
+  {
+    id: "perfect-month",
+    title: "Perfect Month",
+    description: "Clear every daily puzzle in a calendar month.",
+    icon: "trophy-outline"
   }
 ];
 
@@ -114,6 +139,9 @@ export const createInitialProfile = (updatedAt = new Date().toISOString()): Play
   dailyReward: {
     lastClaimedOn: null,
     streakDays: 0
+  },
+  dailyPuzzle: {
+    completedByDate: {}
   },
   lastRewardSummary: null,
   lastMatchSummary: null,
@@ -183,6 +211,16 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
     dailyReward: {
       ...baseProfile.dailyReward,
       ...profile.dailyReward
+    },
+    dailyPuzzle: {
+      ...baseProfile.dailyPuzzle,
+      ...profile.dailyPuzzle,
+      completedByDate:
+        profile.dailyPuzzle?.completedByDate &&
+        typeof profile.dailyPuzzle.completedByDate === "object" &&
+        !Array.isArray(profile.dailyPuzzle.completedByDate)
+          ? profile.dailyPuzzle.completedByDate
+          : baseProfile.dailyPuzzle.completedByDate
     },
     updatedAt: profile.updatedAt ?? baseProfile.updatedAt
   };
@@ -262,8 +300,87 @@ export const getDailyRewardValues = (streakDays: number) => ({
   xp: 40 + streakDays * 12
 });
 
+const isDateKey = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+const getMonthKey = (dateKey: string) => dateKey.slice(0, 7);
+
+const getDaysInMonth = (monthKey: string) => {
+  const [yearPart, monthPart] = monthKey.split("-");
+  const year = Number(yearPart);
+  const month = Number(monthPart);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return 0;
+  }
+
+  return new Date(year, month, 0).getDate();
+};
+
+const getDateKeyFromDailyHistoryRecord = (record: MatchRecord) => {
+  if (record.mode !== "daily") {
+    return null;
+  }
+
+  const personaMatch = record.opponentPersona?.match(/\d{4}-\d{2}-\d{2}/);
+
+  if (personaMatch) {
+    return personaMatch[0];
+  }
+
+  const playedAt = new Date(record.playedAt);
+
+  if (Number.isNaN(playedAt.getTime())) {
+    return null;
+  }
+
+  return getTodayKey(playedAt);
+};
+
+const getDailyPuzzleDateKeys = (profile: PlayerProfile) => {
+  const dateKeys = new Set<string>();
+
+  Object.keys(profile.dailyPuzzle.completedByDate).forEach((dateKey) => {
+    if (isDateKey(dateKey)) {
+      dateKeys.add(dateKey);
+    }
+  });
+
+  profile.history.forEach((record) => {
+    const dateKey = getDateKeyFromDailyHistoryRecord(record);
+
+    if (dateKey && isDateKey(dateKey)) {
+      dateKeys.add(dateKey);
+    }
+  });
+
+  return [...dateKeys];
+};
+
+const getDailyPuzzleMilestones = (profile: PlayerProfile) => {
+  const countsByMonth: Record<string, number> = {};
+  const dateKeys = getDailyPuzzleDateKeys(profile);
+
+  dateKeys.forEach((dateKey) => {
+    const monthKey = getMonthKey(dateKey);
+    countsByMonth[monthKey] = (countsByMonth[monthKey] ?? 0) + 1;
+  });
+
+  const bestMonthCount = Object.values(countsByMonth).reduce((best, count) => Math.max(best, count), 0);
+  const hasPerfectMonth = Object.entries(countsByMonth).some(([monthKey, count]) => {
+    const daysInMonth = getDaysInMonth(monthKey);
+    return daysInMonth > 0 && count >= daysInMonth;
+  });
+
+  return {
+    totalClears: dateKeys.length,
+    bestMonthCount,
+    hasPerfectMonth
+  };
+};
+
 export const getUnlocks = (profile: PlayerProfile, latestMatch: MatchRecord | null) => {
   const unlocked = new Set<AchievementId>(profile.achievements);
+  const dailyPuzzleMilestones = getDailyPuzzleMilestones(profile);
 
   if (profile.stats.wins >= 1) {
     unlocked.add("first-win");
@@ -287,6 +404,22 @@ export const getUnlocks = (profile: PlayerProfile, latestMatch: MatchRecord | nu
 
   if (profile.dailyReward.streakDays >= 3) {
     unlocked.add("daily-dedication");
+  }
+
+  if (dailyPuzzleMilestones.totalClears >= 1) {
+    unlocked.add("daily-starter");
+  }
+
+  if (dailyPuzzleMilestones.bestMonthCount >= 3) {
+    unlocked.add("calendar-climber");
+  }
+
+  if (dailyPuzzleMilestones.bestMonthCount >= 10) {
+    unlocked.add("calendar-collector");
+  }
+
+  if (dailyPuzzleMilestones.hasPerfectMonth) {
+    unlocked.add("perfect-month");
   }
 
   if (latestMatch?.difficulty === "hard" && latestMatch.outcome === "win") {
@@ -362,6 +495,65 @@ export const claimProfileDailyReward = (profile: PlayerProfile, todayKey = getTo
       xp: reward.xp,
       streakDays
     }
+  };
+};
+
+export const getDailyPuzzleCompletion = (profile: PlayerProfile, dateKey: string) =>
+  normalizeProfile(profile).dailyPuzzle.completedByDate[dateKey] ?? null;
+
+export const applyDailyPuzzleCompletion = (
+  profile: PlayerProfile,
+  dateKey: string,
+  attempts: number,
+  durationMs: number,
+  recordId: string | null
+): {
+  profile: PlayerProfile;
+  completion: DailyPuzzleCompletion;
+} => {
+  const currentProfile = normalizeProfile(profile);
+  const existingCompletion = currentProfile.dailyPuzzle.completedByDate[dateKey];
+
+  if (existingCompletion) {
+    return {
+      profile: currentProfile,
+      completion: existingCompletion
+    };
+  }
+
+  const completion: DailyPuzzleCompletion = {
+    attempts,
+    durationMs,
+    completedAt: new Date().toISOString(),
+    recordId
+  };
+
+  return {
+    profile: {
+      ...currentProfile,
+      dailyPuzzle: {
+        ...currentProfile.dailyPuzzle,
+        completedByDate: {
+          ...currentProfile.dailyPuzzle.completedByDate,
+          [dateKey]: completion
+        }
+      },
+      achievements: getUnlocks(
+        {
+          ...currentProfile,
+          dailyPuzzle: {
+            ...currentProfile.dailyPuzzle,
+            completedByDate: {
+              ...currentProfile.dailyPuzzle.completedByDate,
+              [dateKey]: completion
+            }
+          }
+        },
+        currentProfile.lastMatchSummary
+      ),
+      updatedAt: new Date().toISOString()
+    },
+    completion
   };
 };
 

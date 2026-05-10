@@ -22,3 +22,11 @@ model PlayerProgress {
   @@index([onlinePoints(sort: Desc), level(sort: Desc)])
   @@index([totalPoints(sort: Desc), level(sort: Desc)])
 }
+
+model DailyPuzzle {
+  dateKey      String   @id
+  secretNumber Int
+  maxNumber    Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
