@@ -16,7 +16,11 @@ const inferLocalDevApiUrl = () => {
     return undefined;
   }
 
-  const { hostname } = window.location;
+  const hostname = window.location?.hostname;
+
+  if (!hostname) {
+    return undefined;
+  }
 
   if (hostname === "localhost" || hostname === "127.0.0.1") {
     return "http://localhost:3001";
