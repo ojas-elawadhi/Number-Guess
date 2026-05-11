@@ -141,6 +141,7 @@ export const createInitialProfile = (updatedAt = new Date().toISOString()): Play
   totalPoints: 0,
   currentWinStreak: 0,
   bestWinStreak: 0,
+  reviveTokens: 0,
   achievements: [],
   history: [],
   stats: createInitialStats(),
@@ -200,6 +201,10 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
   return {
     ...baseProfile,
     ...profile,
+    reviveTokens:
+      typeof profile.reviveTokens === "number" && Number.isFinite(profile.reviveTokens)
+        ? Math.max(0, Math.floor(profile.reviveTokens))
+        : baseProfile.reviveTokens,
     achievements: Array.isArray(profile.achievements)
       ? [...new Set(profile.achievements as AchievementId[])]
       : baseProfile.achievements,
@@ -517,6 +522,56 @@ export const applySinglePlayerHighScores = (
   };
 };
 
+export const applyReviveTokens = (profile: PlayerProfile, delta: number) => {
+  const currentProfile = normalizeProfile(profile);
+  const nextReviveTokens = Math.max(0, currentProfile.reviveTokens + Math.floor(delta));
+
+  return {
+    ...currentProfile,
+    reviveTokens: nextReviveTokens,
+    updatedAt: new Date().toISOString()
+  };
+};
+
+const shiftDateKeyByDays = (dateKey: string, delta: number) => {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return getTodayKey(new Date(year, month - 1, day + delta));
+};
+
+export const getDailyPuzzleCurrentStreak = (profile: PlayerProfile, endingDateKey: string) => {
+  const currentProfile = normalizeProfile(profile);
+
+  if (!currentProfile.dailyPuzzle.completedByDate[endingDateKey]) {
+    return 0;
+  }
+
+  let streak = 0;
+  let cursor = endingDateKey;
+
+  while (currentProfile.dailyPuzzle.completedByDate[cursor]) {
+    streak += 1;
+    cursor = shiftDateKeyByDays(cursor, -1);
+  }
+
+  return streak;
+};
+
+export const getReviveTokenRewardForDailyPuzzleStreak = (streak: number) => {
+  if (streak === 3) {
+    return 1;
+  }
+
+  if (streak === 7) {
+    return 2;
+  }
+
+  if (streak === 30) {
+    return 5;
+  }
+
+  return 0;
+};
+
 export const claimProfileDailyReward = (profile: PlayerProfile, todayKey = getTodayKey()) => {
   const currentProfile = normalizeProfile(profile);
 
@@ -582,6 +637,8 @@ export const applyDailyPuzzleCompletion = (
 ): {
   profile: PlayerProfile;
   completion: DailyPuzzleCompletion;
+  dailyPuzzleStreak: number;
+  reviveTokenReward: number;
 } => {
   const currentProfile = normalizeProfile(profile);
   const existingCompletion = currentProfile.dailyPuzzle.completedByDate[dateKey];
@@ -589,7 +646,9 @@ export const applyDailyPuzzleCompletion = (
   if (existingCompletion) {
     return {
       profile: currentProfile,
-      completion: existingCompletion
+      completion: existingCompletion,
+      dailyPuzzleStreak: getDailyPuzzleCurrentStreak(currentProfile, dateKey),
+      reviveTokenReward: 0
     };
   }
 
@@ -600,32 +659,31 @@ export const applyDailyPuzzleCompletion = (
     recordId
   };
 
+  const profileWithCompletion: PlayerProfile = {
+    ...currentProfile,
+    dailyPuzzle: {
+      ...currentProfile.dailyPuzzle,
+      completedByDate: {
+        ...currentProfile.dailyPuzzle.completedByDate,
+        [dateKey]: completion
+      }
+    },
+    updatedAt: new Date().toISOString()
+  };
+  const dailyPuzzleStreak = getDailyPuzzleCurrentStreak(profileWithCompletion, dateKey);
+  const reviveTokenReward = getReviveTokenRewardForDailyPuzzleStreak(dailyPuzzleStreak);
+  const profileWithTokens =
+    reviveTokenReward > 0 ? applyReviveTokens(profileWithCompletion, reviveTokenReward) : profileWithCompletion;
+
   return {
     profile: {
-      ...currentProfile,
-      dailyPuzzle: {
-        ...currentProfile.dailyPuzzle,
-        completedByDate: {
-          ...currentProfile.dailyPuzzle.completedByDate,
-          [dateKey]: completion
-        }
-      },
-      achievements: getUnlocks(
-        {
-          ...currentProfile,
-          dailyPuzzle: {
-            ...currentProfile.dailyPuzzle,
-            completedByDate: {
-              ...currentProfile.dailyPuzzle.completedByDate,
-              [dateKey]: completion
-            }
-          }
-        },
-        currentProfile.lastMatchSummary
-      ),
+      ...profileWithTokens,
+      achievements: getUnlocks(profileWithTokens, currentProfile.lastMatchSummary),
       updatedAt: new Date().toISOString()
     },
-    completion
+    completion,
+    dailyPuzzleStreak,
+    reviveTokenReward
   };
 };
 

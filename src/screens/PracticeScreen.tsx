@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { GameStartCountdown } from "../components/GameStartCountdown";
@@ -35,10 +35,12 @@ export default function PracticeScreen() {
   const digitLimit = String(difficultyConfig.maxNumber).length;
   const startingChances = difficultyConfig.startingChances;
   const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
+  const reviveTokens = usePlayerProgressStore((state) => state.profile.reviveTokens);
   const singlePlayerHighRounds = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighRounds);
   const singlePlayerHighScores = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighScores);
   const updateSinglePlayerHighScore = usePlayerProgressStore((state) => state.updateSinglePlayerHighScore);
   const updateSinglePlayerBestScore = usePlayerProgressStore((state) => state.updateSinglePlayerBestScore);
+  const consumeReviveToken = usePlayerProgressStore((state) => state.consumeReviveToken);
   const countdown = useGameStartCountdown();
   const { countdownActive, startCountdown } = countdown;
   const roundStartTimeRef = useRef(Date.now());
@@ -53,9 +55,12 @@ export default function PracticeScreen() {
   const [currentScore, setCurrentScore] = useState(0);
   const [lastScoreGain, setLastScoreGain] = useState(0);
   const [runState, setRunState] = useState<PracticeRunState>("playing");
+  const [reviveUsedThisRun, setReviveUsedThisRun] = useState(false);
+  const [isUsingRevive, setIsUsingRevive] = useState(false);
   const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
   const isRoundCleared = runState === "round-cleared";
   const isGameOver = runState === "game-over";
+  const canUseReviveToken = isGameOver && reviveTokens > 0 && !reviveUsedThisRun && !isUsingRevive;
   const emptyGuessValue =
     difficulty === "impossible" ? "_ _ _ _" : difficulty === "hard" ? "- - -" : "- -";
   const bannerTone = isRoundCleared
@@ -194,6 +199,31 @@ export default function PracticeScreen() {
     setMatchSummary(null);
   };
 
+  const handleUseReviveToken = async () => {
+    if (!canUseReviveToken) {
+      return;
+    }
+
+    try {
+      setIsUsingRevive(true);
+      const used = await consumeReviveToken();
+
+      if (!used) {
+        return;
+      }
+
+      setGuess("");
+      setErrorMessage(null);
+      setLastResult(null);
+      setLastScoreGain(0);
+      setRemainingChances(2);
+      setRunState("playing");
+      setReviveUsedThisRun(true);
+    } finally {
+      setIsUsingRevive(false);
+    }
+  };
+
   const handlePlayAgain = () => {
     roundStartTimeRef.current = Date.now();
     setSecretNumber(createSecretNumber());
@@ -206,6 +236,7 @@ export default function PracticeScreen() {
     setRoundNumber(1);
     setRemainingChances(startingChances);
     setRunState("playing");
+    setReviveUsedThisRun(false);
     setMatchSummary(null);
     startCountdown();
   };
@@ -329,11 +360,6 @@ export default function PracticeScreen() {
             +{lastScoreGain} score from leftover guesses
           </Text>
         ) : null}
-        {isGameOver ? (
-          <Text style={styles.statusMeta}>
-            Run ended | Final score {currentScore}
-          </Text>
-        ) : null}
       </View>
 
       <View style={styles.bottomSpacer} />
@@ -357,10 +383,71 @@ export default function PracticeScreen() {
           ]}
         >
           <Text style={styles.guessButtonText}>
-            {isRoundCleared ? "NEXT ROUND >" : isGameOver ? "NEW RUN" : "GUESS >"}
+            {isRoundCleared ? "NEXT ROUND >" : isGameOver ? "NEW GAME" : "GUESS >"}
           </Text>
         </Pressable>
       </View>
+
+      <Modal animationType="fade" statusBarTranslucent transparent visible={isGameOver}>
+        <View style={styles.gameOverOverlay}>
+          <View style={styles.gameOverCard}>
+            <Text style={styles.gameOverTitle}>GAME OVER</Text>
+            <Text style={styles.gameOverValue}>Score {currentScore}</Text>
+            <Text style={styles.gameOverMeta}>Round {roundNumber}</Text>
+            {reviveUsedThisRun ? (
+              <Text style={styles.gameOverHint}>Revive already used for this game.</Text>
+            ) : null}
+
+            <Pressable
+              disabled={!canUseReviveToken}
+              onPress={() => void handleUseReviveToken()}
+              style={({ pressed }) => [
+                styles.reviveButton,
+                pressed && canUseReviveToken && styles.guessButtonPressed,
+                !canUseReviveToken && styles.guessButtonDisabled
+              ]}
+            >
+              <View style={styles.reviveButtonContent}>
+                <Ionicons color="#ffffff" name="diamond" size={18} />
+                <Text style={styles.guessButtonText}>
+                  {reviveUsedThisRun
+                    ? "REVIVE USED"
+                    : reviveTokens <= 0
+                      ? "NO TOKENS"
+                      : isUsingRevive
+                        ? "USING TOKEN..."
+                        : "USE REVIVE"}
+                </Text>
+              </View>
+            </Pressable>
+
+            <View style={styles.tokenCountWrap}>
+              <Ionicons color="#1f6fb9" name="diamond" size={16} />
+              <Text style={styles.tokenCountText}>{reviveTokens}</Text>
+            </View>
+
+            <Pressable
+              onPress={handlePlayAgain}
+              style={({ pressed }) => [
+                styles.gameOverPrimaryButton,
+                pressed && styles.guessButtonPressed
+              ]}
+            >
+              <Text style={styles.guessButtonText}>NEW GAME</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleBackPress}
+              style={({ pressed }) => [
+                styles.gameOverSecondaryButton,
+                pressed && styles.guessButtonPressed
+              ]}
+            >
+              <Text style={styles.gameOverSecondaryText}>BACK</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -532,6 +619,96 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     height: 54,
     justifyContent: "center"
+  },
+  reviveButton: {
+    alignItems: "center",
+    backgroundColor: "#1f6fb9",
+    borderBottomColor: "#134c81",
+    borderBottomWidth: 6,
+    borderRadius: radii.pill,
+    height: 54,
+    justifyContent: "center"
+  },
+  reviveButtonContent: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "center"
+  },
+  tokenCountWrap: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center"
+  },
+  tokenCountText: {
+    color: "#1f6fb9",
+    fontSize: 18,
+    fontWeight: "900"
+  },
+  gameOverOverlay: {
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.lg
+  },
+  gameOverCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: radii.xl,
+    gap: spacing.sm,
+    padding: spacing.lg,
+    width: "100%",
+    maxWidth: 420
+  },
+  gameOverTitle: {
+    color: "#15181b",
+    fontSize: 24,
+    fontWeight: "900",
+    textAlign: "center"
+  },
+  gameOverValue: {
+    color: "#15181b",
+    fontSize: 28,
+    fontWeight: "900",
+    textAlign: "center"
+  },
+  gameOverMeta: {
+    color: "#6d757b",
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "center"
+  },
+  gameOverHint: {
+    color: "#6d757b",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 18,
+    textAlign: "center"
+  },
+  gameOverPrimaryButton: {
+    alignItems: "center",
+    backgroundColor: "#047a37",
+    borderBottomColor: "#025a29",
+    borderBottomWidth: 6,
+    borderRadius: radii.pill,
+    height: 54,
+    justifyContent: "center"
+  },
+  gameOverSecondaryButton: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "#cfd5da",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    height: 48,
+    justifyContent: "center"
+  },
+  gameOverSecondaryText: {
+    color: "#636b72",
+    fontSize: 17,
+    fontWeight: "900",
+    letterSpacing: 0.8
   },
   guessButtonPressed: {
     transform: [{ scale: 0.99 }]

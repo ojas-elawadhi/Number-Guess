@@ -109,6 +109,7 @@ export interface PlayerProfile {
   totalPoints: number;
   currentWinStreak: number;
   bestWinStreak: number;
+  reviveTokens: number;
   achievements: AchievementId[];
   history: MatchRecord[];
   stats: PlayerStats;
@@ -150,6 +151,7 @@ export interface ProgressPreferencesPayload {
   soundPlaceholdersEnabled?: boolean;
   singlePlayerHighRounds?: Partial<SinglePlayerHighRounds>;
   singlePlayerHighScores?: Partial<SinglePlayerHighScores>;
+  reviveTokensDelta?: number;
 }
 
 export interface UpdateDisplayNamePayload {

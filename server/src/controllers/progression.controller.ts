@@ -54,6 +54,11 @@ progressionRouter.patch("/preferences", async (request, response) => {
       return;
     }
 
+    if (typeof payload.reviveTokensDelta === "number" && payload.reviveTokensDelta !== 0) {
+      response.json(await progressionService.adjustReviveTokens(payload.playerKey, payload.reviveTokensDelta));
+      return;
+    }
+
     response.status(400).json({
       message: "No supported preference update was provided."
     });

@@ -21,6 +21,7 @@ import type {
 } from "../types/progression.types";
 import {
   applyDailyPuzzleCompletion,
+  applyReviveTokens,
   applySinglePlayerHighScores,
   applyRecordedMatch,
   applySinglePlayerHighRounds,
@@ -54,6 +55,7 @@ interface PlayerProgressStore {
   toggleSoundPlaceholders: () => Promise<void>;
   updateSinglePlayerHighScore: (difficulty: import("../types/game.types").Difficulty, rounds: number) => Promise<void>;
   updateSinglePlayerBestScore: (difficulty: import("../types/game.types").Difficulty, score: number) => Promise<void>;
+  consumeReviveToken: () => Promise<boolean>;
   claimDailyReward: () => Promise<{
     claimed: boolean;
     points: number;
@@ -318,6 +320,41 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       await persistDisplayName(response.displayName);
     } catch {
       // Keep the local record even if remote sync is temporarily unavailable.
+    }
+  },
+  consumeReviveToken: async () => {
+    const currentProfile = get().profile;
+
+    if (currentProfile.reviveTokens <= 0) {
+      return false;
+    }
+
+    const nextProfile = applyReviveTokens(currentProfile, -1);
+
+    set({ profile: nextProfile });
+    await persistProfile(nextProfile);
+
+    if (!get().playerKey) {
+      return true;
+    }
+
+    try {
+      const response = await updateProgressPreferences({
+        playerKey: get().playerKey!,
+        reviveTokensDelta: -1
+      });
+      const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+      set({
+        displayName: response.displayName,
+        profile: normalizedProfile,
+        leaderboard: response.leaderboard
+      });
+      await persistProfile(normalizedProfile);
+      await persistDisplayName(response.displayName);
+      return true;
+    } catch {
+      return true;
     }
   },
   claimDailyReward: async () => {

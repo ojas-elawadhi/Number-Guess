@@ -10,6 +10,7 @@ import type {
   UpdateDisplayNameResponse
 } from "../../../shared/progression.types";
 import {
+  applyReviveTokens,
   applyRecordedMatch,
   applySinglePlayerHighScores,
   applySinglePlayerHighRounds,
@@ -147,6 +148,10 @@ class ProgressionService {
     singlePlayerHighScores: Partial<PlayerProfile["stats"]["singlePlayerHighScores"]>
   ) {
     return this.updateProfile(playerKey, (profile) => applySinglePlayerHighScores(profile, singlePlayerHighScores));
+  }
+
+  async adjustReviveTokens(playerKey: string, delta: number) {
+    return this.updateProfile(playerKey, (profile) => applyReviveTokens(profile, delta));
   }
 
   async updateDisplayName(playerKey: string, displayName: string): Promise<UpdateDisplayNameResponse> {
