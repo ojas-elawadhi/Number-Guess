@@ -7,19 +7,23 @@ export const DIFFICULTY_CONFIG: Record<
   {
     label: string;
     maxNumber: number;
+    startingChances: number;
   }
 > = {
   easy: {
     label: "Easy",
-    maxNumber: 99
+    maxNumber: 99,
+    startingChances: 8
   },
   hard: {
     label: "Hard",
-    maxNumber: 999
+    maxNumber: 999,
+    startingChances: 10
   },
   impossible: {
     label: "Impossible",
-    maxNumber: 9999
+    maxNumber: 9999,
+    startingChances: 12
   }
 };
 

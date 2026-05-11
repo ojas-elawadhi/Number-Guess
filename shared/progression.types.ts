@@ -63,6 +63,9 @@ export interface CategoryStats {
   points: number;
 }
 
+export type SinglePlayerHighRounds = Record<Difficulty, number>;
+export type SinglePlayerHighScores = Record<Difficulty, number>;
+
 export interface PlayerStats {
   wins: number;
   losses: number;
@@ -73,6 +76,8 @@ export interface PlayerStats {
   practiceMatches: number;
   category: Record<MatchCategory, CategoryStats>;
   difficultyWins: Record<Difficulty, number>;
+  singlePlayerHighRounds: SinglePlayerHighRounds;
+  singlePlayerHighScores: SinglePlayerHighScores;
 }
 
 export interface DailyRewardState {
@@ -143,6 +148,8 @@ export interface ProgressPreferencesPayload {
   playerKey: string;
   tutorialSeen?: boolean;
   soundPlaceholdersEnabled?: boolean;
+  singlePlayerHighRounds?: Partial<SinglePlayerHighRounds>;
+  singlePlayerHighScores?: Partial<SinglePlayerHighScores>;
 }
 
 export interface UpdateDisplayNamePayload {

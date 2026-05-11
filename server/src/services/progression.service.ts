@@ -11,6 +11,8 @@ import type {
 } from "../../../shared/progression.types";
 import {
   applyRecordedMatch,
+  applySinglePlayerHighScores,
+  applySinglePlayerHighRounds,
   applySoundPlaceholdersEnabled,
   applyTutorialSeen,
   buildOnlineLeaderboard,
@@ -133,6 +135,20 @@ class ProgressionService {
     return this.updateProfile(playerKey, (profile) => applySoundPlaceholdersEnabled(profile, enabled));
   }
 
+  async updateSinglePlayerHighRounds(
+    playerKey: string,
+    singlePlayerHighRounds: Partial<PlayerProfile["stats"]["singlePlayerHighRounds"]>
+  ) {
+    return this.updateProfile(playerKey, (profile) => applySinglePlayerHighRounds(profile, singlePlayerHighRounds));
+  }
+
+  async updateSinglePlayerHighScores(
+    playerKey: string,
+    singlePlayerHighScores: Partial<PlayerProfile["stats"]["singlePlayerHighScores"]>
+  ) {
+    return this.updateProfile(playerKey, (profile) => applySinglePlayerHighScores(profile, singlePlayerHighScores));
+  }
+
   async updateDisplayName(playerKey: string, displayName: string): Promise<UpdateDisplayNameResponse> {
     this.assertConfigured();
     const current = await this.requirePlayer(playerKey);
@@ -160,18 +176,19 @@ class ProgressionService {
     this.assertConfigured();
     const current = await this.requirePlayer(playerKey);
     const { profile, claimed, reward } = claimProfileDailyReward(current.profile);
+    let persistedProfile = current.profile;
 
     if (claimed) {
-      await this.persistProfile(current.playerKey, current.displayName, profile);
+      persistedProfile = await this.persistProfile(current.playerKey, current.displayName, profile);
     }
 
     return {
       playerKey: current.playerKey,
       displayName: current.displayName,
-      profile: claimed ? profile : current.profile,
+      profile: claimed ? persistedProfile : current.profile,
       leaderboard: await this.getLeaderboard(
         current.playerKey,
-        claimed ? profile : current.profile,
+        claimed ? persistedProfile : current.profile,
         current.displayName
       ),
       persistence: "remote",
@@ -184,14 +201,13 @@ class ProgressionService {
     this.assertConfigured();
     const current = await this.requirePlayer(playerKey);
     const { profile, record } = applyRecordedMatch(current.profile, input);
-
-    await this.persistProfile(current.playerKey, current.displayName, profile);
+    const persistedProfile = await this.persistProfile(current.playerKey, current.displayName, profile);
 
     return {
       playerKey: current.playerKey,
       displayName: current.displayName,
-      profile,
-      leaderboard: await this.getLeaderboard(current.playerKey, profile, current.displayName),
+      profile: persistedProfile,
+      leaderboard: await this.getLeaderboard(current.playerKey, persistedProfile, current.displayName),
       persistence: "remote",
       record
     };
@@ -201,14 +217,13 @@ class ProgressionService {
     this.assertConfigured();
     const current = await this.requirePlayer(playerKey);
     const profile = normalizeProfile(updater(current.profile));
-
-    await this.persistProfile(current.playerKey, current.displayName, profile);
+    const persistedProfile = await this.persistProfile(current.playerKey, current.displayName, profile);
 
     return {
       playerKey: current.playerKey,
       displayName: current.displayName,
-      profile,
-      leaderboard: await this.getLeaderboard(current.playerKey, profile, current.displayName),
+      profile: persistedProfile,
+      leaderboard: await this.getLeaderboard(current.playerKey, persistedProfile, current.displayName),
       persistence: "remote" as const
     };
   }
@@ -230,21 +245,60 @@ class ProgressionService {
     };
   }
 
+  private mergeSinglePlayerHighRounds(currentProfile: PlayerProfile, nextProfile: PlayerProfile) {
+    return {
+      easy: Math.max(currentProfile.stats.singlePlayerHighRounds.easy, nextProfile.stats.singlePlayerHighRounds.easy),
+      hard: Math.max(currentProfile.stats.singlePlayerHighRounds.hard, nextProfile.stats.singlePlayerHighRounds.hard),
+      impossible: Math.max(
+        currentProfile.stats.singlePlayerHighRounds.impossible,
+        nextProfile.stats.singlePlayerHighRounds.impossible
+      )
+    };
+  }
+
+  private mergeSinglePlayerHighScores(currentProfile: PlayerProfile, nextProfile: PlayerProfile) {
+    return {
+      easy: Math.max(currentProfile.stats.singlePlayerHighScores.easy, nextProfile.stats.singlePlayerHighScores.easy),
+      hard: Math.max(currentProfile.stats.singlePlayerHighScores.hard, nextProfile.stats.singlePlayerHighScores.hard),
+      impossible: Math.max(
+        currentProfile.stats.singlePlayerHighScores.impossible,
+        nextProfile.stats.singlePlayerHighScores.impossible
+      )
+    };
+  }
+
   private async persistProfile(playerKey: string, displayName: string, profile: PlayerProfile) {
+    const existing = await prisma.playerProgress.findUnique({
+      where: {
+        playerKey
+      }
+    });
+    const existingProfile = existing ? parseProfile(existing.profile) : createInitialProfile();
+    const mergedProfile = normalizeProfile({
+      ...profile,
+      stats: {
+        ...profile.stats,
+        singlePlayerHighRounds: this.mergeSinglePlayerHighRounds(existingProfile, profile),
+        singlePlayerHighScores: this.mergeSinglePlayerHighScores(existingProfile, profile)
+      }
+    });
+
     await prisma.playerProgress.update({
       where: {
         playerKey
       },
       data: {
         displayName,
-        profile: profileToJson(profile),
-        totalPoints: profile.totalPoints,
-        level: profile.level,
-        currentWinStreak: profile.currentWinStreak,
-        onlinePoints: profile.stats.category.online.points,
-        onlineWins: profile.stats.category.online.wins
+        profile: profileToJson(mergedProfile),
+        totalPoints: mergedProfile.totalPoints,
+        level: mergedProfile.level,
+        currentWinStreak: mergedProfile.currentWinStreak,
+        onlinePoints: mergedProfile.stats.category.online.points,
+        onlineWins: mergedProfile.stats.category.online.wins
       }
     });
+
+    return mergedProfile;
   }
 
   private async getLeaderboard(playerKey: string, profile: PlayerProfile, displayName: string) {

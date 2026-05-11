@@ -21,7 +21,9 @@ import type {
 } from "../types/progression.types";
 import {
   applyDailyPuzzleCompletion,
+  applySinglePlayerHighScores,
   applyRecordedMatch,
+  applySinglePlayerHighRounds,
   applySoundPlaceholdersEnabled,
   applyTutorialSeen,
   buildOnlineLeaderboard,
@@ -50,6 +52,8 @@ interface PlayerProgressStore {
   updateDisplayName: (displayName: string) => Promise<void>;
   markTutorialSeen: () => Promise<void>;
   toggleSoundPlaceholders: () => Promise<void>;
+  updateSinglePlayerHighScore: (difficulty: import("../types/game.types").Difficulty, rounds: number) => Promise<void>;
+  updateSinglePlayerBestScore: (difficulty: import("../types/game.types").Difficulty, score: number) => Promise<void>;
   claimDailyReward: () => Promise<{
     claimed: boolean;
     points: number;
@@ -80,6 +84,12 @@ const persistDisplayName = async (displayName: string) => {
   await AsyncStorage.setItem(DISPLAY_NAME_STORAGE_KEY, displayName);
 };
 
+const mergeSinglePlayerRecords = (incomingProfile: PlayerProfile, currentProfile: PlayerProfile) =>
+  applySinglePlayerHighScores(
+    applySinglePlayerHighRounds(incomingProfile, currentProfile.stats.singlePlayerHighRounds),
+    currentProfile.stats.singlePlayerHighScores
+  );
+
 const applyRemoteSync = async (
   set: (partial: Partial<PlayerProgressStore>) => void,
   get: () => PlayerProgressStore,
@@ -91,7 +101,7 @@ const applyRemoteSync = async (
     updateDailyPuzzleTodayKey?: boolean;
   }
 ) => {
-  const normalizedProfile = normalizeProfile(response.profile);
+  const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 
   set({
     playerKey: response.playerKey,
@@ -163,7 +173,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     }
 
     const response = await updateDisplayNameRemote(get().playerKey!, displayName);
-    const normalizedProfile = normalizeProfile(response.profile);
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 
     set({
       displayName: response.displayName,
@@ -188,7 +198,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
         playerKey: get().playerKey!,
         tutorialSeen: true
       });
-      const normalizedProfile = normalizeProfile(response.profile);
+      const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 
       set({
         displayName: response.displayName,
@@ -219,7 +229,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
         playerKey: get().playerKey!,
         soundPlaceholdersEnabled: nextProfile.soundPlaceholdersEnabled
       });
-      const normalizedProfile = normalizeProfile(response.profile);
+      const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 
       set({
         displayName: response.displayName,
@@ -230,6 +240,84 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       await persistDisplayName(response.displayName);
     } catch {
       // The local toggle should keep working even if sync is down.
+    }
+  },
+  updateSinglePlayerHighScore: async (difficulty, rounds) => {
+    const currentProfile = get().profile;
+    const currentHighScore = currentProfile.stats.singlePlayerHighRounds[difficulty];
+
+    if (rounds <= currentHighScore) {
+      return;
+    }
+
+    const nextProfile = applySinglePlayerHighRounds(currentProfile, {
+      [difficulty]: rounds
+    });
+
+    set({ profile: nextProfile });
+    await persistProfile(nextProfile);
+
+    if (!get().playerKey) {
+      return;
+    }
+
+    try {
+      const response = await updateProgressPreferences({
+        playerKey: get().playerKey!,
+        singlePlayerHighRounds: {
+          [difficulty]: rounds
+        }
+      });
+      const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+      set({
+        displayName: response.displayName,
+        profile: normalizedProfile,
+        leaderboard: response.leaderboard
+      });
+      await persistProfile(normalizedProfile);
+      await persistDisplayName(response.displayName);
+    } catch {
+      // Keep the local record even if remote sync is temporarily unavailable.
+    }
+  },
+  updateSinglePlayerBestScore: async (difficulty, score) => {
+    const currentProfile = get().profile;
+    const currentBestScore = currentProfile.stats.singlePlayerHighScores[difficulty];
+
+    if (score <= currentBestScore) {
+      return;
+    }
+
+    const nextProfile = applySinglePlayerHighScores(currentProfile, {
+      [difficulty]: score
+    });
+
+    set({ profile: nextProfile });
+    await persistProfile(nextProfile);
+
+    if (!get().playerKey) {
+      return;
+    }
+
+    try {
+      const response = await updateProgressPreferences({
+        playerKey: get().playerKey!,
+        singlePlayerHighScores: {
+          [difficulty]: score
+        }
+      });
+      const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+      set({
+        displayName: response.displayName,
+        profile: normalizedProfile,
+        leaderboard: response.leaderboard
+      });
+      await persistProfile(normalizedProfile);
+      await persistDisplayName(response.displayName);
+    } catch {
+      // Keep the local record even if remote sync is temporarily unavailable.
     }
   },
   claimDailyReward: async () => {
@@ -250,7 +338,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
 
     try {
       const response = await claimDailyRewardRemote(get().playerKey!);
-      const normalizedProfile = normalizeProfile(response.profile);
+      const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 
       set({
         displayName: response.displayName,

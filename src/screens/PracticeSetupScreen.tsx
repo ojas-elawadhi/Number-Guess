@@ -4,12 +4,17 @@ import { StyleSheet, Text, View } from "react-native";
 import { DifficultyOptionCard } from "../components/DifficultyOptionCard";
 import { TopBar } from "../components/GameKit";
 import { ScreenContainer } from "../components/ScreenContainer";
+import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty } from "../types/game.types";
 import { colors, spacing } from "../utils/theme";
 
 const difficultyOrder: Difficulty[] = ["easy", "hard", "impossible"];
 
 export default function PracticeSetupScreen() {
+  const singlePlayerHighScores = usePlayerProgressStore(
+    (state) => state.profile.stats.singlePlayerHighScores
+  );
+
   return (
     <ScreenContainer contentStyle={styles.screen}>
       <TopBar
@@ -30,6 +35,7 @@ export default function PracticeSetupScreen() {
         {difficultyOrder.map((currentDifficulty) => (
           <DifficultyOptionCard
             difficulty={currentDifficulty}
+            highScore={singlePlayerHighScores[currentDifficulty]}
             key={currentDifficulty}
             onPress={() => {
               router.push({

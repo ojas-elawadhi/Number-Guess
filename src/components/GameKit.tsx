@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, radii, shadows, spacing } from "../utils/theme";
@@ -125,9 +125,10 @@ interface ModeTileProps {
   active?: boolean;
   compact?: boolean;
   onPress: () => void;
+  rightAccessory?: ReactNode;
 }
 
-export function ModeTile({ accent, active = false, compact = false, onPress, subtitle, title }: ModeTileProps) {
+export function ModeTile({ accent, active = false, compact = false, onPress, rightAccessory, subtitle, title }: ModeTileProps) {
   const backgroundColor = pastelFor(accent);
   const foregroundColor = darkFor(accent);
 
@@ -147,7 +148,7 @@ export function ModeTile({ accent, active = false, compact = false, onPress, sub
         pressed && styles.pressed
       ]}
     >
-      <View style={styles.modeCopy}>
+      <View style={[styles.modeCopy, rightAccessory ? styles.modeCopyWithAccessory : null]}>
         <Text numberOfLines={1} style={[styles.modeTitle, compact && styles.modeTitleCompact, { color: foregroundColor }]}>
           {title}
         </Text>
@@ -155,6 +156,7 @@ export function ModeTile({ accent, active = false, compact = false, onPress, sub
           {subtitle}
         </Text>
       </View>
+      {rightAccessory ? <View style={styles.modeAccessoryWrap}>{rightAccessory}</View> : null}
       <View style={[styles.modeGhost, { backgroundColor: `${foregroundColor}1A` }]} />
     </Pressable>
   );
@@ -526,6 +528,19 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 0,
     top: 0,
+    zIndex: 1
+  },
+  modeCopyWithAccessory: {
+    paddingRight: 74
+  },
+  modeAccessoryWrap: {
+    alignItems: "center",
+    bottom: 0,
+    justifyContent: "center",
+    position: "absolute",
+    right: 6,
+    top: 5,
+    width: 58,
     zIndex: 1
   },
   modeTitle: {

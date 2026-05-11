@@ -19,6 +19,8 @@ interface PracticeGuessEntry {
   result: GuessFeedback;
 }
 
+type PracticeRunState = "playing" | "round-cleared" | "game-over";
+
 const keypadRows = [
   ["1", "2", "3"],
   ["4", "5", "6"],
@@ -31,80 +33,96 @@ export default function PracticeScreen() {
   const difficulty: Difficulty = parseDifficulty(params.difficulty);
   const difficultyConfig = getDifficultyConfig(difficulty);
   const digitLimit = String(difficultyConfig.maxNumber).length;
+  const startingChances = difficultyConfig.startingChances;
   const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
+  const singlePlayerHighRounds = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighRounds);
+  const singlePlayerHighScores = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighScores);
+  const updateSinglePlayerHighScore = usePlayerProgressStore((state) => state.updateSinglePlayerHighScore);
+  const updateSinglePlayerBestScore = usePlayerProgressStore((state) => state.updateSinglePlayerBestScore);
   const countdown = useGameStartCountdown();
   const { countdownActive, startCountdown } = countdown;
-  const startTimeRef = useRef(Date.now());
-  const recordedCompletionRef = useRef(false);
-  const [secretNumber, setSecretNumber] = useState(
-    () => Math.floor(Math.random() * difficultyConfig.maxNumber) + 1
-  );
+  const roundStartTimeRef = useRef(Date.now());
+  const createSecretNumber = () => Math.floor(Math.random() * difficultyConfig.maxNumber) + 1;
+  const [secretNumber, setSecretNumber] = useState(() => createSecretNumber());
   const [guess, setGuess] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<PracticeGuessEntry | null>(null);
   const [guessHistory, setGuessHistory] = useState<PracticeGuessEntry[]>([]);
-  const [isComplete, setIsComplete] = useState(false);
+  const [roundNumber, setRoundNumber] = useState(1);
+  const [remainingChances, setRemainingChances] = useState(startingChances);
+  const [currentScore, setCurrentScore] = useState(0);
+  const [lastScoreGain, setLastScoreGain] = useState(0);
+  const [runState, setRunState] = useState<PracticeRunState>("playing");
   const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
+  const isRoundCleared = runState === "round-cleared";
+  const isGameOver = runState === "game-over";
   const emptyGuessValue =
     difficulty === "impossible" ? "_ _ _ _" : difficulty === "hard" ? "- - -" : "- -";
-  const bannerTone = isComplete
-    ? "correct"
-    : lastResult?.result === "higher"
-      ? "higher"
-      : lastResult?.result === "lower"
-        ? "lower"
-        : "ready";
+  const bannerTone = isRoundCleared
+    ? "cleared"
+    : isGameOver
+      ? "game-over"
+      : lastResult?.result === "higher"
+        ? "higher"
+        : lastResult?.result === "lower"
+          ? "lower"
+          : "ready";
   const bannerTitle =
-    bannerTone === "correct"
-      ? "CORRECT!"
-      : bannerTone === "higher"
-        ? "HIGHER"
-        : bannerTone === "lower"
-          ? "LOWER"
-          : "READY";
+    bannerTone === "cleared"
+      ? "ROUND CLEAR"
+      : bannerTone === "game-over"
+        ? "OUT OF CHANCES"
+        : bannerTone === "higher"
+          ? "HIGHER"
+          : bannerTone === "lower"
+            ? "LOWER"
+            : "READY";
   const bannerIcon =
-    bannerTone === "correct"
+    bannerTone === "cleared"
       ? "checkmark"
-      : bannerTone === "higher"
-        ? "arrow-up"
-        : "arrow-down";
+      : bannerTone === "game-over"
+        ? "alert-circle"
+        : bannerTone === "higher"
+          ? "arrow-up"
+          : "arrow-down";
   const bannerColor =
-    bannerTone === "correct"
+    bannerTone === "cleared"
       ? "#1fc46d"
-      : bannerTone === "higher"
-        ? "#ff8a6a"
-        : "#61b7ff";
+      : bannerTone === "game-over"
+        ? "#ff7b7b"
+        : bannerTone === "higher"
+          ? "#ff8a6a"
+          : "#61b7ff";
   const historyItems = guessHistory.slice(0, 3).reverse();
-  const ctaDisabled = countdownActive || (!isComplete && guess.length === 0);
+  const ctaDisabled = countdownActive || (runState === "playing" && guess.length === 0);
 
   useEffect(() => {
     startCountdown();
   }, [startCountdown]);
 
-  useEffect(() => {
-    if (!isComplete || recordedCompletionRef.current) {
+  const persistHighScoreIfNeeded = (candidateRound: number) => {
+    if (candidateRound > singlePlayerHighRounds[difficulty]) {
+      void updateSinglePlayerHighScore(difficulty, candidateRound);
+    }
+  };
+
+  const persistBestScoreIfNeeded = (candidateScore: number) => {
+    if (candidateScore > singlePlayerHighScores[difficulty]) {
+      void updateSinglePlayerBestScore(difficulty, candidateScore);
+    }
+  };
+
+  const handleBackPress = () => {
+    persistHighScoreIfNeeded(roundNumber);
+    persistBestScoreIfNeeded(currentScore);
+    router.back();
+  };
+
+  const handleSubmitGuess = () => {
+    if (runState !== "playing") {
       return;
     }
 
-    recordedCompletionRef.current = true;
-    const attempts = guessHistory.length;
-    const durationMs = Date.now() - startTimeRef.current;
-
-    recordMatch({
-      category: "single-player",
-      mode: "practice",
-      difficulty,
-      outcome: "win",
-      attempts,
-      durationMs,
-      opponentName: "Practice Board",
-      opponentPersona: "Solo training"
-    })
-      .then(setMatchSummary)
-      .catch(() => { });
-  }, [difficulty, guessHistory.length, isComplete, recordMatch]);
-
-  const handleSubmitGuess = () => {
     const parsedGuess = Number(guess);
 
     if (!Number.isInteger(parsedGuess) || parsedGuess < 1 || parsedGuess > difficultyConfig.maxNumber) {
@@ -115,32 +133,85 @@ export default function PracticeScreen() {
     const result: GuessFeedback =
       parsedGuess === secretNumber ? "correct" : parsedGuess < secretNumber ? "higher" : "lower";
     const entry = { guess: parsedGuess, result } satisfies PracticeGuessEntry;
+    const attempts = guessHistory.length + 1;
+    const nextRemainingChances = Math.max(remainingChances - 1, 0);
 
     setLastResult(entry);
     setGuessHistory((currentHistory) => [entry, ...currentHistory].slice(0, 8));
     setGuess("");
     setErrorMessage(null);
+    setMatchSummary(null);
+    setRemainingChances(nextRemainingChances);
 
     if (result === "correct") {
-      setIsComplete(true);
+      const durationMs = Date.now() - roundStartTimeRef.current;
+      const scoreGain = nextRemainingChances + 1;
+      const nextScore = currentScore + scoreGain;
+
+      setCurrentScore(nextScore);
+      setLastScoreGain(scoreGain);
+      setRunState("round-cleared");
+      persistHighScoreIfNeeded(roundNumber);
+      persistBestScoreIfNeeded(nextScore);
+      void recordMatch({
+        category: "single-player",
+        mode: "practice",
+        difficulty,
+        outcome: "win",
+        attempts,
+        durationMs,
+        opponentName: "Practice Board",
+        opponentPersona: "Solo training"
+      })
+        .then(setMatchSummary)
+        .catch(() => { });
+
+      return;
+    }
+
+    if (nextRemainingChances === 0) {
+      persistHighScoreIfNeeded(roundNumber);
+      persistBestScoreIfNeeded(currentScore);
+      setLastScoreGain(0);
+      setRunState("game-over");
     }
   };
 
-  const handlePlayAgain = () => {
-    recordedCompletionRef.current = false;
-    startTimeRef.current = Date.now();
-    setSecretNumber(Math.floor(Math.random() * difficultyConfig.maxNumber) + 1);
+  const handleNextRound = () => {
+    const nextRoundNumber = roundNumber + 1;
+
+    persistHighScoreIfNeeded(nextRoundNumber);
+    roundStartTimeRef.current = Date.now();
+    setSecretNumber(createSecretNumber());
     setGuess("");
     setErrorMessage(null);
     setLastResult(null);
+    setLastScoreGain(0);
     setGuessHistory([]);
-    setIsComplete(false);
+    setRoundNumber(nextRoundNumber);
+    setRemainingChances(startingChances);
+    setRunState("playing");
+    setMatchSummary(null);
+  };
+
+  const handlePlayAgain = () => {
+    roundStartTimeRef.current = Date.now();
+    setSecretNumber(createSecretNumber());
+    setGuess("");
+    setErrorMessage(null);
+    setLastResult(null);
+    setLastScoreGain(0);
+    setGuessHistory([]);
+    setCurrentScore(0);
+    setRoundNumber(1);
+    setRemainingChances(startingChances);
+    setRunState("playing");
     setMatchSummary(null);
     startCountdown();
   };
 
   const appendDigit = (digit: string) => {
-    if (countdownActive || isComplete || guess.length >= digitLimit) {
+    if (countdownActive || runState !== "playing" || guess.length >= digitLimit) {
       return;
     }
 
@@ -149,7 +220,7 @@ export default function PracticeScreen() {
   };
 
   const removeDigit = () => {
-    if (countdownActive || isComplete) {
+    if (countdownActive || runState !== "playing") {
       return;
     }
 
@@ -158,7 +229,7 @@ export default function PracticeScreen() {
   };
 
   const clearDigit = () => {
-    if (countdownActive || isComplete) {
+    if (countdownActive || runState !== "playing") {
       return;
     }
 
@@ -167,7 +238,7 @@ export default function PracticeScreen() {
   };
 
   const renderKey = (key: (typeof keypadRows)[number][number]) => {
-    const disabled = countdownActive || isComplete;
+    const disabled = countdownActive || runState !== "playing";
     const label =
       key === "backspace" ? (
         <Ionicons color="#6b7075" name="backspace-outline" size={20} />
@@ -198,10 +269,10 @@ export default function PracticeScreen() {
 
   return (
     <ScreenContainer contentStyle={styles.screen}>
-      <ConfettiBurst visible={isComplete} />
+      <ConfettiBurst visible={isRoundCleared} />
       <GameStartCountdown controller={countdown} />
       <View style={styles.topRow}>
-        <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+        <Pressable onPress={handleBackPress} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
           <Ionicons color="#636b72" name="arrow-back" size={22} />
         </Pressable>
 
@@ -229,17 +300,38 @@ export default function PracticeScreen() {
       </View>
 
       <View style={styles.guessPanel}>
+        <View style={styles.statusRow}>
+          <View style={styles.statusChip}>
+            <Text style={styles.statusChipText}>
+              {remainingChances} {remainingChances === 1 ? "CHANCE" : "CHANCES"}
+            </Text>
+          </View>
+          <View style={styles.statusChip}>
+            <Text style={styles.statusChipText}>SCORE {currentScore}</Text>
+          </View>
+        </View>
+
         <Text style={styles.rangeLabel}>{getDifficultyRangeLabel(difficulty)}</Text>
         <View style={styles.guessPill}>
           <Text style={styles.guessValue}>{guess.length > 0 ? guess : emptyGuessValue}</Text>
-          {!countdownActive && !isComplete ? <View style={styles.caret} /> : null}
+          {!countdownActive && runState === "playing" ? <View style={styles.caret} /> : null}
         </View>
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-        {isComplete ? (
-          <Text style={styles.completeMeta}>
+        {isRoundCleared ? (
+          <Text style={styles.statusMeta}>
             {matchSummary
-              ? `Solved in ${guessHistory.length}  •  +${matchSummary.points} pts  •  ${formatDuration(matchSummary.durationMs)}`
-              : `Solved in ${guessHistory.length}`}
+              ? `Solved in ${guessHistory.length} | +${matchSummary.points} pts | ${formatDuration(matchSummary.durationMs)}`
+              : `Solved in ${guessHistory.length} guesses`}
+          </Text>
+        ) : null}
+        {isRoundCleared ? (
+          <Text style={styles.statusMeta}>
+            +{lastScoreGain} score from leftover guesses
+          </Text>
+        ) : null}
+        {isGameOver ? (
+          <Text style={styles.statusMeta}>
+            Run ended | Final score {currentScore}
           </Text>
         ) : null}
       </View>
@@ -257,14 +349,16 @@ export default function PracticeScreen() {
 
         <Pressable
           disabled={ctaDisabled}
-          onPress={isComplete ? handlePlayAgain : handleSubmitGuess}
+          onPress={isRoundCleared ? handleNextRound : isGameOver ? handlePlayAgain : handleSubmitGuess}
           style={({ pressed }) => [
             styles.guessButton,
             pressed && !ctaDisabled && styles.guessButtonPressed,
             ctaDisabled && styles.guessButtonDisabled
           ]}
         >
-          <Text style={styles.guessButtonText}>{isComplete ? "REMATCH" : "GUESS >"}</Text>
+          <Text style={styles.guessButtonText}>
+            {isRoundCleared ? "NEXT ROUND >" : isGameOver ? "NEW RUN" : "GUESS >"}
+          </Text>
         </Pressable>
       </View>
     </ScreenContainer>
@@ -334,6 +428,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm
   },
+  statusRow: {
+    flexDirection: "row",
+    gap: spacing.xs
+  },
+  statusChip: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "#d8dde2",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 34,
+    paddingHorizontal: spacing.md
+  },
+  statusChipText: {
+    color: "#66717a",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.8
+  },
   rangeLabel: {
     color: "#9aa1a7",
     fontSize: 13,
@@ -369,7 +483,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textAlign: "center"
   },
-  completeMeta: {
+  statusMeta: {
     color: "#6d757b",
     fontSize: 12,
     fontWeight: "800",

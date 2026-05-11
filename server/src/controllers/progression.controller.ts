@@ -40,6 +40,20 @@ progressionRouter.patch("/preferences", async (request, response) => {
       return;
     }
 
+    if (payload.singlePlayerHighRounds && Object.keys(payload.singlePlayerHighRounds).length > 0) {
+      response.json(
+        await progressionService.updateSinglePlayerHighRounds(payload.playerKey, payload.singlePlayerHighRounds)
+      );
+      return;
+    }
+
+    if (payload.singlePlayerHighScores && Object.keys(payload.singlePlayerHighScores).length > 0) {
+      response.json(
+        await progressionService.updateSinglePlayerHighScores(payload.playerKey, payload.singlePlayerHighScores)
+      );
+      return;
+    }
+
     response.status(400).json({
       message: "No supported preference update was provided."
     });

@@ -122,6 +122,16 @@ export const createInitialStats = (): PlayerStats => ({
     easy: 0,
     hard: 0,
     impossible: 0
+  },
+  singlePlayerHighRounds: {
+    easy: 0,
+    hard: 0,
+    impossible: 0
+  },
+  singlePlayerHighScores: {
+    easy: 0,
+    hard: 0,
+    impossible: 0
   }
 });
 
@@ -206,6 +216,14 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
       difficultyWins: {
         ...baseProfile.stats.difficultyWins,
         ...profile.stats?.difficultyWins
+      },
+      singlePlayerHighRounds: {
+        ...baseProfile.stats.singlePlayerHighRounds,
+        ...profile.stats?.singlePlayerHighRounds
+      },
+      singlePlayerHighScores: {
+        ...baseProfile.stats.singlePlayerHighScores,
+        ...profile.stats?.singlePlayerHighScores
       }
     },
     dailyReward: {
@@ -444,6 +462,60 @@ export const applySoundPlaceholdersEnabled = (profile: PlayerProfile, enabled: b
   soundPlaceholdersEnabled: enabled,
   updatedAt: new Date().toISOString()
 });
+
+export const applySinglePlayerHighRounds = (
+  profile: PlayerProfile,
+  partialHighRounds: Partial<PlayerStats["singlePlayerHighRounds"]>
+) => {
+  const currentProfile = normalizeProfile(profile);
+  const nextHighRounds = {
+    ...currentProfile.stats.singlePlayerHighRounds
+  };
+
+  (Object.keys(partialHighRounds) as Array<keyof PlayerStats["singlePlayerHighRounds"]>).forEach((difficulty) => {
+    const nextValue = partialHighRounds[difficulty];
+
+    if (typeof nextValue === "number") {
+      nextHighRounds[difficulty] = Math.max(currentProfile.stats.singlePlayerHighRounds[difficulty], nextValue);
+    }
+  });
+
+  return {
+    ...currentProfile,
+    stats: {
+      ...currentProfile.stats,
+      singlePlayerHighRounds: nextHighRounds
+    },
+    updatedAt: new Date().toISOString()
+  };
+};
+
+export const applySinglePlayerHighScores = (
+  profile: PlayerProfile,
+  partialHighScores: Partial<PlayerStats["singlePlayerHighScores"]>
+) => {
+  const currentProfile = normalizeProfile(profile);
+  const nextHighScores = {
+    ...currentProfile.stats.singlePlayerHighScores
+  };
+
+  (Object.keys(partialHighScores) as Array<keyof PlayerStats["singlePlayerHighScores"]>).forEach((difficulty) => {
+    const nextValue = partialHighScores[difficulty];
+
+    if (typeof nextValue === "number") {
+      nextHighScores[difficulty] = Math.max(currentProfile.stats.singlePlayerHighScores[difficulty], nextValue);
+    }
+  });
+
+  return {
+    ...currentProfile,
+    stats: {
+      ...currentProfile.stats,
+      singlePlayerHighScores: nextHighScores
+    },
+    updatedAt: new Date().toISOString()
+  };
+};
 
 export const claimProfileDailyReward = (profile: PlayerProfile, todayKey = getTodayKey()) => {
   const currentProfile = normalizeProfile(profile);

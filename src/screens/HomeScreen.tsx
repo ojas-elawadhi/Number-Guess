@@ -34,6 +34,7 @@ export default function HomeScreen() {
   const displayName = usePlayerProgressStore((state) => state.displayName);
   const profile = usePlayerProgressStore((state) => state.profile);
   const leaderboard = usePlayerProgressStore((state) => state.leaderboard);
+  const singlePlayerHighScores = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighScores);
   const claimDailyReward = usePlayerProgressStore((state) => state.claimDailyReward);
   const markTutorialSeen = usePlayerProgressStore((state) => state.markTutorialSeen);
   const toggleSoundPlaceholders = usePlayerProgressStore((state) => state.toggleSoundPlaceholders);
@@ -75,6 +76,11 @@ export default function HomeScreen() {
   const levelXpSpan = Math.max(1, nextLevelFloorXp - currentLevelFloorXp);
   const levelProgress = Math.min(1, Math.max(0, (profile.xp - currentLevelFloorXp) / levelXpSpan));
   const filledRingSegments = Math.max(1, Math.round(levelProgress * XP_RING_SEGMENTS));
+  const singlePlayerBestScore = Math.max(
+    singlePlayerHighScores.easy,
+    singlePlayerHighScores.hard,
+    singlePlayerHighScores.impossible
+  );
   const today = new Date();
   const dailyMonth = today.toLocaleString("en-US", { month: "short" }).toUpperCase();
   const dailyDay = today.getDate();
@@ -195,7 +201,24 @@ export default function HomeScreen() {
               </View>
 
               <View style={styles.modeStack}>
-                <ModeTile accent={colors.practice} compact icon="person-outline" onPress={() => router.push("/single-player")} subtitle="Endless Mode" title="Single Player" />
+                <ModeTile
+                  accent={colors.practice}
+                  compact
+                  icon="person-outline"
+                  onPress={() => router.push("/single-player")}
+                  rightAccessory={
+                    <View style={styles.modeBestCard}>
+                      <View style={styles.modeBestTop}>
+                        <Text style={styles.modeBestLabel}>BEST</Text>
+                      </View>
+                      <View style={styles.modeBestBottom}>
+                        <Text style={styles.modeBestValue}>{singlePlayerBestScore}</Text>
+                      </View>
+                    </View>
+                  }
+                  subtitle="Endless Mode"
+                  title="Single Player"
+                />
                 <ModeTile accent={colors.ai} compact icon="hardware-chip-outline" onPress={() => router.push("/vs-ai")} subtitle="Practice & Learn" title="VS AI" />
                 <ModeTile accent={colors.online} compact icon="globe-outline" onPress={() => router.push("/online")} subtitle="Ranked Match" title="Online" />
               </View>
@@ -748,6 +771,37 @@ const styles = StyleSheet.create({
   },
   modeStack: {
     gap: spacing.sm
+  },
+  modeBestCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 8,
+    overflow: "hidden",
+    width: 44
+  },
+  modeBestTop: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 15,
+    paddingHorizontal: 5,
+    paddingTop: 1
+  },
+  modeBestLabel: {
+    color: "#58d83c",
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.4
+  },
+  modeBestBottom: {
+    alignItems: "center",
+    borderTopColor: "#58d83c",
+    borderTopWidth: 1.5,
+    justifyContent: "center",
+    minHeight: 24
+  },
+  modeBestValue: {
+    color: "#58d83c",
+    fontSize: 18,
+    fontWeight: "900"
   },
   panelRow: {
     flexDirection: "row",
