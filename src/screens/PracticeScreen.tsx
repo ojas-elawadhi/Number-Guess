@@ -7,6 +7,7 @@ import { ConfettiBurst } from "../components/ConfettiBurst";
 import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
+import { isRewardedReviveSupported, showRewardedReviveAd } from "../services/rewardedReviveAd";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
 import type { MatchRecord } from "../types/progression.types";
@@ -56,11 +57,15 @@ export default function PracticeScreen() {
   const [lastScoreGain, setLastScoreGain] = useState(0);
   const [runState, setRunState] = useState<PracticeRunState>("playing");
   const [reviveUsedThisRun, setReviveUsedThisRun] = useState(false);
-  const [isUsingRevive, setIsUsingRevive] = useState(false);
+  const [reviveAction, setReviveAction] = useState<"token" | "ad" | null>(null);
+  const [reviveMessage, setReviveMessage] = useState<string | null>(null);
   const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
   const isRoundCleared = runState === "round-cleared";
   const isGameOver = runState === "game-over";
+  const canShowRewardedRevive = isRewardedReviveSupported();
+  const isUsingRevive = reviveAction !== null;
   const canUseReviveToken = isGameOver && reviveTokens > 0 && !reviveUsedThisRun && !isUsingRevive;
+  const canUseRewardedRevive = isGameOver && canShowRewardedRevive && !reviveUsedThisRun && !isUsingRevive;
   const emptyGuessValue =
     difficulty === "impossible" ? "_ _ _ _" : difficulty === "hard" ? "- - -" : "- -";
   const bannerTone = isRoundCleared
@@ -190,6 +195,7 @@ export default function PracticeScreen() {
     setSecretNumber(createSecretNumber());
     setGuess("");
     setErrorMessage(null);
+    setReviveMessage(null);
     setLastResult(null);
     setLastScoreGain(0);
     setGuessHistory([]);
@@ -199,28 +205,55 @@ export default function PracticeScreen() {
     setMatchSummary(null);
   };
 
+  const applyRevive = () => {
+    setGuess("");
+    setErrorMessage(null);
+    setReviveMessage(null);
+    setLastResult(null);
+    setLastScoreGain(0);
+    setRemainingChances(2);
+    setRunState("playing");
+    setReviveUsedThisRun(true);
+  };
+
   const handleUseReviveToken = async () => {
     if (!canUseReviveToken) {
       return;
     }
 
     try {
-      setIsUsingRevive(true);
+      setReviveAction("token");
       const used = await consumeReviveToken();
 
       if (!used) {
+        setReviveMessage("That token could not be used right now.");
         return;
       }
 
-      setGuess("");
-      setErrorMessage(null);
-      setLastResult(null);
-      setLastScoreGain(0);
-      setRemainingChances(2);
-      setRunState("playing");
-      setReviveUsedThisRun(true);
+      applyRevive();
     } finally {
-      setIsUsingRevive(false);
+      setReviveAction(null);
+    }
+  };
+
+  const handleUseRewardedRevive = async () => {
+    if (!canUseRewardedRevive) {
+      return;
+    }
+
+    try {
+      setReviveAction("ad");
+      setReviveMessage(null);
+      const rewarded = await showRewardedReviveAd();
+
+      if (!rewarded) {
+        setReviveMessage("Ad was skipped or unavailable. Try again.");
+        return;
+      }
+
+      applyRevive();
+    } finally {
+      setReviveAction(null);
     }
   };
 
@@ -229,6 +262,7 @@ export default function PracticeScreen() {
     setSecretNumber(createSecretNumber());
     setGuess("");
     setErrorMessage(null);
+    setReviveMessage(null);
     setLastResult(null);
     setLastScoreGain(0);
     setGuessHistory([]);
@@ -394,8 +428,33 @@ export default function PracticeScreen() {
             <Text style={styles.gameOverTitle}>GAME OVER</Text>
             <Text style={styles.gameOverValue}>Score {currentScore}</Text>
             <Text style={styles.gameOverMeta}>Round {roundNumber}</Text>
+            <Text style={styles.gameOverHint}>Choose one revive option per game.</Text>
             {reviveUsedThisRun ? (
               <Text style={styles.gameOverHint}>Revive already used for this game.</Text>
+            ) : null}
+            {reviveMessage ? <Text style={styles.gameOverHint}>{reviveMessage}</Text> : null}
+
+            {canShowRewardedRevive ? (
+              <Pressable
+                disabled={!canUseRewardedRevive}
+                onPress={() => void handleUseRewardedRevive()}
+                style={({ pressed }) => [
+                  styles.rewardedReviveButton,
+                  pressed && canUseRewardedRevive && styles.guessButtonPressed,
+                  !canUseRewardedRevive && styles.guessButtonDisabled
+                ]}
+              >
+                <View style={styles.reviveButtonContent}>
+                  <Ionicons color="#ffffff" name="play-circle" size={18} />
+                  <Text style={styles.guessButtonText}>
+                    {reviveUsedThisRun
+                      ? "REVIVE USED"
+                      : reviveAction === "ad"
+                        ? "LOADING AD..."
+                        : "WATCH AD TO REVIVE"}
+                  </Text>
+                </View>
+              </Pressable>
             ) : null}
 
             <Pressable
@@ -414,9 +473,9 @@ export default function PracticeScreen() {
                     ? "REVIVE USED"
                     : reviveTokens <= 0
                       ? "NO TOKENS"
-                      : isUsingRevive
+                      : reviveAction === "token"
                         ? "USING TOKEN..."
-                        : "USE REVIVE"}
+                        : "USE TOKEN"}
                 </Text>
               </View>
             </Pressable>
@@ -624,6 +683,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#1f6fb9",
     borderBottomColor: "#134c81",
+    borderBottomWidth: 6,
+    borderRadius: radii.pill,
+    height: 54,
+    justifyContent: "center"
+  },
+  rewardedReviveButton: {
+    alignItems: "center",
+    backgroundColor: "#c96a00",
+    borderBottomColor: "#8c4900",
     borderBottomWidth: 6,
     borderRadius: radii.pill,
     height: 54,
