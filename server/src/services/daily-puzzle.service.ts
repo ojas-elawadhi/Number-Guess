@@ -121,7 +121,12 @@ class DailyPuzzleService {
       feedback: "correct",
       solved: true,
       completion: completed.completion,
-      record: recordedMatch.record
+      record: recordedMatch.record,
+      dailyPuzzleReward: {
+        streakDays: completed.dailyPuzzleStreak,
+        extraGuessPowerUps: completed.extraGuessPowerUpReward,
+        coins: completed.coinReward
+      }
     };
   }
 

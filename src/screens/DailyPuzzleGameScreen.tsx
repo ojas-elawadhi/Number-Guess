@@ -314,7 +314,8 @@ export default function DailyPuzzleGameScreen() {
         </View>
         <StatusPill label={title} tone="accent" />
         <StatusPill label={`1-${maxNumber}`} tone="neutral" />
-        <StatusPill label={`${profile.reviveTokens} Tokens`} tone="neutral" />
+        <StatusPill label={`${profile.extraGuessPowerUps} Power-Ups`} tone="neutral" />
+        <StatusPill label={`${profile.coins} Coins`} tone="neutral" />
       </View>
 
       <View style={styles.feedbackCard}>

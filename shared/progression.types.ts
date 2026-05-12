@@ -103,13 +103,33 @@ export interface DailyPuzzleState {
   completedByDate: Record<string, DailyPuzzleCompletion>;
 }
 
+export interface PracticeGuessSnapshot {
+  guess: number;
+  result: GuessFeedback;
+}
+
+export interface ActivePracticeRunSnapshot {
+  difficulty: Difficulty;
+  secretNumber: number;
+  guessHistory: PracticeGuessSnapshot[];
+  roundNumber: number;
+  remainingChances: number;
+  currentScore: number;
+  lastScoreGain: number;
+  runState: "playing" | "round-cleared";
+  reviveUsedThisRun: boolean;
+  roundElapsedMs: number;
+  updatedAt: string;
+}
+
 export interface PlayerProfile {
   xp: number;
   level: number;
   totalPoints: number;
   currentWinStreak: number;
   bestWinStreak: number;
-  reviveTokens: number;
+  extraGuessPowerUps: number;
+  coins: number;
   achievements: AchievementId[];
   history: MatchRecord[];
   stats: PlayerStats;
@@ -117,6 +137,7 @@ export interface PlayerProfile {
   soundPlaceholdersEnabled: boolean;
   dailyReward: DailyRewardState;
   dailyPuzzle: DailyPuzzleState;
+  activePracticeRuns: Partial<Record<Difficulty, ActivePracticeRunSnapshot>>;
   lastRewardSummary: LastRewardSummary | null;
   lastMatchSummary: MatchRecord | null;
   updatedAt: string;
@@ -151,7 +172,12 @@ export interface ProgressPreferencesPayload {
   soundPlaceholdersEnabled?: boolean;
   singlePlayerHighRounds?: Partial<SinglePlayerHighRounds>;
   singlePlayerHighScores?: Partial<SinglePlayerHighScores>;
-  reviveTokensDelta?: number;
+  extraGuessPowerUpsDelta?: number;
+  coinsDelta?: number;
+  activePracticeRun?: {
+    difficulty: Difficulty;
+    snapshot: ActivePracticeRunSnapshot | null;
+  };
 }
 
 export interface UpdateDisplayNamePayload {
@@ -217,4 +243,9 @@ export interface DailyPuzzleGuessResponse extends ProgressSyncResponse {
   solved: boolean;
   completion: DailyPuzzleCompletion | null;
   record: MatchRecord | null;
+  dailyPuzzleReward?: {
+    streakDays: number;
+    extraGuessPowerUps: number;
+    coins: number;
+  };
 }

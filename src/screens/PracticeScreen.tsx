@@ -10,7 +10,7 @@ import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
 import { isRewardedReviveSupported, showRewardedReviveAd } from "../services/rewardedReviveAd";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
-import type { MatchRecord } from "../types/progression.types";
+import type { ActivePracticeRunSnapshot, MatchRecord } from "../types/progression.types";
 import { formatDuration } from "../utils/progression";
 import { colors, radii, spacing } from "../utils/theme";
 import { getDifficultyConfig, getDifficultyRangeLabel, parseDifficulty } from "../../shared/difficulty";
@@ -29,43 +29,68 @@ const keypadRows = [
   ["backspace", "0", "clear"]
 ] as const;
 
+const canRestorePracticeRun = (
+  snapshot: ActivePracticeRunSnapshot | undefined,
+  maxNumber: number
+): snapshot is ActivePracticeRunSnapshot =>
+  Boolean(
+    snapshot &&
+      snapshot.remainingChances > 0 &&
+      snapshot.roundNumber >= 1 &&
+      snapshot.secretNumber >= 1 &&
+      snapshot.secretNumber <= maxNumber
+  );
+
 export default function PracticeScreen() {
   const params = useLocalSearchParams<{ difficulty?: string }>();
   const difficulty: Difficulty = parseDifficulty(params.difficulty);
   const difficultyConfig = getDifficultyConfig(difficulty);
   const digitLimit = String(difficultyConfig.maxNumber).length;
   const startingChances = difficultyConfig.startingChances;
+  const profile = usePlayerProgressStore((state) => state.profile);
+  const coins = usePlayerProgressStore((state) => state.profile.coins);
+  const extraGuessPowerUps = usePlayerProgressStore((state) => state.profile.extraGuessPowerUps);
   const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
-  const reviveTokens = usePlayerProgressStore((state) => state.profile.reviveTokens);
   const singlePlayerHighRounds = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighRounds);
   const singlePlayerHighScores = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighScores);
   const updateSinglePlayerHighScore = usePlayerProgressStore((state) => state.updateSinglePlayerHighScore);
   const updateSinglePlayerBestScore = usePlayerProgressStore((state) => state.updateSinglePlayerBestScore);
-  const consumeReviveToken = usePlayerProgressStore((state) => state.consumeReviveToken);
+  const consumeExtraGuessPowerUp = usePlayerProgressStore((state) => state.consumeExtraGuessPowerUp);
+  const syncActivePracticeRun = usePlayerProgressStore((state) => state.syncActivePracticeRun);
   const countdown = useGameStartCountdown();
   const { countdownActive, startCountdown } = countdown;
-  const roundStartTimeRef = useRef(Date.now());
   const createSecretNumber = () => Math.floor(Math.random() * difficultyConfig.maxNumber) + 1;
-  const [secretNumber, setSecretNumber] = useState(() => createSecretNumber());
+  const savedPracticeRun = profile.activePracticeRuns[difficulty];
+  const restoredPracticeRun = canRestorePracticeRun(savedPracticeRun, difficultyConfig.maxNumber)
+    ? savedPracticeRun
+    : null;
+  const roundStartTimeRef = useRef(Date.now() - (restoredPracticeRun?.roundElapsedMs ?? 0));
+  const [secretNumber, setSecretNumber] = useState(() => restoredPracticeRun?.secretNumber ?? createSecretNumber());
   const [guess, setGuess] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [lastResult, setLastResult] = useState<PracticeGuessEntry | null>(null);
-  const [guessHistory, setGuessHistory] = useState<PracticeGuessEntry[]>([]);
-  const [roundNumber, setRoundNumber] = useState(1);
-  const [remainingChances, setRemainingChances] = useState(startingChances);
-  const [currentScore, setCurrentScore] = useState(0);
-  const [lastScoreGain, setLastScoreGain] = useState(0);
-  const [runState, setRunState] = useState<PracticeRunState>("playing");
-  const [reviveUsedThisRun, setReviveUsedThisRun] = useState(false);
-  const [reviveAction, setReviveAction] = useState<"token" | "ad" | null>(null);
+  const [lastResult, setLastResult] = useState<PracticeGuessEntry | null>(
+    () => restoredPracticeRun?.guessHistory[0] ?? null
+  );
+  const [guessHistory, setGuessHistory] = useState<PracticeGuessEntry[]>(() => restoredPracticeRun?.guessHistory ?? []);
+  const [roundNumber, setRoundNumber] = useState(() => restoredPracticeRun?.roundNumber ?? 1);
+  const [remainingChances, setRemainingChances] = useState(
+    () => restoredPracticeRun?.remainingChances ?? startingChances
+  );
+  const [currentScore, setCurrentScore] = useState(() => restoredPracticeRun?.currentScore ?? 0);
+  const [lastScoreGain, setLastScoreGain] = useState(() => restoredPracticeRun?.lastScoreGain ?? 0);
+  const [runState, setRunState] = useState<PracticeRunState>(() => restoredPracticeRun?.runState ?? "playing");
+  const [powerUpAction, setPowerUpAction] = useState<"inventory" | "ad" | null>(null);
+  const [powerUpMessage, setPowerUpMessage] = useState<string | null>(null);
+  const [reviveUsedThisRun, setReviveUsedThisRun] = useState(() => restoredPracticeRun?.reviveUsedThisRun ?? false);
+  const [reviveAction, setReviveAction] = useState<"ad" | null>(null);
   const [reviveMessage, setReviveMessage] = useState<string | null>(null);
   const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
   const isRoundCleared = runState === "round-cleared";
   const isGameOver = runState === "game-over";
   const canShowRewardedRevive = isRewardedReviveSupported();
   const isUsingRevive = reviveAction !== null;
-  const canUseReviveToken = isGameOver && reviveTokens > 0 && !reviveUsedThisRun && !isUsingRevive;
   const canUseRewardedRevive = isGameOver && canShowRewardedRevive && !reviveUsedThisRun && !isUsingRevive;
+  const canPreviewCoinRevive = isGameOver && !reviveUsedThisRun && !isUsingRevive;
   const emptyGuessValue =
     difficulty === "impossible" ? "_ _ _ _" : difficulty === "hard" ? "- - -" : "- -";
   const bannerTone = isRoundCleared
@@ -105,10 +130,53 @@ export default function PracticeScreen() {
           : "#61b7ff";
   const historyItems = guessHistory.slice(0, 3).reverse();
   const ctaDisabled = countdownActive || (runState === "playing" && guess.length === 0);
+  const isPlayingRound = runState === "playing";
+  const isUsingPowerUp = powerUpAction !== null;
+  const canUseExtraGuessPowerUp =
+    isPlayingRound && !countdownActive && !isUsingPowerUp && extraGuessPowerUps > 0;
+  const canWatchAdForExtraGuess =
+    isPlayingRound && !countdownActive && !isUsingPowerUp && extraGuessPowerUps <= 0 && canShowRewardedRevive;
+  const canTriggerExtraGuess = canUseExtraGuessPowerUp || canWatchAdForExtraGuess;
 
   useEffect(() => {
-    startCountdown();
-  }, [startCountdown]);
+    if (!restoredPracticeRun) {
+      startCountdown();
+    }
+  }, [restoredPracticeRun, startCountdown]);
+
+  useEffect(() => {
+    if (runState === "game-over") {
+      void syncActivePracticeRun(difficulty, null);
+      return;
+    }
+
+    const snapshot: ActivePracticeRunSnapshot = {
+      difficulty,
+      secretNumber,
+      guessHistory,
+      roundNumber,
+      remainingChances,
+      currentScore,
+      lastScoreGain,
+      runState,
+      reviveUsedThisRun,
+      roundElapsedMs: Math.max(0, Date.now() - roundStartTimeRef.current),
+      updatedAt: new Date().toISOString()
+    };
+
+    void syncActivePracticeRun(difficulty, snapshot);
+  }, [
+    currentScore,
+    difficulty,
+    guessHistory,
+    lastScoreGain,
+    remainingChances,
+    reviveUsedThisRun,
+    roundNumber,
+    runState,
+    secretNumber,
+    syncActivePracticeRun
+  ]);
 
   const persistHighScoreIfNeeded = (candidateRound: number) => {
     if (candidateRound > singlePlayerHighRounds[difficulty]) {
@@ -151,6 +219,7 @@ export default function PracticeScreen() {
     setGuess("");
     setErrorMessage(null);
     setMatchSummary(null);
+    setPowerUpMessage(null);
     setRemainingChances(nextRemainingChances);
 
     if (result === "correct") {
@@ -196,6 +265,7 @@ export default function PracticeScreen() {
     setGuess("");
     setErrorMessage(null);
     setReviveMessage(null);
+    setPowerUpMessage(null);
     setLastResult(null);
     setLastScoreGain(0);
     setGuessHistory([]);
@@ -209,31 +279,12 @@ export default function PracticeScreen() {
     setGuess("");
     setErrorMessage(null);
     setReviveMessage(null);
+    setPowerUpMessage(null);
     setLastResult(null);
     setLastScoreGain(0);
-    setRemainingChances(2);
+    setRemainingChances(4);
     setRunState("playing");
     setReviveUsedThisRun(true);
-  };
-
-  const handleUseReviveToken = async () => {
-    if (!canUseReviveToken) {
-      return;
-    }
-
-    try {
-      setReviveAction("token");
-      const used = await consumeReviveToken();
-
-      if (!used) {
-        setReviveMessage("That token could not be used right now.");
-        return;
-      }
-
-      applyRevive();
-    } finally {
-      setReviveAction(null);
-    }
   };
 
   const handleUseRewardedRevive = async () => {
@@ -257,6 +308,14 @@ export default function PracticeScreen() {
     }
   };
 
+  const handlePreviewCoinRevive = () => {
+    if (!canPreviewCoinRevive) {
+      return;
+    }
+
+    setReviveMessage("150-coin revive UI is ready. Coin spending will be wired up next.");
+  };
+
   const handlePlayAgain = () => {
     roundStartTimeRef.current = Date.now();
     setSecretNumber(createSecretNumber());
@@ -273,6 +332,55 @@ export default function PracticeScreen() {
     setReviveUsedThisRun(false);
     setMatchSummary(null);
     startCountdown();
+  };
+
+  const applyExtraGuess = (source: "inventory" | "ad") => {
+    setRemainingChances((currentChances) => currentChances + 1);
+    setPowerUpMessage(
+      source === "inventory" ? "Extra guess power-up used." : "Reward unlocked. You got 1 extra guess."
+    );
+  };
+
+  const handleUseExtraGuessPowerUp = async () => {
+    if (!canTriggerExtraGuess) {
+      return;
+    }
+
+    if (canUseExtraGuessPowerUp) {
+      try {
+        setPowerUpAction("inventory");
+        const used = await consumeExtraGuessPowerUp();
+
+        if (!used) {
+          setPowerUpMessage("That power-up could not be used right now.");
+          return;
+        }
+
+        applyExtraGuess("inventory");
+      } finally {
+        setPowerUpAction(null);
+      }
+
+      return;
+    }
+
+    if (!canWatchAdForExtraGuess) {
+      return;
+    }
+
+    try {
+      setPowerUpAction("ad");
+      const rewarded = await showRewardedReviveAd();
+
+      if (!rewarded) {
+        setPowerUpMessage("Ad was skipped or unavailable. Try again.");
+        return;
+      }
+
+      applyExtraGuess("ad");
+    } finally {
+      setPowerUpAction(null);
+    }
   };
 
   const appendDigit = (digit: string) => {
@@ -357,6 +465,11 @@ export default function PracticeScreen() {
             ))
           )}
         </View>
+
+        <View style={styles.coinChip}>
+          <Ionicons color="#e3a600" name="cash" size={14} />
+          <Text style={styles.coinChipText}>{coins}</Text>
+        </View>
       </View>
 
       <View style={[styles.bannerCard, { backgroundColor: bannerColor }]}>
@@ -394,6 +507,9 @@ export default function PracticeScreen() {
             +{lastScoreGain} score from leftover guesses
           </Text>
         ) : null}
+        {!isRoundCleared && !isGameOver && powerUpMessage ? (
+          <Text style={styles.statusMeta}>{powerUpMessage}</Text>
+        ) : null}
       </View>
 
       <View style={styles.bottomSpacer} />
@@ -407,104 +523,124 @@ export default function PracticeScreen() {
           ))}
         </View>
 
-        <Pressable
-          disabled={ctaDisabled}
-          onPress={isRoundCleared ? handleNextRound : isGameOver ? handlePlayAgain : handleSubmitGuess}
-          style={({ pressed }) => [
-            styles.guessButton,
-            pressed && !ctaDisabled && styles.guessButtonPressed,
-            ctaDisabled && styles.guessButtonDisabled
-          ]}
-        >
-          <Text style={styles.guessButtonText}>
-            {isRoundCleared ? "NEXT ROUND >" : isGameOver ? "NEW GAME" : "GUESS >"}
-          </Text>
-        </Pressable>
+        <View style={styles.actionRow}>
+          <Pressable
+            disabled={!canTriggerExtraGuess}
+            onPress={() => void handleUseExtraGuessPowerUp()}
+            style={({ pressed }) => [
+              styles.powerUpButton,
+              pressed && canTriggerExtraGuess && styles.guessButtonPressed,
+              !canTriggerExtraGuess && styles.guessButtonDisabled
+            ]}
+          >
+            <Text style={styles.powerUpButtonLabel}>EXTRA GUESS</Text>
+            <View style={styles.powerUpBadge}>
+              {extraGuessPowerUps > 0 ? (
+                <>
+                  <Ionicons color="#fff6c8" name="flash" size={15} />
+                  <Text style={styles.powerUpBadgeText}>
+                    {powerUpAction === "inventory" ? "USING..." : `x${extraGuessPowerUps}`}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons color="#ffffff" name="play-circle" size={15} />
+                  <Text style={styles.powerUpBadgeText}>
+                    {powerUpAction === "ad"
+                      ? "LOADING..."
+                      : canShowRewardedRevive
+                        ? "FREE"
+                        : "NO ADS"}
+                  </Text>
+                </>
+              )}
+            </View>
+          </Pressable>
+
+          <Pressable
+            disabled={ctaDisabled}
+            onPress={isRoundCleared ? handleNextRound : isGameOver ? handlePlayAgain : handleSubmitGuess}
+            style={({ pressed }) => [
+              styles.guessButton,
+              pressed && !ctaDisabled && styles.guessButtonPressed,
+              ctaDisabled && styles.guessButtonDisabled
+            ]}
+          >
+            <Text style={styles.guessButtonText}>
+              {isRoundCleared ? "NEXT ROUND >" : isGameOver ? "NEW GAME" : "GUESS >"}
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       <Modal animationType="fade" statusBarTranslucent transparent visible={isGameOver}>
         <View style={styles.gameOverOverlay}>
           <View style={styles.gameOverCard}>
             <Text style={styles.gameOverTitle}>GAME OVER</Text>
-            <Text style={styles.gameOverValue}>Score {currentScore}</Text>
-            <Text style={styles.gameOverMeta}>Round {roundNumber}</Text>
-            <Text style={styles.gameOverHint}>Choose one revive option per game.</Text>
+            <View style={styles.gameOverIconWrap}>
+              <Text style={styles.gameOverIcon}>!</Text>
+            </View>
+            <Text style={styles.gameOverMessage}>Keep your streak going or your score will be reset.</Text>
             {reviveUsedThisRun ? (
               <Text style={styles.gameOverHint}>Revive already used for this game.</Text>
             ) : null}
             {reviveMessage ? <Text style={styles.gameOverHint}>{reviveMessage}</Text> : null}
 
-            {canShowRewardedRevive ? (
+            <View style={styles.gameOverActionRow}>
               <Pressable
                 disabled={!canUseRewardedRevive}
                 onPress={() => void handleUseRewardedRevive()}
                 style={({ pressed }) => [
-                  styles.rewardedReviveButton,
+                  styles.gameOverReviveButton,
+                  styles.gameOverAdButton,
                   pressed && canUseRewardedRevive && styles.guessButtonPressed,
                   !canUseRewardedRevive && styles.guessButtonDisabled
                 ]}
               >
-                <View style={styles.reviveButtonContent}>
-                  <Ionicons color="#ffffff" name="play-circle" size={18} />
-                  <Text style={styles.guessButtonText}>
+                <Text style={styles.gameOverReviveButtonTitle}>REVIVE</Text>
+                <View style={styles.gameOverBadge}>
+                  <Ionicons color="#ffffff" name="play-circle" size={16} />
+                  <Text style={styles.gameOverBadgeText}>
                     {reviveUsedThisRun
-                      ? "REVIVE USED"
+                      ? "USED"
                       : reviveAction === "ad"
-                        ? "LOADING AD..."
-                        : "WATCH AD TO REVIVE"}
+                        ? "LOADING..."
+                        : canShowRewardedRevive
+                          ? "FREE AD"
+                          : "AD UNAVAILABLE"}
                   </Text>
                 </View>
               </Pressable>
-            ) : null}
 
-            <Pressable
-              disabled={!canUseReviveToken}
-              onPress={() => void handleUseReviveToken()}
-              style={({ pressed }) => [
-                styles.reviveButton,
-                pressed && canUseReviveToken && styles.guessButtonPressed,
-                !canUseReviveToken && styles.guessButtonDisabled
-              ]}
-            >
-              <View style={styles.reviveButtonContent}>
-                <Ionicons color="#ffffff" name="diamond" size={18} />
-                <Text style={styles.guessButtonText}>
-                  {reviveUsedThisRun
-                    ? "REVIVE USED"
-                    : reviveTokens <= 0
-                      ? "NO TOKENS"
-                      : reviveAction === "token"
-                        ? "USING TOKEN..."
-                        : "USE TOKEN"}
-                </Text>
-              </View>
-            </Pressable>
-
-            <View style={styles.tokenCountWrap}>
-              <Ionicons color="#1f6fb9" name="diamond" size={16} />
-              <Text style={styles.tokenCountText}>{reviveTokens}</Text>
+              <Pressable
+                disabled={!canPreviewCoinRevive}
+                onPress={handlePreviewCoinRevive}
+                style={({ pressed }) => [
+                  styles.gameOverReviveButton,
+                  styles.gameOverCoinButton,
+                  pressed && canPreviewCoinRevive && styles.guessButtonPressed,
+                  !canPreviewCoinRevive && styles.guessButtonDisabled
+                ]}
+              >
+                <Text style={styles.gameOverReviveButtonTitle}>REVIVE</Text>
+                <View style={styles.gameOverBadge}>
+                  <Ionicons color="#fff7c2" name="cash" size={16} />
+                  <Text style={styles.gameOverBadgeText}>150 COINS</Text>
+                </View>
+              </Pressable>
             </View>
 
-            <Pressable
-              onPress={handlePlayAgain}
-              style={({ pressed }) => [
-                styles.gameOverPrimaryButton,
-                pressed && styles.guessButtonPressed
-              ]}
-            >
-              <Text style={styles.guessButtonText}>NEW GAME</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={handleBackPress}
-              style={({ pressed }) => [
-                styles.gameOverSecondaryButton,
-                pressed && styles.guessButtonPressed
-              ]}
-            >
-              <Text style={styles.gameOverSecondaryText}>BACK</Text>
-            </Pressable>
           </View>
+
+          <Pressable
+            onPress={handlePlayAgain}
+            style={({ pressed }) => [
+              styles.gameOverDismissButton,
+              pressed && styles.guessButtonPressed
+            ]}
+          >
+            <Text style={styles.gameOverDismissText}>NO THANKS</Text>
+          </Pressable>
         </View>
       </Modal>
     </ScreenContainer>
@@ -534,7 +670,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: spacing.xs,
     justifyContent: "center",
-    paddingRight: 30
+    minHeight: 30,
+    paddingHorizontal: spacing.xs
+  },
+  coinChip: {
+    alignItems: "center",
+    backgroundColor: "#fff4c4",
+    borderColor: "#e7d27a",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    justifyContent: "center",
+    minHeight: 28,
+    minWidth: 68,
+    paddingHorizontal: 10
+  },
+  coinChipText: {
+    color: "#816200",
+    fontSize: 12,
+    fontWeight: "900"
   },
   historyPlaceholder: {
     color: "#9ca3a8",
@@ -641,6 +796,10 @@ const styles = StyleSheet.create({
   bottomControls: {
     gap: spacing.sm
   },
+  actionRow: {
+    flexDirection: "row",
+    gap: spacing.sm
+  },
   keypadWrap: {
     backgroundColor: "#ffffff",
     borderRadius: 28,
@@ -676,75 +835,96 @@ const styles = StyleSheet.create({
     borderBottomColor: "#025a29",
     borderBottomWidth: 6,
     borderRadius: radii.pill,
-    height: 54,
+    flex: 0.92,
+    height: 48,
     justifyContent: "center"
   },
-  reviveButton: {
+  powerUpButton: {
     alignItems: "center",
     backgroundColor: "#1f6fb9",
     borderBottomColor: "#134c81",
     borderBottomWidth: 6,
+    borderRadius: 24,
+    flex: 1.08,
+    gap: 6,
+    height: 48,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm
+  },
+  powerUpButtonLabel: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.9
+  },
+  powerUpBadge: {
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.18)",
     borderRadius: radii.pill,
-    height: 54,
-    justifyContent: "center"
-  },
-  rewardedReviveButton: {
-    alignItems: "center",
-    backgroundColor: "#c96a00",
-    borderBottomColor: "#8c4900",
-    borderBottomWidth: 6,
-    borderRadius: radii.pill,
-    height: 54,
-    justifyContent: "center"
-  },
-  reviveButtonContent: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing.xs,
-    justifyContent: "center"
-  },
-  tokenCountWrap: {
-    alignItems: "center",
     flexDirection: "row",
     gap: 6,
-    justifyContent: "center"
+    justifyContent: "center",
+    minHeight: 20,
+    minWidth: 76,
+    paddingHorizontal: 10
   },
-  tokenCountText: {
-    color: "#1f6fb9",
-    fontSize: 18,
-    fontWeight: "900"
+  powerUpBadgeText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.6
   },
   gameOverOverlay: {
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
     flex: 1,
+    gap: spacing.md,
     justifyContent: "center",
     padding: spacing.lg
   },
   gameOverCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: radii.xl,
+    backgroundColor: "#eef0ff",
+    borderColor: "#5b93ff",
+    borderWidth: 6,
+    borderRadius: 30,
     gap: spacing.sm,
     padding: spacing.lg,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 12,
     width: "100%",
     maxWidth: 420
   },
+  gameOverIconWrap: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "#ff8f24",
+    borderColor: "#ff541f",
+    borderRadius: 42,
+    borderWidth: 6,
+    height: 84,
+    justifyContent: "center",
+    width: 84
+  },
+  gameOverIcon: {
+    color: "#fff7cf",
+    fontSize: 42,
+    fontWeight: "900"
+  },
   gameOverTitle: {
     color: "#15181b",
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: "900",
+    letterSpacing: 1.2,
     textAlign: "center"
   },
-  gameOverValue: {
-    color: "#15181b",
-    fontSize: 28,
-    fontWeight: "900",
-    textAlign: "center"
-  },
-  gameOverMeta: {
-    color: "#6d757b",
-    fontSize: 13,
+  gameOverMessage: {
+    color: "#31456f",
+    fontSize: 20,
     fontWeight: "800",
+    lineHeight: 28,
     textAlign: "center"
   },
   gameOverHint: {
@@ -754,29 +934,65 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: "center"
   },
-  gameOverPrimaryButton: {
-    alignItems: "center",
-    backgroundColor: "#047a37",
-    borderBottomColor: "#025a29",
-    borderBottomWidth: 6,
-    borderRadius: radii.pill,
-    height: 54,
-    justifyContent: "center"
+  gameOverActionRow: {
+    flexDirection: "row",
+    gap: spacing.sm
   },
-  gameOverSecondaryButton: {
+  gameOverReviveButton: {
     alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderColor: "#cfd5da",
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    height: 48,
-    justifyContent: "center"
+    borderRadius: 28,
+    borderBottomWidth: 7,
+    flex: 1,
+    gap: spacing.xs,
+    justifyContent: "center",
+    minHeight: 108,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md
   },
-  gameOverSecondaryText: {
-    color: "#636b72",
-    fontSize: 17,
+  gameOverAdButton: {
+    backgroundColor: "#eb4cae",
+    borderBottomColor: "#af1f72"
+  },
+  gameOverCoinButton: {
+    backgroundColor: "#5ce125",
+    borderBottomColor: "#2da10c"
+  },
+  gameOverReviveButtonTitle: {
+    color: "#ffffff",
+    fontSize: 22,
     fontWeight: "900",
-    letterSpacing: 0.8
+    letterSpacing: 1
+  },
+  gameOverBadge: {
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.18)",
+    borderRadius: radii.pill,
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center",
+    minHeight: 34,
+    minWidth: 110,
+    paddingHorizontal: spacing.md
+  },
+  gameOverBadgeText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 0.6
+  },
+  gameOverDismissButton: {
+    alignItems: "center",
+    backgroundColor: "transparent",
+    borderRadius: radii.pill,
+    height: 40,
+    justifyContent: "center"
+  },
+  gameOverDismissText: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textDecorationLine: "underline"
   },
   guessButtonPressed: {
     transform: [{ scale: 0.99 }]
@@ -786,7 +1002,7 @@ const styles = StyleSheet.create({
   },
   guessButtonText: {
     color: "#ffffff",
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: "900",
     letterSpacing: 1
   },

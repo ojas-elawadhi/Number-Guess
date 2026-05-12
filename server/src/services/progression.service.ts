@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import type {
+  ActivePracticeRunSnapshot,
   ClaimDailyRewardResponse,
   LeaderboardEntry,
   MatchInput,
@@ -9,8 +10,11 @@ import type {
   RecordMatchResponse,
   UpdateDisplayNameResponse
 } from "../../../shared/progression.types";
+import type { Difficulty } from "../../../shared/game.types";
 import {
-  applyReviveTokens,
+  applyActivePracticeRun,
+  applyCoins,
+  applyExtraGuessPowerUps,
   applyRecordedMatch,
   applySinglePlayerHighScores,
   applySinglePlayerHighRounds,
@@ -35,22 +39,6 @@ const parseProfile = (value: unknown): PlayerProfile => {
   }
 
   return normalizeProfile(value as Partial<PlayerProfile>);
-};
-
-const shouldImportLocalProfile = (remoteProfile: PlayerProfile, localProfile?: PlayerProfile | null) => {
-  if (!localProfile) {
-    return false;
-  }
-
-  const normalizedLocalProfile = normalizeProfile(localProfile);
-  const remoteUpdatedAt = new Date(remoteProfile.updatedAt).getTime();
-  const localUpdatedAt = new Date(normalizedLocalProfile.updatedAt).getTime();
-
-  return (
-    normalizedLocalProfile.stats.matches > remoteProfile.stats.matches &&
-    Number.isFinite(localUpdatedAt) &&
-    localUpdatedAt > remoteUpdatedAt
-  );
 };
 
 const toLeaderboardEntry = (
@@ -80,7 +68,6 @@ class ProgressionService {
   async bootstrap(payload: ProgressBootstrapPayload): Promise<ProgressSyncResponse> {
     this.assertConfigured();
 
-    const localProfile = normalizeProfile(payload.localProfile ?? undefined);
     const displayName = await this.resolveDisplayName(payload.playerKey, payload.displayName);
     const existing = await prisma.playerProgress.findUnique({
       where: {
@@ -89,7 +76,7 @@ class ProgressionService {
     });
 
     if (!existing) {
-      const createdProfile = localProfile;
+      const createdProfile = createInitialProfile();
       await prisma.playerProgress.create({
         data: {
           playerKey: payload.playerKey,
@@ -112,12 +99,7 @@ class ProgressionService {
       };
     }
 
-    let profile = parseProfile(existing.profile);
-
-    if (shouldImportLocalProfile(profile, payload.localProfile)) {
-      profile = normalizeProfile(payload.localProfile);
-      await this.persistProfile(existing.playerKey, existing.displayName, profile);
-    }
+    const profile = parseProfile(existing.profile);
 
     return {
       playerKey: existing.playerKey,
@@ -150,8 +132,20 @@ class ProgressionService {
     return this.updateProfile(playerKey, (profile) => applySinglePlayerHighScores(profile, singlePlayerHighScores));
   }
 
-  async adjustReviveTokens(playerKey: string, delta: number) {
-    return this.updateProfile(playerKey, (profile) => applyReviveTokens(profile, delta));
+  async adjustExtraGuessPowerUps(playerKey: string, delta: number) {
+    return this.updateProfile(playerKey, (profile) => applyExtraGuessPowerUps(profile, delta));
+  }
+
+  async adjustCoins(playerKey: string, delta: number) {
+    return this.updateProfile(playerKey, (profile) => applyCoins(profile, delta));
+  }
+
+  async updateActivePracticeRun(
+    playerKey: string,
+    difficulty: Difficulty,
+    snapshot: ActivePracticeRunSnapshot | null
+  ) {
+    return this.updateProfile(playerKey, (profile) => applyActivePracticeRun(profile, difficulty, snapshot));
   }
 
   async updateDisplayName(playerKey: string, displayName: string): Promise<UpdateDisplayNameResponse> {

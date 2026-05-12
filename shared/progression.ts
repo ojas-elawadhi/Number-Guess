@@ -2,6 +2,7 @@ import type { Difficulty } from "./game.types";
 import type {
   AchievementDefinition,
   AchievementId,
+  ActivePracticeRunSnapshot,
   DailyPuzzleCompletion,
   LeaderboardEntry,
   MatchInput,
@@ -141,7 +142,8 @@ export const createInitialProfile = (updatedAt = new Date().toISOString()): Play
   totalPoints: 0,
   currentWinStreak: 0,
   bestWinStreak: 0,
-  reviveTokens: 0,
+  extraGuessPowerUps: 0,
+  coins: 0,
   achievements: [],
   history: [],
   stats: createInitialStats(),
@@ -154,6 +156,7 @@ export const createInitialProfile = (updatedAt = new Date().toISOString()): Play
   dailyPuzzle: {
     completedByDate: {}
   },
+  activePracticeRuns: {},
   lastRewardSummary: null,
   lastMatchSummary: null,
   updatedAt
@@ -201,10 +204,17 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
   return {
     ...baseProfile,
     ...profile,
-    reviveTokens:
-      typeof profile.reviveTokens === "number" && Number.isFinite(profile.reviveTokens)
-        ? Math.max(0, Math.floor(profile.reviveTokens))
-        : baseProfile.reviveTokens,
+    extraGuessPowerUps:
+      typeof profile.extraGuessPowerUps === "number" && Number.isFinite(profile.extraGuessPowerUps)
+        ? Math.max(0, Math.floor(profile.extraGuessPowerUps))
+        : typeof (profile as Partial<{ reviveTokens: number }>).reviveTokens === "number" &&
+            Number.isFinite((profile as Partial<{ reviveTokens: number }>).reviveTokens)
+          ? Math.max(0, Math.floor((profile as Partial<{ reviveTokens: number }>).reviveTokens ?? 0))
+          : baseProfile.extraGuessPowerUps,
+    coins:
+      typeof profile.coins === "number" && Number.isFinite(profile.coins)
+        ? Math.max(0, Math.floor(profile.coins))
+        : baseProfile.coins,
     achievements: Array.isArray(profile.achievements)
       ? [...new Set(profile.achievements as AchievementId[])]
       : baseProfile.achievements,
@@ -245,6 +255,56 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
           ? profile.dailyPuzzle.completedByDate
           : baseProfile.dailyPuzzle.completedByDate
     },
+    activePracticeRuns:
+      profile.activePracticeRuns && typeof profile.activePracticeRuns === "object" && !Array.isArray(profile.activePracticeRuns)
+        ? (Object.entries(profile.activePracticeRuns).reduce<Partial<Record<Difficulty, ActivePracticeRunSnapshot>>>(
+            (accumulator, [difficultyKey, snapshot]) => {
+              if (
+                (difficultyKey === "easy" || difficultyKey === "hard" || difficultyKey === "impossible") &&
+                snapshot &&
+                typeof snapshot === "object" &&
+                typeof snapshot.secretNumber === "number" &&
+                Array.isArray((snapshot as ActivePracticeRunSnapshot).guessHistory) &&
+                typeof (snapshot as ActivePracticeRunSnapshot).roundNumber === "number" &&
+                typeof (snapshot as ActivePracticeRunSnapshot).remainingChances === "number" &&
+                typeof (snapshot as ActivePracticeRunSnapshot).currentScore === "number" &&
+                typeof (snapshot as ActivePracticeRunSnapshot).lastScoreGain === "number" &&
+                ((snapshot as ActivePracticeRunSnapshot).runState === "playing" ||
+                  (snapshot as ActivePracticeRunSnapshot).runState === "round-cleared")
+              ) {
+                accumulator[difficultyKey] = {
+                  difficulty: difficultyKey,
+                  secretNumber: Math.max(1, Math.floor((snapshot as ActivePracticeRunSnapshot).secretNumber)),
+                  guessHistory: (snapshot as ActivePracticeRunSnapshot).guessHistory
+                    .filter(
+                      (entry) =>
+                        entry &&
+                        typeof entry.guess === "number" &&
+                        (entry.result === "higher" || entry.result === "lower" || entry.result === "correct")
+                    )
+                    .map((entry) => ({
+                      guess: Math.max(1, Math.floor(entry.guess)),
+                      result: entry.result
+                    })),
+                  roundNumber: Math.max(1, Math.floor((snapshot as ActivePracticeRunSnapshot).roundNumber)),
+                  remainingChances: Math.max(0, Math.floor((snapshot as ActivePracticeRunSnapshot).remainingChances)),
+                  currentScore: Math.max(0, Math.floor((snapshot as ActivePracticeRunSnapshot).currentScore)),
+                  lastScoreGain: Math.max(0, Math.floor((snapshot as ActivePracticeRunSnapshot).lastScoreGain)),
+                  runState: (snapshot as ActivePracticeRunSnapshot).runState,
+                  reviveUsedThisRun: Boolean((snapshot as ActivePracticeRunSnapshot).reviveUsedThisRun),
+                  roundElapsedMs: Math.max(0, Math.floor((snapshot as ActivePracticeRunSnapshot).roundElapsedMs ?? 0)),
+                  updatedAt:
+                    typeof (snapshot as ActivePracticeRunSnapshot).updatedAt === "string"
+                      ? (snapshot as ActivePracticeRunSnapshot).updatedAt
+                      : baseProfile.updatedAt
+                };
+              }
+
+              return accumulator;
+            },
+            {}
+          ) as Partial<Record<Difficulty, ActivePracticeRunSnapshot>>)
+        : baseProfile.activePracticeRuns,
     updatedAt: profile.updatedAt ?? baseProfile.updatedAt
   };
 };
@@ -522,13 +582,51 @@ export const applySinglePlayerHighScores = (
   };
 };
 
-export const applyReviveTokens = (profile: PlayerProfile, delta: number) => {
+export const applyExtraGuessPowerUps = (profile: PlayerProfile, delta: number) => {
   const currentProfile = normalizeProfile(profile);
-  const nextReviveTokens = Math.max(0, currentProfile.reviveTokens + Math.floor(delta));
+  const nextExtraGuessPowerUps = Math.max(0, currentProfile.extraGuessPowerUps + Math.floor(delta));
 
   return {
     ...currentProfile,
-    reviveTokens: nextReviveTokens,
+    extraGuessPowerUps: nextExtraGuessPowerUps,
+    updatedAt: new Date().toISOString()
+  };
+};
+
+export const applyCoins = (profile: PlayerProfile, delta: number) => {
+  const currentProfile = normalizeProfile(profile);
+  const nextCoins = Math.max(0, currentProfile.coins + Math.floor(delta));
+
+  return {
+    ...currentProfile,
+    coins: nextCoins,
+    updatedAt: new Date().toISOString()
+  };
+};
+
+export const applyActivePracticeRun = (
+  profile: PlayerProfile,
+  difficulty: Difficulty,
+  snapshot: ActivePracticeRunSnapshot | null
+) => {
+  const currentProfile = normalizeProfile(profile);
+  const nextActivePracticeRuns = {
+    ...currentProfile.activePracticeRuns
+  };
+
+  if (!snapshot) {
+    delete nextActivePracticeRuns[difficulty];
+  } else {
+    nextActivePracticeRuns[difficulty] = {
+      ...snapshot,
+      difficulty,
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  return {
+    ...currentProfile,
+    activePracticeRuns: nextActivePracticeRuns,
     updatedAt: new Date().toISOString()
   };
 };
@@ -556,7 +654,7 @@ export const getDailyPuzzleCurrentStreak = (profile: PlayerProfile, endingDateKe
   return streak;
 };
 
-export const getReviveTokenRewardForDailyPuzzleStreak = (streak: number) => {
+export const getExtraGuessPowerUpRewardForDailyPuzzleStreak = (streak: number) => {
   if (streak === 3) {
     return 1;
   }
@@ -571,6 +669,8 @@ export const getReviveTokenRewardForDailyPuzzleStreak = (streak: number) => {
 
   return 0;
 };
+
+export const getCoinRewardForDailyPuzzleCompletion = () => 25;
 
 export const claimProfileDailyReward = (profile: PlayerProfile, todayKey = getTodayKey()) => {
   const currentProfile = normalizeProfile(profile);
@@ -638,7 +738,8 @@ export const applyDailyPuzzleCompletion = (
   profile: PlayerProfile;
   completion: DailyPuzzleCompletion;
   dailyPuzzleStreak: number;
-  reviveTokenReward: number;
+  extraGuessPowerUpReward: number;
+  coinReward: number;
 } => {
   const currentProfile = normalizeProfile(profile);
   const existingCompletion = currentProfile.dailyPuzzle.completedByDate[dateKey];
@@ -648,7 +749,8 @@ export const applyDailyPuzzleCompletion = (
       profile: currentProfile,
       completion: existingCompletion,
       dailyPuzzleStreak: getDailyPuzzleCurrentStreak(currentProfile, dateKey),
-      reviveTokenReward: 0
+      extraGuessPowerUpReward: 0,
+      coinReward: 0
     };
   }
 
@@ -671,19 +773,24 @@ export const applyDailyPuzzleCompletion = (
     updatedAt: new Date().toISOString()
   };
   const dailyPuzzleStreak = getDailyPuzzleCurrentStreak(profileWithCompletion, dateKey);
-  const reviveTokenReward = getReviveTokenRewardForDailyPuzzleStreak(dailyPuzzleStreak);
-  const profileWithTokens =
-    reviveTokenReward > 0 ? applyReviveTokens(profileWithCompletion, reviveTokenReward) : profileWithCompletion;
+  const extraGuessPowerUpReward = getExtraGuessPowerUpRewardForDailyPuzzleStreak(dailyPuzzleStreak);
+  const coinReward = getCoinRewardForDailyPuzzleCompletion();
+  const profileWithPowerUps =
+    extraGuessPowerUpReward > 0
+      ? applyExtraGuessPowerUps(profileWithCompletion, extraGuessPowerUpReward)
+      : profileWithCompletion;
+  const profileWithCoins = coinReward > 0 ? applyCoins(profileWithPowerUps, coinReward) : profileWithPowerUps;
 
   return {
     profile: {
-      ...profileWithTokens,
-      achievements: getUnlocks(profileWithTokens, currentProfile.lastMatchSummary),
+      ...profileWithCoins,
+      achievements: getUnlocks(profileWithCoins, currentProfile.lastMatchSummary),
       updatedAt: new Date().toISOString()
     },
     completion,
     dailyPuzzleStreak,
-    reviveTokenReward
+    extraGuessPowerUpReward,
+    coinReward
   };
 };
 

@@ -11,6 +11,7 @@ import {
   updateProgressPreferences
 } from "../api/progressionApi";
 import type {
+  ActivePracticeRunSnapshot,
   DailyPuzzleGuessResponse,
   DailyPuzzleStatusResponse,
   LeaderboardEntry,
@@ -20,24 +21,16 @@ import type {
   ProgressSyncResponse
 } from "../types/progression.types";
 import {
-  applyDailyPuzzleCompletion,
-  applyReviveTokens,
   applySinglePlayerHighScores,
-  applyRecordedMatch,
   applySinglePlayerHighRounds,
-  applySoundPlaceholdersEnabled,
-  applyTutorialSeen,
   buildOnlineLeaderboard,
-  claimProfileDailyReward,
   createInitialProfile,
   getDefaultDisplayName,
   normalizeProfile
 } from "../utils/progression";
 import { getLocalTodayKey } from "../utils/dailyPuzzle";
 
-const PROFILE_STORAGE_KEY = "higher-lower-player-progress";
 const PLAYER_KEY_STORAGE_KEY = "higher-lower-player-key";
-const DISPLAY_NAME_STORAGE_KEY = "higher-lower-display-name";
 
 const createPlayerKey = () => `player_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 
@@ -55,7 +48,12 @@ interface PlayerProgressStore {
   toggleSoundPlaceholders: () => Promise<void>;
   updateSinglePlayerHighScore: (difficulty: import("../types/game.types").Difficulty, rounds: number) => Promise<void>;
   updateSinglePlayerBestScore: (difficulty: import("../types/game.types").Difficulty, score: number) => Promise<void>;
-  consumeReviveToken: () => Promise<boolean>;
+  consumeExtraGuessPowerUp: () => Promise<boolean>;
+  spendCoins: (amount: number) => Promise<boolean>;
+  syncActivePracticeRun: (
+    difficulty: import("../types/game.types").Difficulty,
+    snapshot: ActivePracticeRunSnapshot | null
+  ) => Promise<void>;
   claimDailyReward: () => Promise<{
     claimed: boolean;
     points: number;
@@ -78,19 +76,46 @@ interface PlayerProgressStore {
   }) => Promise<void>;
 }
 
-const persistProfile = async (profile: PlayerProfile) => {
-  await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+const practiceDifficulties = ["easy", "hard", "impossible"] as const;
+
+const getSnapshotTimestamp = (snapshot?: ActivePracticeRunSnapshot | null) => {
+  if (!snapshot?.updatedAt) {
+    return 0;
+  }
+
+  const timestamp = new Date(snapshot.updatedAt).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
 };
 
-const persistDisplayName = async (displayName: string) => {
-  await AsyncStorage.setItem(DISPLAY_NAME_STORAGE_KEY, displayName);
-};
-
-const mergeSinglePlayerRecords = (incomingProfile: PlayerProfile, currentProfile: PlayerProfile) =>
-  applySinglePlayerHighScores(
+const mergeSinglePlayerRecords = (incomingProfile: PlayerProfile, currentProfile: PlayerProfile) => {
+  const mergedProfile = applySinglePlayerHighScores(
     applySinglePlayerHighRounds(incomingProfile, currentProfile.stats.singlePlayerHighRounds),
     currentProfile.stats.singlePlayerHighScores
   );
+  const mergedActivePracticeRuns = { ...mergedProfile.activePracticeRuns };
+
+  practiceDifficulties.forEach((difficulty) => {
+    const incomingSnapshot = mergedProfile.activePracticeRuns[difficulty];
+    const currentSnapshot = currentProfile.activePracticeRuns[difficulty];
+
+    if (!incomingSnapshot && currentSnapshot) {
+      mergedActivePracticeRuns[difficulty] = currentSnapshot;
+      return;
+    }
+
+    if (incomingSnapshot && currentSnapshot) {
+      mergedActivePracticeRuns[difficulty] =
+        getSnapshotTimestamp(currentSnapshot) > getSnapshotTimestamp(incomingSnapshot)
+          ? currentSnapshot
+          : incomingSnapshot;
+    }
+  });
+
+  return {
+    ...mergedProfile,
+    activePracticeRuns: mergedActivePracticeRuns
+  };
+};
 
 const applyRemoteSync = async (
   set: (partial: Partial<PlayerProgressStore>) => void,
@@ -118,8 +143,6 @@ const applyRemoteSync = async (
   });
 
   await AsyncStorage.setItem(PLAYER_KEY_STORAGE_KEY, response.playerKey);
-  await persistProfile(normalizedProfile);
-  await persistDisplayName(response.displayName);
 };
 
 export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => ({
@@ -138,36 +161,22 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       await AsyncStorage.setItem(PLAYER_KEY_STORAGE_KEY, playerKey);
     }
 
-    const rawProfile = await AsyncStorage.getItem(PROFILE_STORAGE_KEY);
-    const storedDisplayName = await AsyncStorage.getItem(DISPLAY_NAME_STORAGE_KEY);
-    let mergedProfile = createInitialProfile();
-    const fallbackDisplayName = storedDisplayName ?? getDefaultDisplayName(playerKey);
-
-    try {
-      mergedProfile = normalizeProfile(rawProfile ? (JSON.parse(rawProfile) as Partial<PlayerProfile>) : undefined);
-    } catch {
-      mergedProfile = createInitialProfile();
-    }
+    const fallbackDisplayName = getDefaultDisplayName(playerKey);
 
     set({
       hydrated: true,
       playerKey,
       displayName: fallbackDisplayName,
-      profile: mergedProfile,
-      leaderboard: buildOnlineLeaderboard(mergedProfile)
+      profile: createInitialProfile(),
+      leaderboard: buildOnlineLeaderboard(createInitialProfile())
     });
 
-    try {
-      const response = await bootstrapProgress({
-        playerKey,
-        displayName: fallbackDisplayName,
-        localProfile: mergedProfile
-      });
+    const response = await bootstrapProgress({
+      playerKey,
+      displayName: fallbackDisplayName
+    });
 
-      await applyRemoteSync(set, get, response);
-    } catch {
-      // Local cache remains the fallback until the server is ready.
-    }
+    await applyRemoteSync(set, get, response);
   },
   updateDisplayName: async (displayName) => {
     if (!get().playerKey) {
@@ -182,67 +191,40 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       profile: normalizedProfile,
       leaderboard: response.leaderboard
     });
-    await persistProfile(normalizedProfile);
-    await persistDisplayName(response.displayName);
   },
   markTutorialSeen: async () => {
-    const nextProfile = applyTutorialSeen(get().profile);
-
-    set({ profile: nextProfile });
-    await persistProfile(nextProfile);
-
     if (!get().playerKey) {
-      return;
+      throw new Error("Your profile is still loading. Try again in a moment.");
     }
 
-    try {
-      const response = await updateProgressPreferences({
-        playerKey: get().playerKey!,
-        tutorialSeen: true
-      });
-      const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      tutorialSeen: true
+    });
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 
-      set({
-        displayName: response.displayName,
-        profile: normalizedProfile,
-        leaderboard: response.leaderboard
-      });
-      await persistProfile(normalizedProfile);
-      await persistDisplayName(response.displayName);
-    } catch {
-      // Keep the local value if the backend is temporarily unavailable.
-    }
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
   },
   toggleSoundPlaceholders: async () => {
-    const nextProfile = applySoundPlaceholdersEnabled(
-      get().profile,
-      !get().profile.soundPlaceholdersEnabled
-    );
-
-    set({ profile: nextProfile });
-    await persistProfile(nextProfile);
-
     if (!get().playerKey) {
-      return;
+      throw new Error("Your profile is still loading. Try again in a moment.");
     }
 
-    try {
-      const response = await updateProgressPreferences({
-        playerKey: get().playerKey!,
-        soundPlaceholdersEnabled: nextProfile.soundPlaceholdersEnabled
-      });
-      const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      soundPlaceholdersEnabled: !get().profile.soundPlaceholdersEnabled
+    });
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 
-      set({
-        displayName: response.displayName,
-        profile: normalizedProfile,
-        leaderboard: response.leaderboard
-      });
-      await persistProfile(normalizedProfile);
-      await persistDisplayName(response.displayName);
-    } catch {
-      // The local toggle should keep working even if sync is down.
-    }
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
   },
   updateSinglePlayerHighScore: async (difficulty, rounds) => {
     const currentProfile = get().profile;
@@ -252,36 +234,23 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       return;
     }
 
-    const nextProfile = applySinglePlayerHighRounds(currentProfile, {
-      [difficulty]: rounds
-    });
-
-    set({ profile: nextProfile });
-    await persistProfile(nextProfile);
-
     if (!get().playerKey) {
-      return;
+      throw new Error("Your profile is still loading. Try again in a moment.");
     }
 
-    try {
-      const response = await updateProgressPreferences({
-        playerKey: get().playerKey!,
-        singlePlayerHighRounds: {
-          [difficulty]: rounds
-        }
-      });
-      const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      singlePlayerHighRounds: {
+        [difficulty]: rounds
+      }
+    });
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 
-      set({
-        displayName: response.displayName,
-        profile: normalizedProfile,
-        leaderboard: response.leaderboard
-      });
-      await persistProfile(normalizedProfile);
-      await persistDisplayName(response.displayName);
-    } catch {
-      // Keep the local record even if remote sync is temporarily unavailable.
-    }
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
   },
   updateSinglePlayerBestScore: async (difficulty, score) => {
     const currentProfile = get().profile;
@@ -291,140 +260,132 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       return;
     }
 
-    const nextProfile = applySinglePlayerHighScores(currentProfile, {
-      [difficulty]: score
-    });
-
-    set({ profile: nextProfile });
-    await persistProfile(nextProfile);
-
     if (!get().playerKey) {
-      return;
+      throw new Error("Your profile is still loading. Try again in a moment.");
     }
 
-    try {
-      const response = await updateProgressPreferences({
-        playerKey: get().playerKey!,
-        singlePlayerHighScores: {
-          [difficulty]: score
-        }
-      });
-      const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      singlePlayerHighScores: {
+        [difficulty]: score
+      }
+    });
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 
-      set({
-        displayName: response.displayName,
-        profile: normalizedProfile,
-        leaderboard: response.leaderboard
-      });
-      await persistProfile(normalizedProfile);
-      await persistDisplayName(response.displayName);
-    } catch {
-      // Keep the local record even if remote sync is temporarily unavailable.
-    }
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
   },
-  consumeReviveToken: async () => {
+  consumeExtraGuessPowerUp: async () => {
     const currentProfile = get().profile;
 
-    if (currentProfile.reviveTokens <= 0) {
+    if (currentProfile.extraGuessPowerUps <= 0) {
       return false;
     }
 
-    const nextProfile = applyReviveTokens(currentProfile, -1);
-
-    set({ profile: nextProfile });
-    await persistProfile(nextProfile);
-
     if (!get().playerKey) {
-      return true;
+      throw new Error("Your profile is still loading. Try again in a moment.");
     }
 
-    try {
-      const response = await updateProgressPreferences({
-        playerKey: get().playerKey!,
-        reviveTokensDelta: -1
-      });
-      const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
-
-      set({
-        displayName: response.displayName,
-        profile: normalizedProfile,
-        leaderboard: response.leaderboard
-      });
-      await persistProfile(normalizedProfile);
-      await persistDisplayName(response.displayName);
-      return true;
-    } catch {
-      return true;
-    }
-  },
-  claimDailyReward: async () => {
-    const currentProfile = get().profile;
-    const localResult = claimProfileDailyReward(currentProfile);
-
-    set({ profile: localResult.profile });
-    await persistProfile(localResult.profile);
-
-    if (!get().playerKey) {
-      return {
-        claimed: localResult.claimed,
-        points: localResult.reward.points,
-        xp: localResult.reward.xp,
-        streakDays: localResult.reward.streakDays
-      };
-    }
-
-    try {
-      const response = await claimDailyRewardRemote(get().playerKey!);
-      const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
-
-      set({
-        displayName: response.displayName,
-        profile: normalizedProfile,
-        leaderboard: response.leaderboard
-      });
-      await persistProfile(normalizedProfile);
-      await persistDisplayName(response.displayName);
-
-      return {
-        claimed: response.claimed,
-        points: response.reward.points,
-        xp: response.reward.xp,
-        streakDays: response.reward.streakDays
-      };
-    } catch {
-      return {
-        claimed: localResult.claimed,
-        points: localResult.reward.points,
-        xp: localResult.reward.xp,
-        streakDays: localResult.reward.streakDays
-      };
-    }
-  },
-  recordMatch: async (input) => {
-    const localResult = applyRecordedMatch(get().profile, input);
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      extraGuessPowerUpsDelta: -1
+    });
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 
     set({
-      profile: localResult.profile,
-      leaderboard: buildOnlineLeaderboard(localResult.profile)
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
     });
-    await persistProfile(localResult.profile);
+    return true;
+  },
+  spendCoins: async (amount) => {
+    const spendAmount = Math.max(0, Math.floor(amount));
+
+    if (spendAmount <= 0) {
+      return true;
+    }
+
+    const currentProfile = get().profile;
+
+    if (currentProfile.coins < spendAmount) {
+      return false;
+    }
 
     if (!get().playerKey) {
-      return localResult.record;
+      throw new Error("Your profile is still loading. Try again in a moment.");
     }
 
-    try {
-      const response = await recordMatchRemote({
-        playerKey: get().playerKey!,
-        input
-      });
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      coinsDelta: -spendAmount
+    });
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 
-      await applyRemoteSync(set, get, response);
-
-      return response.record;
-    } catch {
-      return localResult.record;
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
+    return true;
+  },
+  syncActivePracticeRun: async (difficulty, snapshot) => {
+    if (!get().playerKey) {
+      throw new Error("Your profile is still loading. Try again in a moment.");
     }
+
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      activePracticeRun: {
+        difficulty,
+        snapshot
+      }
+    });
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
+  },
+  claimDailyReward: async () => {
+    if (!get().playerKey) {
+      throw new Error("Your profile is still loading. Try again in a moment.");
+    }
+
+    const response = await claimDailyRewardRemote(get().playerKey!);
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
+
+    return {
+      claimed: response.claimed,
+      points: response.reward.points,
+      xp: response.reward.xp,
+      streakDays: response.reward.streakDays
+    };
+  },
+  recordMatch: async (input) => {
+    if (!get().playerKey) {
+      throw new Error("Your profile is still loading. Try again in a moment.");
+    }
+
+    const response = await recordMatchRemote({
+      playerKey: get().playerKey!,
+      input
+    });
+
+    await applyRemoteSync(set, get, response);
+
+    return response.record;
   },
   fetchDailyPuzzleStatus: async (dateKey) => {
     if (!get().playerKey) {
@@ -453,18 +414,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     return response;
   },
   saveDailyPuzzleCompletionLocal: async (input) => {
-    const result = applyDailyPuzzleCompletion(
-      get().profile,
-      input.dateKey,
-      input.attempts,
-      input.durationMs,
-      input.recordId
-    );
-
-    set({
-      profile: result.profile
-    });
-    await persistProfile(result.profile);
+    void input;
   }
 }));
 
