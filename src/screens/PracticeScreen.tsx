@@ -146,7 +146,7 @@ export default function PracticeScreen() {
 
   useEffect(() => {
     if (runState === "game-over") {
-      void syncActivePracticeRun(difficulty, null);
+      void syncActivePracticeRun(difficulty, null).catch(() => {});
       return;
     }
 
@@ -164,7 +164,7 @@ export default function PracticeScreen() {
       updatedAt: new Date().toISOString()
     };
 
-    void syncActivePracticeRun(difficulty, snapshot);
+    void syncActivePracticeRun(difficulty, snapshot).catch(() => {});
   }, [
     currentScore,
     difficulty,
