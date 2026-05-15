@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { ComponentProps, ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AppHeader, HeaderBackButton } from "./AppHeader";
 import { colors, radii, shadows, spacing } from "../utils/theme";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -47,6 +48,10 @@ export function TopBar({
   title,
   variant = "default"
 }: TopBarProps) {
+  if (variant === "header-only") {
+    return <AppHeader left={<HeaderBackButton onPress={onBack} />} />;
+  }
+
   return (
     <View style={styles.topBar}>
       <View style={styles.topHeader}>
@@ -60,14 +65,13 @@ export function TopBar({
         <View style={[styles.labelOnlyBadge, { backgroundColor: `${accent}14`, borderColor: `${accent}32` }]}>
           <Text style={[styles.labelOnlyText, { color: accent }]}>{label}</Text>
         </View>
-      ) : variant === "header-only" ? null : (
+      ) : (
         <>
           <Text style={[styles.eyebrow, { color: accent }]}>{label}</Text>
           {title !== "HIGHER LOWER" ? <Text style={styles.screenTitle}>{title}</Text> : null}
           {subtitle ? <Text style={styles.screenSubtitle}>{subtitle}</Text> : null}
         </>
       )}
-      <View style={styles.headerRule} />
     </View>
   );
 }
@@ -387,7 +391,12 @@ export function BottomTabs({ activeTab, onChange }: BottomTabsProps) {
 
 const styles = StyleSheet.create({
   topBar: {
-    gap: spacing.xs
+    borderBottomColor: colors.surfaceMuted,
+    borderBottomWidth: 6,
+    gap: spacing.xs,
+    marginHorizontal: -spacing.md,
+    paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.md
   },
   topHeader: {
     alignItems: "center",
@@ -435,11 +444,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 16,
     lineHeight: 22
-  },
-  headerRule: {
-    backgroundColor: colors.surfaceMuted,
-    height: 6,
-    marginHorizontal: -spacing.md
   },
   pill: {
     backgroundColor: colors.surfaceAlt,

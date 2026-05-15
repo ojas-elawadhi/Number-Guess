@@ -2,8 +2,9 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
+import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderDateBadge } from "../components/AppHeader";
 import { ConfettiBurst } from "../components/ConfettiBurst";
-import { FeedbackBadge, HistoryStrip, NumberPad, StatusPill, TopBar } from "../components/GameKit";
+import { FeedbackBadge, HistoryStrip, NumberPad, StatusPill } from "../components/GameKit";
 import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
@@ -300,22 +301,18 @@ export default function DailyPuzzleGameScreen() {
       <ConfettiBurst visible={completed} />
       <GameStartCountdown controller={countdown} label="Daily puzzle" />
 
-      <TopBar
-        accent={colors.warning}
-        label="Daily Puzzle"
-        onBack={() => router.back()}
-        title="HIGHER LOWER"
-        variant="header-only"
+      <AppHeader
+        center={<HeaderDateBadge dateKey={puzzleDateKey} />}
+        left={<HeaderBackButton onPress={() => router.back()} />}
+        right={<HeaderCoinsPill coins={profile.coins} />}
       />
 
       <View style={styles.metaRow}>
         <View style={styles.modeBadge}>
           <Text style={styles.modeBadgeText}>{usingOfflineFallback ? "Local Board" : "Daily Board"}</Text>
         </View>
-        <StatusPill label={title} tone="accent" />
         <StatusPill label={`1-${maxNumber}`} tone="neutral" />
         <StatusPill label={`${profile.extraGuessPowerUps} Power-Ups`} tone="neutral" />
-        <StatusPill label={`${profile.coins} Coins`} tone="neutral" />
       </View>
 
       <View style={styles.feedbackCard}>

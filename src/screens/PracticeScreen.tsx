@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderScorePill } from "../components/AppHeader";
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
@@ -444,32 +445,27 @@ export default function PracticeScreen() {
     <ScreenContainer contentStyle={styles.screen}>
       <ConfettiBurst visible={isRoundCleared} />
       <GameStartCountdown controller={countdown} />
-      <View style={styles.topRow}>
-        <Pressable onPress={handleBackPress} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-          <Ionicons color="#636b72" name="arrow-back" size={22} />
-        </Pressable>
+      <AppHeader
+        center={<HeaderScorePill score={currentScore} />}
+        left={<HeaderBackButton onPress={handleBackPress} />}
+        right={<HeaderCoinsPill coins={coins} />}
+      />
 
-        <View style={styles.miniHistory}>
-          {historyItems.length === 0 ? (
-            <Text style={styles.historyPlaceholder}>Range {getDifficultyRangeLabel(difficulty)}</Text>
-          ) : (
-            historyItems.map((entry, index) => (
-              <View key={`${entry.guess}-${index}`} style={styles.historyChip}>
-                <Text style={styles.historyGuess}>{entry.guess}</Text>
-                <Ionicons
-                  color={entry.result === "higher" ? "#ff8a6a" : entry.result === "lower" ? "#61b7ff" : "#1fc46d"}
-                  name={entry.result === "higher" ? "arrow-up" : entry.result === "lower" ? "arrow-down" : "checkmark"}
-                  size={12}
-                />
-              </View>
-            ))
-          )}
-        </View>
-
-        <View style={styles.coinChip}>
-          <Ionicons color="#e3a600" name="cash" size={14} />
-          <Text style={styles.coinChipText}>{coins}</Text>
-        </View>
+      <View style={styles.historyRow}>
+        {historyItems.length === 0 ? (
+          <Text style={styles.historyPlaceholder}>Range {getDifficultyRangeLabel(difficulty)}</Text>
+        ) : (
+          historyItems.map((entry, index) => (
+            <View key={`${entry.guess}-${index}`} style={styles.historyChip}>
+              <Text style={styles.historyGuess}>{entry.guess}</Text>
+              <Ionicons
+                color={entry.result === "higher" ? "#ff8a6a" : entry.result === "lower" ? "#61b7ff" : "#1fc46d"}
+                name={entry.result === "higher" ? "arrow-up" : entry.result === "lower" ? "arrow-down" : "checkmark"}
+                size={12}
+              />
+            </View>
+          ))
+        )}
       </View>
 
       <View style={[styles.bannerCard, { backgroundColor: bannerColor }]}>
@@ -485,7 +481,7 @@ export default function PracticeScreen() {
             </Text>
           </View>
           <View style={styles.statusChip}>
-            <Text style={styles.statusChipText}>SCORE {currentScore}</Text>
+            <Text style={styles.statusChipText}>ROUND {roundNumber}</Text>
           </View>
         </View>
 
@@ -653,43 +649,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     paddingTop: spacing.sm
   },
-  topRow: {
+  historyRow: {
     alignItems: "center",
     flexDirection: "row",
-    minHeight: 30
-  },
-  backButton: {
-    alignItems: "center",
-    height: 30,
     justifyContent: "center",
-    width: 30
-  },
-  miniHistory: {
-    alignItems: "center",
-    flex: 1,
-    flexDirection: "row",
     gap: spacing.xs,
-    justifyContent: "center",
-    minHeight: 30,
-    paddingHorizontal: spacing.xs
-  },
-  coinChip: {
-    alignItems: "center",
-    backgroundColor: "#fff4c4",
-    borderColor: "#e7d27a",
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 4,
-    justifyContent: "center",
-    minHeight: 28,
-    minWidth: 68,
-    paddingHorizontal: 10
-  },
-  coinChipText: {
-    color: "#816200",
-    fontSize: 12,
-    fontWeight: "900"
+    minHeight: 24
   },
   historyPlaceholder: {
     color: "#9ca3a8",

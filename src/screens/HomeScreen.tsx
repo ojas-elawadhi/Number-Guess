@@ -2,7 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Animated, Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import Svg, { Circle } from "react-native-svg";
 
+import { AppHeader, HeaderCoinsPill } from "../components/AppHeader";
 import { BottomTabs, MiniCard, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
@@ -26,7 +28,10 @@ const titleLetters = [
   { accent: "#5cc78f", letter: "S" }
 ] as const;
 
-const XP_RING_SEGMENTS = 40;
+const PROFILE_RING_SIZE = 40;
+const PROFILE_RING_STROKE = 4;
+const PROFILE_RING_RADIUS = (PROFILE_RING_SIZE - PROFILE_RING_STROKE) / 2;
+const PROFILE_RING_CIRCUMFERENCE = 2 * Math.PI * PROFILE_RING_RADIUS;
 
 export default function HomeScreen() {
   const isConnected = useOnlineGameStore((state) => state.isConnected);
@@ -76,7 +81,7 @@ export default function HomeScreen() {
   const nextLevelFloorXp = 140 * Math.max(1, profile.level) ** 2;
   const levelXpSpan = Math.max(1, nextLevelFloorXp - currentLevelFloorXp);
   const levelProgress = Math.min(1, Math.max(0, (profile.xp - currentLevelFloorXp) / levelXpSpan));
-  const filledRingSegments = Math.max(1, Math.round(levelProgress * XP_RING_SEGMENTS));
+  const levelProgressOffset = PROFILE_RING_CIRCUMFERENCE * (1 - levelProgress);
   const singlePlayerBestScore = Math.max(
     singlePlayerHighScores.easy,
     singlePlayerHighScores.hard,
@@ -128,56 +133,63 @@ export default function HomeScreen() {
   return (
     <ScreenContainer contentStyle={styles.screen}>
       <Animated.View style={[styles.shell, { opacity: fadeIn }]}>
-        <View style={styles.topBar}>
-          <Pressable onPress={openProfileModal} style={({ pressed }) => [styles.profileCrest, pressed && styles.pressed]}>
-            <View style={styles.levelBurstShadow} />
-            <View style={styles.levelBurst}>
-              <View style={[styles.levelBurstLayer, styles.levelBurstLayerA]} />
-              <View style={[styles.levelBurstLayer, styles.levelBurstLayerB]} />
-              <Text style={styles.levelBurstText}>{profile.level}</Text>
-            </View>
-
-            <View style={styles.profileMedallion}>
-              <View style={styles.profileRingBase}>
-                {Array.from({ length: XP_RING_SEGMENTS }).map((_, index) => {
-                  const angle = (360 / XP_RING_SEGMENTS) * index;
-
-                  return (
-                    <View
-                      key={index}
-                      style={[
-                        styles.profileRingSegment,
-                        index < filledRingSegments ? styles.profileRingSegmentFilled : styles.profileRingSegmentEmpty,
-                        {
-                          transform: [
-                            { translateX: -2 },
-                            { translateY: -3.5 },
-                            { rotate: `${angle}deg` },
-                            { translateY: -24 }
-                          ]
-                        }
-                      ]}
-                    />
-                  );
-                })}
-              </View>
-
-              <View style={styles.profileRingInner}>
-                <View style={styles.profileAvatarCore}>
-                  <View style={styles.profileAvatarGlow} />
-                  <Ionicons color="#173d64" name="school" size={20} />
+        <AppHeader
+          center={
+            <View style={styles.homeHeaderCenter}>
+              <Pressable onPress={openProfileModal} style={({ pressed }) => [styles.profileCrest, pressed && styles.pressed]}>
+                <View style={styles.levelBurstShadow} />
+                <View style={styles.levelBurst}>
+                  <View style={[styles.levelBurstLayer, styles.levelBurstLayerA]} />
+                  {/* <View style={[styles.levelBurstLayer, styles.levelBurstLayerB]} /> */}
+                  <Text style={styles.levelBurstText}>{profile.level}</Text>
                 </View>
-              </View>
-            </View>
 
-            <View style={styles.profileShield}>
-              <Ionicons color="#7a8794" name="shield-half" size={14} />
-              <Text style={styles.profileShieldText}>{displayName.slice(0, 1).toUpperCase()}</Text>
-            </View>
-          </Pressable>
-        </View>
+                <View style={styles.profileMedallion}>
+                  <View style={styles.profileRingBase}>
+                    <Svg height={PROFILE_RING_SIZE} style={styles.profileRingSvg} width={PROFILE_RING_SIZE}>
+                      <Circle
+                        cx={PROFILE_RING_SIZE / 2}
+                        cy={PROFILE_RING_SIZE / 2}
+                        fill="none"
+                        r={PROFILE_RING_RADIUS}
+                        stroke="#aa5139"
+                        strokeWidth={PROFILE_RING_STROKE}
+                      />
+                      <Circle
+                        cx={PROFILE_RING_SIZE / 2}
+                        cy={PROFILE_RING_SIZE / 2}
+                        fill="none"
+                        r={PROFILE_RING_RADIUS}
+                        stroke="#19d6e9"
+                        strokeDasharray={PROFILE_RING_CIRCUMFERENCE}
+                        strokeDashoffset={levelProgressOffset}
+                        strokeLinecap="round"
+                        strokeWidth={PROFILE_RING_STROKE}
+                        transform={`rotate(-90 ${PROFILE_RING_SIZE / 2} ${PROFILE_RING_SIZE / 2})`}
+                      />
+                    </Svg>
+                  </View>
 
-        <View style={styles.rule} />
+                  <View style={styles.profileRingInner}>
+                    <View style={styles.profileAvatarCore}>
+                      <Ionicons color="#173d64" name="school" size={18} />
+                    </View>
+                  </View>
+                </View>
+
+                {/* <View style={styles.profileShield}>
+                  <Ionicons color="#7a8794" name="shield-half" size={12} />
+                  <Text style={styles.profileShieldText}>{displayName.slice(0, 1).toUpperCase()}</Text>
+                </View> */}
+              </Pressable>
+            </View>
+          }
+          right={
+            <View style={styles.homeHeaderRight}>
+              <HeaderCoinsPill coins={profile.coins} />
+            </View>
+          }
+        />
 
         <View style={styles.mainPane}>
           {activeTab === "play" ? (
@@ -450,48 +462,45 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1
   },
-  topBar: {
-    alignItems: "center",
-    height: 52,
-    justifyContent: "center",
-    position: "relative",
-    zIndex: 2
+  homeHeaderCenter: {
+    transform: [{ translateY: 24 }, { scale: 1.72 }]
+  },
+  homeHeaderRight: {
+    justifyContent: "center"
   },
   profileCrest: {
     alignItems: "center",
-    height: 76,
+    height: 56,
     justifyContent: "flex-start",
-    position: "absolute",
-    top: -4,
-    width: 72,
+    width: 60,
     zIndex: 3
   },
   levelBurstShadow: {
     backgroundColor: "rgba(24, 79, 124, 0.18)",
     borderRadius: 10,
-    height: 30,
+    height: 24,
     position: "absolute",
-    top: 10,
+    top: 2,
     transform: [{ rotate: "14deg" }],
-    width: 30
+    width: 24
   },
   levelBurst: {
     alignItems: "center",
-    height: 32,
+    height: 20,
     justifyContent: "center",
     position: "absolute",
-    top: 8,
-    width: 32,
+    top: 0,
+    width: 20,
     zIndex: 4
   },
   levelBurstLayer: {
     backgroundColor: "#66d8ff",
     borderColor: "#287fc2",
-    borderRadius: 8,
+    borderRadius: 6,
     borderWidth: 2.5,
-    height: 24,
+    height: 18,
     position: "absolute",
-    width: 24
+    width: 18
   },
   levelBurstLayerA: {
     transform: [{ rotate: "45deg" }]
@@ -501,7 +510,7 @@ const styles = StyleSheet.create({
   },
   levelBurstText: {
     color: "#ffffff",
-    fontSize: 14,
+    fontSize: 9,
     fontWeight: "900",
     textShadowColor: "rgba(25, 35, 66, 0.55)",
     textShadowOffset: { width: 0, height: 2 },
@@ -509,62 +518,51 @@ const styles = StyleSheet.create({
   },
   profileMedallion: {
     alignItems: "center",
-    backgroundColor: "#f0a690",
+    backgroundColor: "#f7c8ba",
     borderRadius: 999,
-    height: 54,
+    height: 44,
     justifyContent: "center",
-    marginTop: 20,
+    marginTop: 8,
     padding: 4,
-    width: 54
+    width: 44
   },
   profileRingBase: {
     alignItems: "center",
     backgroundColor: "#c96744",
     borderRadius: 999,
-    height: 46,
+    height: 40,
     justifyContent: "center",
     position: "absolute",
-    width: 46
+    width: 40
   },
-  profileRingSegment: {
-    borderRadius: 999,
-    height: 7,
-    left: "50%",
-    position: "absolute",
-    top: "50%",
-    width: 4
-  },
-  profileRingSegmentFilled: {
-    backgroundColor: "#19d6e9"
-  },
-  profileRingSegmentEmpty: {
-    backgroundColor: "#ba5f3e"
+  profileRingSvg: {
+    position: "absolute"
   },
   profileRingInner: {
     alignItems: "center",
     backgroundColor: "#f7c8ba",
     borderRadius: 999,
-    height: 40,
+    height: 34,
     justifyContent: "center",
-    width: 40
+    width: 34
   },
   profileAvatarCore: {
     alignItems: "center",
     backgroundColor: "#5aa6ff",
     borderRadius: 999,
-    height: 36,
+    height: 30,
     justifyContent: "center",
     overflow: "hidden",
-    width: 36
+    width: 30
   },
   profileAvatarGlow: {
     backgroundColor: "rgba(255, 255, 255, 0.35)",
     borderRadius: 999,
-    height: 20,
-    left: 8,
+    height: 38,
+    left: 7,
     position: "absolute",
-    top: 4,
-    width: 20
+    top: 3,
+    width: 38
   },
   profileShield: {
     alignItems: "center",
@@ -617,16 +615,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textAlign: "center"
   },
-  rule: {
-    backgroundColor: colors.surfaceMuted,
-    height: 4,
-    marginHorizontal: -spacing.md,
-    marginTop: 0,
-    position: "relative",
-    zIndex: 1
-  },
   mainPane: {
     flex: 1,
+    justifyContent: "center",
     paddingTop: spacing.md
   },
   tabPane: {
