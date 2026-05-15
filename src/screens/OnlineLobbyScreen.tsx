@@ -123,7 +123,7 @@ export default function OnlineLobbyScreen() {
 
   const handleShareCode = async () => {
     await Share.share({
-      message: `Join my Code Wars room: ${room.roomId}`
+      message: `Join my Code Guess room: ${room.roomId}`
     });
   };
 

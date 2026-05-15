@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Code Wars Multiplayer",
+    "name": "Code Guess",
     "slug": "code-wars-multiplayer",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "codewars",
+    "scheme": "codeguess",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "plugins": [
@@ -14,7 +14,7 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.ojas.codewars",
+      "package": "com.zenostudios.codewars",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },

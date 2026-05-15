@@ -5,11 +5,11 @@ const iosAppId =
 
 module.exports = {
   expo: {
-    name: "Code Wars Multiplayer",
+    name: "Code Guess",
     slug: "code-wars-multiplayer",
     version: "1.0.0",
     orientation: "portrait",
-    scheme: "codewars",
+    scheme: "codeguess",
     userInterfaceStyle: "light",
     newArchEnabled: true,
     plugins: [
@@ -26,7 +26,7 @@ module.exports = {
       supportsTablet: true
     },
     android: {
-      package: "com.ojas.codewars",
+      package: "com.zenostudios.codewars",
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false
     },

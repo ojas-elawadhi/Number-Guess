@@ -16,6 +16,8 @@ import type {
 export const MAX_HISTORY_ITEMS = 20;
 export const DISPLAY_NAME_MIN_LENGTH = 3;
 export const DISPLAY_NAME_MAX_LENGTH = 20;
+export const LEVEL_UP_COIN_REWARD = 50;
+export const LEVEL_UP_EXTRA_GUESS_POWER_UP_REWARD = 1;
 
 const difficultyMultipliers: Record<Difficulty, number> = {
   easy: 1,
@@ -310,6 +312,23 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
 };
 
 export const getLevelFromXp = (xp: number) => Math.max(1, Math.floor(Math.sqrt(xp / 140)) + 1);
+
+const applyLevelUpRewards = (profile: PlayerProfile, previousLevel: number) => {
+  const currentProfile = normalizeProfile(profile);
+  const levelGain = Math.max(0, currentProfile.level - previousLevel);
+
+  if (levelGain === 0) {
+    return currentProfile;
+  }
+
+  return {
+    ...currentProfile,
+    coins: currentProfile.coins + levelGain * LEVEL_UP_COIN_REWARD,
+    extraGuessPowerUps:
+      currentProfile.extraGuessPowerUps + levelGain * LEVEL_UP_EXTRA_GUESS_POWER_UP_REWARD,
+    updatedAt: new Date().toISOString()
+  };
+};
 
 const getBaseScore = (outcome: MatchOutcome) => {
   if (outcome === "win") {
@@ -694,7 +713,7 @@ export const claimProfileDailyReward = (profile: PlayerProfile, todayKey = getTo
       : 1;
   const reward = getDailyRewardValues(streakDays);
   const xp = currentProfile.xp + reward.xp;
-  const nextProfile: PlayerProfile = {
+  const leveledProfile: PlayerProfile = {
     ...currentProfile,
     xp,
     level: getLevelFromXp(xp),
@@ -711,6 +730,7 @@ export const claimProfileDailyReward = (profile: PlayerProfile, todayKey = getTo
     },
     updatedAt: new Date().toISOString()
   };
+  const nextProfile = applyLevelUpRewards(leveledProfile, currentProfile.level);
 
   nextProfile.achievements = getUnlocks(nextProfile, nextProfile.lastMatchSummary);
 
@@ -850,7 +870,7 @@ export const applyRecordedMatch = (profile: PlayerProfile, input: MatchInput) =>
     levelAfter: getLevelFromXp(xp)
   };
 
-  const nextProfile: PlayerProfile = {
+  const leveledProfile: PlayerProfile = {
     ...currentProfile,
     xp,
     level: record.levelAfter,
@@ -862,6 +882,7 @@ export const applyRecordedMatch = (profile: PlayerProfile, input: MatchInput) =>
     lastMatchSummary: record,
     updatedAt: new Date().toISOString()
   };
+  const nextProfile = applyLevelUpRewards(leveledProfile, currentProfile.level);
 
   nextProfile.achievements = getUnlocks(nextProfile, record);
 

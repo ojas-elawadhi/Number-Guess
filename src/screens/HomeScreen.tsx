@@ -19,10 +19,11 @@ const titleLetters = [
   { accent: "#5db5f5", letter: "O" },
   { accent: "#9dc95b", letter: "D" },
   { accent: "#f7b33d", letter: "E" },
-  { accent: "#d979bc", letter: "W" },
-  { accent: "#ee6b62", letter: "A" },
-  { accent: "#7cc8ff", letter: "R" },
-  { accent: "#a98ee8", letter: "S" }
+  { accent: "#d979bc", letter: "G" },
+  { accent: "#ee6b62", letter: "U" },
+  { accent: "#7cc8ff", letter: "E" },
+  { accent: "#a98ee8", letter: "S" },
+  { accent: "#5cc78f", letter: "S" }
 ] as const;
 
 const XP_RING_SEGMENTS = 40;
@@ -186,10 +187,10 @@ export default function HomeScreen() {
                   <View style={styles.wordRow}>
                     {titleLetters.map((item, index) => (
                       <View
-                        key={item.letter}
+                        key={`${item.letter}-${index}`}
                         style={[
                           styles.wordBubble,
-                          index === 3 && styles.wordBreakAfter,
+                          index === 3 && styles.wordBubbleWordEnd,
                           { backgroundColor: item.accent }
                         ]}
                       >
@@ -596,19 +597,19 @@ const styles = StyleSheet.create({
   wordBubble: {
     alignItems: "center",
     borderRadius: radii.pill,
-    height: 42,
+    height: 34,
     justifyContent: "center",
-    width: 42,
+    width: 34,
     ...shadows.tactile
   },
-  wordBreakAfter: {
-    marginRight: 4
+  wordBubbleWordEnd: {
+    marginRight: spacing.sm
   },
   wordBubbleText: {
     color: "#ffffff",
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "900",
-    letterSpacing: 0.8
+    letterSpacing: 0.5
   },
   heroCaption: {
     color: colors.textMuted,
