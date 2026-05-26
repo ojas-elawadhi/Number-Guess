@@ -61,6 +61,11 @@ progressionRouter.patch("/preferences", async (request, response) => {
       return;
     }
 
+    if (typeof payload.skipBoostersDelta === "number" && payload.skipBoostersDelta !== 0) {
+      response.json(await progressionService.adjustSkipBoosters(payload.playerKey, payload.skipBoostersDelta));
+      return;
+    }
+
     if (typeof payload.coinsDelta === "number" && payload.coinsDelta !== 0) {
       response.json(await progressionService.adjustCoins(payload.playerKey, payload.coinsDelta));
       return;

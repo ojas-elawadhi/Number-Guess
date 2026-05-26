@@ -15,6 +15,7 @@ import {
   applyActivePracticeRun,
   applyCoins,
   applyExtraGuessPowerUps,
+  applySkipBoosters,
   applyRecordedMatch,
   applySinglePlayerHighScores,
   applySinglePlayerHighRounds,
@@ -134,6 +135,10 @@ class ProgressionService {
 
   async adjustExtraGuessPowerUps(playerKey: string, delta: number) {
     return this.updateProfile(playerKey, (profile) => applyExtraGuessPowerUps(profile, delta));
+  }
+
+  async adjustSkipBoosters(playerKey: string, delta: number) {
+    return this.updateProfile(playerKey, (profile) => applySkipBoosters(profile, delta));
   }
 
   async adjustCoins(playerKey: string, delta: number) {

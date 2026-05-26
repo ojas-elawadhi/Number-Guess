@@ -36,6 +36,7 @@ const createPlayerKey = () => `player_${Date.now().toString(36)}_${Math.random()
 
 interface PlayerProgressStore {
   hydrated: boolean;
+  progressReady: boolean;
   playerKey: string | null;
   displayName: string;
   profile: PlayerProfile;
@@ -49,7 +50,11 @@ interface PlayerProgressStore {
   updateSinglePlayerHighScore: (difficulty: import("../types/game.types").Difficulty, rounds: number) => Promise<void>;
   updateSinglePlayerBestScore: (difficulty: import("../types/game.types").Difficulty, score: number) => Promise<void>;
   consumeExtraGuessPowerUp: () => Promise<boolean>;
+  awardExtraGuessPowerUps: (amount: number) => Promise<boolean>;
+  consumeSkipBooster: () => Promise<boolean>;
+  awardSkipBoosters: (amount: number) => Promise<boolean>;
   spendCoins: (amount: number) => Promise<boolean>;
+  awardCoins: (amount: number) => Promise<boolean>;
   syncActivePracticeRun: (
     difficulty: import("../types/game.types").Difficulty,
     snapshot: ActivePracticeRunSnapshot | null
@@ -147,6 +152,7 @@ const applyRemoteSync = async (
 
 export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => ({
   hydrated: false,
+  progressReady: false,
   playerKey: null,
   displayName: "",
   profile: createInitialProfile(),
@@ -165,18 +171,25 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
 
     set({
       hydrated: true,
+      progressReady: false,
       playerKey,
       displayName: fallbackDisplayName,
       profile: createInitialProfile(),
       leaderboard: buildOnlineLeaderboard(createInitialProfile())
     });
 
-    const response = await bootstrapProgress({
-      playerKey,
-      displayName: fallbackDisplayName
-    });
+    try {
+      const response = await bootstrapProgress({
+        playerKey,
+        displayName: fallbackDisplayName
+      });
 
-    await applyRemoteSync(set, get, response);
+      await applyRemoteSync(set, get, response);
+    } finally {
+      // Remote profile has settled (loaded or failed). Screens can now safely
+      // restore from / sync the persisted snapshot without clobbering it.
+      set({ progressReady: true });
+    }
   },
   updateDisplayName: async (displayName) => {
     if (!get().playerKey) {
@@ -302,6 +315,78 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     });
     return true;
   },
+  awardExtraGuessPowerUps: async (amount) => {
+    const awardAmount = Math.max(0, Math.floor(amount));
+
+    if (awardAmount <= 0) {
+      return true;
+    }
+
+    if (!get().playerKey) {
+      return false;
+    }
+
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      extraGuessPowerUpsDelta: awardAmount
+    });
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
+    return true;
+  },
+  consumeSkipBooster: async () => {
+    const currentProfile = get().profile;
+
+    if (currentProfile.skipBoosters <= 0) {
+      return false;
+    }
+
+    if (!get().playerKey) {
+      throw new Error("Your profile is still loading. Try again in a moment.");
+    }
+
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      skipBoostersDelta: -1
+    });
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
+    return true;
+  },
+  awardSkipBoosters: async (amount) => {
+    const awardAmount = Math.max(0, Math.floor(amount));
+
+    if (awardAmount <= 0) {
+      return true;
+    }
+
+    if (!get().playerKey) {
+      return false;
+    }
+
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      skipBoostersDelta: awardAmount
+    });
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
+    return true;
+  },
   spendCoins: async (amount) => {
     const spendAmount = Math.max(0, Math.floor(amount));
 
@@ -322,6 +407,30 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     const response = await updateProgressPreferences({
       playerKey: get().playerKey!,
       coinsDelta: -spendAmount
+    });
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
+    return true;
+  },
+  awardCoins: async (amount) => {
+    const awardAmount = Math.max(0, Math.floor(amount));
+
+    if (awardAmount <= 0) {
+      return true;
+    }
+
+    if (!get().playerKey) {
+      return false;
+    }
+
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      coinsDelta: awardAmount
     });
     const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 

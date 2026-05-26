@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderScorePill } from "../components/AppHeader";
 import { ConfettiBurst } from "../components/ConfettiBurst";
@@ -14,7 +14,7 @@ import type { Difficulty, GuessFeedback } from "../types/game.types";
 import type { ActivePracticeRunSnapshot, MatchRecord } from "../types/progression.types";
 import { formatDuration } from "../utils/progression";
 import { colors, radii, spacing } from "../utils/theme";
-import { getDifficultyConfig, getDifficultyRangeLabel, parseDifficulty } from "../../shared/difficulty";
+import { getDifficultyConfig, parseDifficulty } from "../../shared/difficulty";
 
 interface PracticeGuessEntry {
   guess: number;
@@ -36,13 +36,37 @@ const canRestorePracticeRun = (
 ): snapshot is ActivePracticeRunSnapshot =>
   Boolean(
     snapshot &&
-      snapshot.remainingChances > 0 &&
-      snapshot.roundNumber >= 1 &&
-      snapshot.secretNumber >= 1 &&
-      snapshot.secretNumber <= maxNumber
+    snapshot.remainingChances > 0 &&
+    snapshot.roundNumber >= 1 &&
+    snapshot.secretNumber >= 1 &&
+    snapshot.secretNumber <= maxNumber
   );
 
-export default function PracticeScreen() {
+function CoinStack() {
+  return (
+    <View style={styles.winCoinStack}>
+      {(["winCoinBackLeft", "winCoinBackRight", "winCoinFront"] as const).map((position) => (
+        <View key={position} style={[styles.winCoin, styles[position]]}>
+          <View style={styles.winCoinInner}>
+            <Ionicons color="#ffd85a" name="star" size={9} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function Coin() {
+  return (
+    <View style={styles.headerCoin}>
+      <View style={styles.headerCoinInner}>
+        <Ionicons color="#ffd85a" name="star" size={13} />
+      </View>
+    </View>
+  );
+}
+
+function PracticeGame() {
   const params = useLocalSearchParams<{ difficulty?: string }>();
   const difficulty: Difficulty = parseDifficulty(params.difficulty);
   const difficultyConfig = getDifficultyConfig(difficulty);
@@ -51,12 +75,15 @@ export default function PracticeScreen() {
   const profile = usePlayerProgressStore((state) => state.profile);
   const coins = usePlayerProgressStore((state) => state.profile.coins);
   const extraGuessPowerUps = usePlayerProgressStore((state) => state.profile.extraGuessPowerUps);
+  const skipBoosters = usePlayerProgressStore((state) => state.profile.skipBoosters);
   const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
   const singlePlayerHighRounds = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighRounds);
   const singlePlayerHighScores = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighScores);
   const updateSinglePlayerHighScore = usePlayerProgressStore((state) => state.updateSinglePlayerHighScore);
   const updateSinglePlayerBestScore = usePlayerProgressStore((state) => state.updateSinglePlayerBestScore);
   const consumeExtraGuessPowerUp = usePlayerProgressStore((state) => state.consumeExtraGuessPowerUp);
+  const consumeSkipBooster = usePlayerProgressStore((state) => state.consumeSkipBooster);
+  const awardCoins = usePlayerProgressStore((state) => state.awardCoins);
   const syncActivePracticeRun = usePlayerProgressStore((state) => state.syncActivePracticeRun);
   const countdown = useGameStartCountdown();
   const { countdownActive, startCountdown } = countdown;
@@ -66,6 +93,7 @@ export default function PracticeScreen() {
     ? savedPracticeRun
     : null;
   const roundStartTimeRef = useRef(Date.now() - (restoredPracticeRun?.roundElapsedMs ?? 0));
+  const isInitialSyncRef = useRef(true);
   const [secretNumber, setSecretNumber] = useState(() => restoredPracticeRun?.secretNumber ?? createSecretNumber());
   const [guess, setGuess] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -80,20 +108,22 @@ export default function PracticeScreen() {
   const [currentScore, setCurrentScore] = useState(() => restoredPracticeRun?.currentScore ?? 0);
   const [lastScoreGain, setLastScoreGain] = useState(() => restoredPracticeRun?.lastScoreGain ?? 0);
   const [runState, setRunState] = useState<PracticeRunState>(() => restoredPracticeRun?.runState ?? "playing");
-  const [powerUpAction, setPowerUpAction] = useState<"inventory" | "ad" | null>(null);
+  const [powerUpAction, setPowerUpAction] = useState<
+    "extra-guess-inventory" | "extra-guess-ad" | "skip-inventory" | "skip-ad" | null
+  >(null);
   const [powerUpMessage, setPowerUpMessage] = useState<string | null>(null);
   const [reviveUsedThisRun, setReviveUsedThisRun] = useState(() => restoredPracticeRun?.reviveUsedThisRun ?? false);
   const [reviveAction, setReviveAction] = useState<"ad" | null>(null);
   const [reviveMessage, setReviveMessage] = useState<string | null>(null);
   const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
+  const [coinBonusClaimed, setCoinBonusClaimed] = useState(false);
+  const [coinClaimAction, setCoinClaimAction] = useState<"ad" | null>(null);
   const isRoundCleared = runState === "round-cleared";
   const isGameOver = runState === "game-over";
   const canShowRewardedRevive = isRewardedReviveSupported();
   const isUsingRevive = reviveAction !== null;
   const canUseRewardedRevive = isGameOver && canShowRewardedRevive && !reviveUsedThisRun && !isUsingRevive;
   const canPreviewCoinRevive = isGameOver && !reviveUsedThisRun && !isUsingRevive;
-  const emptyGuessValue =
-    difficulty === "impossible" ? "_ _ _ _" : difficulty === "hard" ? "- - -" : "- -";
   const bannerTone = isRoundCleared
     ? "cleared"
     : isGameOver
@@ -129,15 +159,22 @@ export default function PracticeScreen() {
         : bannerTone === "higher"
           ? "#ff8a6a"
           : "#61b7ff";
-  const historyItems = guessHistory.slice(0, 3).reverse();
+  const historyItems = guessHistory.slice(0, 2);
+  const modeRangeLabel = `1-${difficultyConfig.maxNumber}`;
   const ctaDisabled = countdownActive || (runState === "playing" && guess.length === 0);
   const isPlayingRound = runState === "playing";
   const isUsingPowerUp = powerUpAction !== null;
+  const isUsingExtraGuessPowerUp = powerUpAction === "extra-guess-inventory" || powerUpAction === "extra-guess-ad";
+  const isUsingSkipBooster = powerUpAction === "skip-inventory" || powerUpAction === "skip-ad";
   const canUseExtraGuessPowerUp =
     isPlayingRound && !countdownActive && !isUsingPowerUp && extraGuessPowerUps > 0;
   const canWatchAdForExtraGuess =
     isPlayingRound && !countdownActive && !isUsingPowerUp && extraGuessPowerUps <= 0 && canShowRewardedRevive;
   const canTriggerExtraGuess = canUseExtraGuessPowerUp || canWatchAdForExtraGuess;
+  const canUseSkipBooster = isPlayingRound && !countdownActive && !isUsingPowerUp && skipBoosters > 0;
+  const canWatchAdForSkipBooster =
+    isPlayingRound && !countdownActive && !isUsingPowerUp && skipBoosters <= 0 && canShowRewardedRevive;
+  const canTriggerSkipBooster = canUseSkipBooster || canWatchAdForSkipBooster;
 
   useEffect(() => {
     if (!restoredPracticeRun) {
@@ -146,8 +183,16 @@ export default function PracticeScreen() {
   }, [restoredPracticeRun, startCountdown]);
 
   useEffect(() => {
+    // The first run mirrors the just-restored snapshot (or an untouched fresh
+    // board). Skip it so we never re-write — and possibly clobber — the saved
+    // run before the player actually changes anything.
+    if (isInitialSyncRef.current) {
+      isInitialSyncRef.current = false;
+      return;
+    }
+
     if (runState === "game-over") {
-      void syncActivePracticeRun(difficulty, null).catch(() => {});
+      void syncActivePracticeRun(difficulty, null).catch(() => { });
       return;
     }
 
@@ -165,7 +210,7 @@ export default function PracticeScreen() {
       updatedAt: new Date().toISOString()
     };
 
-    void syncActivePracticeRun(difficulty, snapshot).catch(() => {});
+    void syncActivePracticeRun(difficulty, snapshot).catch(() => { });
   }, [
     currentScore,
     difficulty,
@@ -227,10 +272,15 @@ export default function PracticeScreen() {
       const durationMs = Date.now() - roundStartTimeRef.current;
       const scoreGain = nextRemainingChances + 1;
       const nextScore = currentScore + scoreGain;
+      const coinsEarned = scoreGain * 5;
 
       setCurrentScore(nextScore);
       setLastScoreGain(scoreGain);
       setRunState("round-cleared");
+
+      if (coinsEarned > 0) {
+        void awardCoins(coinsEarned).catch(() => { });
+      }
       persistHighScoreIfNeeded(roundNumber);
       persistBestScoreIfNeeded(nextScore);
       void recordMatch({
@@ -274,6 +324,41 @@ export default function PracticeScreen() {
     setRemainingChances(startingChances);
     setRunState("playing");
     setMatchSummary(null);
+    setCoinBonusClaimed(false);
+    setCoinClaimAction(null);
+  };
+
+  const handleSkipAdvance = (source: "inventory" | "ad") => {
+    const scoreGain = remainingChances + 1;
+    const nextScore = currentScore + scoreGain;
+    const nextRoundNumber = roundNumber + 1;
+
+    persistHighScoreIfNeeded(nextRoundNumber);
+    persistBestScoreIfNeeded(nextScore);
+    roundStartTimeRef.current = Date.now();
+    setSecretNumber(createSecretNumber());
+    setGuess("");
+    setErrorMessage(null);
+    setReviveMessage(null);
+    setPowerUpMessage(
+      source === "inventory"
+        ? `Skip booster used. +${scoreGain} score and straight to round ${nextRoundNumber}.`
+        : `Skip ad reward unlocked. +${scoreGain} score and straight to round ${nextRoundNumber}.`
+    );
+    setLastResult(null);
+    setLastScoreGain(scoreGain);
+    setGuessHistory([]);
+    setCurrentScore(nextScore);
+    setRoundNumber(nextRoundNumber);
+    setRemainingChances(startingChances);
+    setRunState("playing");
+    setMatchSummary(null);
+    setCoinBonusClaimed(false);
+    setCoinClaimAction(null);
+
+    if (scoreGain > 0) {
+      void awardCoins(scoreGain * 5).catch(() => { });
+    }
   };
 
   const applyRevive = () => {
@@ -323,6 +408,7 @@ export default function PracticeScreen() {
     setGuess("");
     setErrorMessage(null);
     setReviveMessage(null);
+    setPowerUpMessage(null);
     setLastResult(null);
     setLastScoreGain(0);
     setGuessHistory([]);
@@ -332,7 +418,39 @@ export default function PracticeScreen() {
     setRunState("playing");
     setReviveUsedThisRun(false);
     setMatchSummary(null);
+    setCoinBonusClaimed(false);
+    setCoinClaimAction(null);
     startCountdown();
+  };
+
+  const baseCoinsEarned = lastScoreGain * 5;
+  const coinsDisplayed = coinBonusClaimed ? baseCoinsEarned * 4 : baseCoinsEarned;
+  const canClaimBonusCoins =
+    isRoundCleared &&
+    canShowRewardedRevive &&
+    !coinBonusClaimed &&
+    coinClaimAction === null &&
+    baseCoinsEarned > 0;
+
+  const handleClaimBonusCoins = async () => {
+    if (!canClaimBonusCoins) {
+      return;
+    }
+
+    try {
+      setCoinClaimAction("ad");
+      const rewarded = await showRewardedReviveAd();
+
+      if (!rewarded) {
+        return;
+      }
+
+      setCoinBonusClaimed(true);
+      // Base coins were already granted on the win; top up the remaining 3x to reach 4x total.
+      void awardCoins(baseCoinsEarned * 3).catch(() => { });
+    } finally {
+      setCoinClaimAction(null);
+    }
   };
 
   const applyExtraGuess = (source: "inventory" | "ad") => {
@@ -349,7 +467,7 @@ export default function PracticeScreen() {
 
     if (canUseExtraGuessPowerUp) {
       try {
-        setPowerUpAction("inventory");
+        setPowerUpAction("extra-guess-inventory");
         const used = await consumeExtraGuessPowerUp();
 
         if (!used) {
@@ -370,7 +488,7 @@ export default function PracticeScreen() {
     }
 
     try {
-      setPowerUpAction("ad");
+      setPowerUpAction("extra-guess-ad");
       const rewarded = await showRewardedReviveAd();
 
       if (!rewarded) {
@@ -379,6 +497,48 @@ export default function PracticeScreen() {
       }
 
       applyExtraGuess("ad");
+    } finally {
+      setPowerUpAction(null);
+    }
+  };
+
+  const handleUseSkipBooster = async () => {
+    if (!canTriggerSkipBooster) {
+      return;
+    }
+
+    if (canUseSkipBooster) {
+      try {
+        setPowerUpAction("skip-inventory");
+        const used = await consumeSkipBooster();
+
+        if (!used) {
+          setPowerUpMessage("That skip booster could not be used right now.");
+          return;
+        }
+
+        handleSkipAdvance("inventory");
+      } finally {
+        setPowerUpAction(null);
+      }
+
+      return;
+    }
+
+    if (!canWatchAdForSkipBooster) {
+      return;
+    }
+
+    try {
+      setPowerUpAction("skip-ad");
+      const rewarded = await showRewardedReviveAd();
+
+      if (!rewarded) {
+        setPowerUpMessage("Ad was skipped or unavailable. Try again.");
+        return;
+      }
+
+      handleSkipAdvance("ad");
     } finally {
       setPowerUpAction(null);
     }
@@ -451,45 +611,34 @@ export default function PracticeScreen() {
         right={<HeaderCoinsPill coins={coins} />}
       />
 
-      <View style={styles.historyRow}>
-        {historyItems.length === 0 ? (
-          <Text style={styles.historyPlaceholder}>Range {getDifficultyRangeLabel(difficulty)}</Text>
-        ) : (
-          historyItems.map((entry, index) => (
-            <View key={`${entry.guess}-${index}`} style={styles.historyChip}>
-              <Text style={styles.historyGuess}>{entry.guess}</Text>
-              <Ionicons
-                color={entry.result === "higher" ? "#ff8a6a" : entry.result === "lower" ? "#61b7ff" : "#1fc46d"}
-                name={entry.result === "higher" ? "arrow-up" : entry.result === "lower" ? "arrow-down" : "checkmark"}
-                size={12}
-              />
-            </View>
-          ))
-        )}
-      </View>
+      <View style={styles.playInfoBar}>
+        <View style={styles.playInfoCenter}>
+          <View style={styles.modeHint}>
+            <Text style={styles.modeHintMode}>{difficultyConfig.label}</Text>
+            <Text style={styles.modeHintRange}>{modeRangeLabel}</Text>
+          </View>
+        </View>
 
-      <View style={[styles.bannerCard, { backgroundColor: bannerColor }]}>
-        <Ionicons color="#0d3f68" name={bannerIcon} size={22} />
-        <Text style={styles.bannerText}>{bannerTitle}</Text>
+        <View style={styles.chancesTextWrap}>
+          <Ionicons color="#fff6c8" name="flash" size={12} />
+          <Text style={styles.chancesText}>
+            {remainingChances} left
+          </Text>
+        </View>
       </View>
 
       <View style={styles.guessPanel}>
-        <View style={styles.statusRow}>
-          <View style={styles.statusChip}>
-            <Text style={styles.statusChipText}>
-              {remainingChances} {remainingChances === 1 ? "CHANCE" : "CHANCES"}
-            </Text>
-          </View>
-          <View style={styles.statusChip}>
-            <Text style={styles.statusChipText}>ROUND {roundNumber}</Text>
-          </View>
+        <View style={styles.guessHero}>
+          <Text style={[styles.guessInputValue, guess.length === 0 && styles.guessInputValueEmpty]}>
+            {guess.length > 0 ? guess : "--"}
+          </Text>
         </View>
 
-        <Text style={styles.rangeLabel}>{getDifficultyRangeLabel(difficulty)}</Text>
-        <View style={styles.guessPill}>
-          <Text style={styles.guessValue}>{guess.length > 0 ? guess : emptyGuessValue}</Text>
-          {!countdownActive && runState === "playing" ? <View style={styles.caret} /> : null}
+        <View style={[styles.bannerCard, { borderColor: bannerColor }]}>
+          <Ionicons color={bannerColor} name={bannerIcon} size={20} />
+          <Text style={[styles.bannerText, { color: bannerColor }]}>{bannerTitle}</Text>
         </View>
+
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
         {isRoundCleared ? (
           <Text style={styles.statusMeta}>
@@ -511,6 +660,26 @@ export default function PracticeScreen() {
       <View style={styles.bottomSpacer} />
 
       <View style={styles.bottomControls}>
+        {historyItems.length > 0 ? (
+          <View style={styles.historyList}>
+            {historyItems.map((entry, index) => {
+              const resultColor =
+                entry.result === "higher" ? "#ff8a6a" : entry.result === "lower" ? "#61b7ff" : "#1fc46d";
+              const resultLabel =
+                entry.result === "higher" ? "HIGHER" : entry.result === "lower" ? "LOWER" : "HIT";
+
+              return (
+                <View key={`${entry.guess}-${index}`} style={styles.historyCard}>
+                  <Text style={styles.historyGuess}>{entry.guess}</Text>
+                  <View style={[styles.historyResultBadge, { borderColor: resultColor }]}>
+                    <Text style={[styles.historyResultText, { color: resultColor }]}>{resultLabel}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
         <View style={styles.keypadWrap}>
           {keypadRows.map((row, rowIndex) => (
             <View key={rowIndex} style={styles.keyRow}>
@@ -529,28 +698,20 @@ export default function PracticeScreen() {
               !canTriggerExtraGuess && styles.guessButtonDisabled
             ]}
           >
-            <Text style={styles.powerUpButtonLabel}>EXTRA GUESS</Text>
-            <View style={styles.powerUpBadge}>
-              {extraGuessPowerUps > 0 ? (
-                <>
-                  <Ionicons color="#fff6c8" name="flash" size={15} />
-                  <Text style={styles.powerUpBadgeText}>
-                    {powerUpAction === "inventory" ? "USING..." : `x${extraGuessPowerUps}`}
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Ionicons color="#ffffff" name="play-circle" size={15} />
-                  <Text style={styles.powerUpBadgeText}>
-                    {powerUpAction === "ad"
-                      ? "LOADING..."
-                      : canShowRewardedRevive
-                        ? "FREE"
-                        : "NO ADS"}
-                  </Text>
-                </>
-              )}
-            </View>
+            <Ionicons color="#fff6c8" name="flash" size={26} />
+            {isUsingExtraGuessPowerUp ? (
+              <View style={styles.powerUpCountBadge}>
+                <Text style={styles.powerUpCountBadgeText}>…</Text>
+              </View>
+            ) : extraGuessPowerUps > 0 ? (
+              <View style={styles.powerUpCountBadge}>
+                <Text style={styles.powerUpCountBadgeText}>x{extraGuessPowerUps}</Text>
+              </View>
+            ) : canShowRewardedRevive ? (
+              <View style={styles.powerUpCountBadge}>
+                <Ionicons color="#3a2a00" name="play" size={11} />
+              </View>
+            ) : null}
           </Pressable>
 
           <Pressable
@@ -565,6 +726,32 @@ export default function PracticeScreen() {
             <Text style={styles.guessButtonText}>
               {isRoundCleared ? "NEXT ROUND >" : isGameOver ? "NEW GAME" : "GUESS >"}
             </Text>
+          </Pressable>
+
+          <Pressable
+            disabled={!canTriggerSkipBooster}
+            onPress={() => void handleUseSkipBooster()}
+            style={({ pressed }) => [
+              styles.powerUpButton,
+              styles.skipBoosterButton,
+              pressed && canTriggerSkipBooster && styles.guessButtonPressed,
+              !canTriggerSkipBooster && styles.guessButtonDisabled
+            ]}
+          >
+            <Ionicons color="#fff6c8" name="play-forward" size={24} />
+            {isUsingSkipBooster ? (
+              <View style={styles.powerUpCountBadge}>
+                <Text style={styles.powerUpCountBadgeText}>...</Text>
+              </View>
+            ) : skipBoosters > 0 ? (
+              <View style={styles.powerUpCountBadge}>
+                <Text style={styles.powerUpCountBadgeText}>x{skipBoosters}</Text>
+              </View>
+            ) : canShowRewardedRevive ? (
+              <View style={styles.powerUpCountBadge}>
+                <Ionicons color="#3a2a00" name="play" size={11} />
+              </View>
+            ) : null}
           </Pressable>
         </View>
       </View>
@@ -639,109 +826,274 @@ export default function PracticeScreen() {
           </Pressable>
         </View>
       </Modal>
+
+      <Modal animationType="fade" statusBarTranslucent transparent visible={isRoundCleared}>
+        <View style={styles.gameOverOverlay}>
+          <ConfettiBurst visible={isRoundCleared} />
+          <View style={styles.winCard}>
+            <Text style={styles.winTitle}>ROUND CLEAR</Text>
+            <View style={styles.winIconWrap}>
+              <Ionicons color="#eafff3" name="checkmark" size={48} />
+            </View>
+            <Text style={styles.winMessage}>
+              The number was {secretNumber}.
+            </Text>
+
+            <View style={styles.winScoreBox}>
+              <View style={styles.winRewardRow}>
+                <View style={styles.winRewardCol}>
+                  <Text style={styles.winScoreLabel}>SCORE EARNED</Text>
+                  <Text style={styles.winScoreValue}>+{lastScoreGain}</Text>
+                </View>
+                <View style={styles.winRewardDivider} />
+                <View style={styles.winRewardCol}>
+                  <Text style={styles.winScoreLabel}>COINS EARNED</Text>
+                  <View style={styles.winCoinsValueRow}>
+                    <CoinStack />
+                    <Text style={styles.winScoreValue}>+{coinsDisplayed}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.winClaimWrap}>
+              <Pressable
+                disabled={!canClaimBonusCoins}
+                onPress={() => void handleClaimBonusCoins()}
+                style={({ pressed }) => [
+                  styles.winClaimButton,
+                  coinBonusClaimed && styles.winClaimButtonClaimed,
+                  pressed && canClaimBonusCoins && styles.guessButtonPressed,
+                  !canClaimBonusCoins && !coinBonusClaimed && styles.guessButtonDisabled
+                ]}
+              >
+                <View style={styles.winClaimContent}>
+                  {coinBonusClaimed ? (
+                    <>
+                      <Ionicons color="#7a4a00" name="checkmark-circle" size={22} />
+                      <Text style={styles.winClaimLabel}>CLAIMED</Text>
+                      <Coin />
+                      <Text style={styles.winClaimAmount}>{baseCoinsEarned * 4}</Text>
+                    </>
+                  ) : !canShowRewardedRevive ? (
+                    <Text style={styles.winClaimLabel}>AD UNAVAILABLE</Text>
+                  ) : coinClaimAction === "ad" ? (
+                    <Text style={styles.winClaimLabel}>LOADING AD…</Text>
+                  ) : (
+                    <>
+                      <Text style={styles.winClaimLabel}>CLAIM</Text>
+                      <Coin />
+                      <Text style={styles.winClaimAmount}>{baseCoinsEarned * 4}</Text>
+                    </>
+                  )}
+                </View>
+
+                <View style={styles.winClaimAdBadge}>
+                  <Text style={styles.winClaimAdBadgeText}>AD</Text>
+                </View>
+
+                <View style={styles.winClaimMultiplierBadge}>
+                  <Text style={styles.winClaimMultiplierText}>4x</Text>
+                </View>
+              </Pressable>
+            </View>
+
+            <Pressable
+              onPress={handleNextRound}
+              style={({ pressed }) => [
+                styles.winNextButton,
+                pressed && styles.guessButtonPressed
+              ]}
+            >
+              <Text style={styles.winNextButtonText}>NEXT ROUND {">"}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
+}
+
+export default function PracticeScreen() {
+  const hydrated = usePlayerProgressStore((state) => state.hydrated);
+  const progressReady = usePlayerProgressStore((state) => state.progressReady);
+
+  // Wait for the remote profile to load before mounting the game. Otherwise the
+  // game would initialize from an empty snapshot and immediately sync it back,
+  // wiping the saved run (guesses + score) on refresh.
+  if (!hydrated || !progressReady) {
+    return (
+      <ScreenContainer contentStyle={styles.loadingScreen}>
+        <ActivityIndicator color={colors.accent} size="large" />
+        <Text style={styles.loadingTitle}>Loading your run</Text>
+        <Text style={styles.loadingBody}>Restoring your saved progress.</Text>
+      </ScreenContainer>
+    );
+  }
+
+  return <PracticeGame />;
 }
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    paddingBottom: spacing.md,
-    paddingTop: spacing.sm
+    paddingBottom: 0,
+    paddingTop: 0
   },
-  historyRow: {
+  loadingScreen: {
     alignItems: "center",
+    flex: 1,
+    gap: spacing.sm,
+    justifyContent: "center"
+  },
+  loadingTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "900"
+  },
+  loadingBody: {
+    color: "#6d757b",
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  playInfoBar: {
+    alignItems: "center",
+    alignSelf: "center",
     flexDirection: "row",
     justifyContent: "center",
-    gap: spacing.xs,
-    minHeight: 24
+    minHeight: 28,
+    position: "relative",
+    width: "100%"
   },
-  historyPlaceholder: {
-    color: "#9ca3a8",
-    fontSize: 11,
-    fontWeight: "800"
+  playInfoCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+    maxWidth: "70%",
+    minHeight: 28
   },
-  historyChip: {
+  modeHint: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 2
+    gap: spacing.xs,
+    justifyContent: "center"
   },
-  historyGuess: {
+  modeHintMode: {
     color: "#8b9298",
     fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  modeHintRange: {
+    color: "#66717a",
+    fontSize: 12,
     fontWeight: "900"
+  },
+  chancesTextWrap: {
+    alignItems: "center",
+    backgroundColor: "#1f6fb9",
+    borderBottomColor: "#134c81",
+    borderBottomWidth: 3,
+    borderRadius: radii.pill,
+    flexDirection: "row",
+    gap: 4,
+    justifyContent: "flex-end",
+    minHeight: 26,
+    minWidth: 68,
+    paddingHorizontal: 9,
+    position: "absolute",
+    right: 0
+  },
+  chancesText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase"
   },
   bannerCard: {
     alignItems: "center",
     alignSelf: "center",
-    borderBottomColor: "rgba(13, 63, 104, 0.35)",
-    borderBottomWidth: 5,
+    backgroundColor: colors.surface,
     borderRadius: radii.pill,
+    borderWidth: 2,
     flexDirection: "row",
     gap: spacing.xs,
     justifyContent: "center",
-    marginTop: spacing.sm,
-    minHeight: 44,
-    minWidth: 162,
-    paddingHorizontal: spacing.lg
+    minHeight: 38,
+    minWidth: 150,
+    paddingHorizontal: spacing.md,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2
   },
   bannerText: {
-    color: "#0d3f68",
-    fontSize: 18,
-    fontWeight: "900"
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 0.6
   },
   guessPanel: {
     alignItems: "center",
-    gap: spacing.sm
+    gap: spacing.xs,
+    paddingTop: spacing.sm
   },
-  statusRow: {
-    flexDirection: "row",
-    gap: spacing.xs
-  },
-  statusChip: {
+  guessHero: {
     alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderColor: "#d8dde2",
-    borderRadius: radii.pill,
-    borderWidth: 1,
     justifyContent: "center",
-    minHeight: 34,
-    paddingHorizontal: spacing.md
-  },
-  statusChipText: {
-    color: "#66717a",
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 0.8
-  },
-  rangeLabel: {
-    color: "#9aa1a7",
-    fontSize: 13,
-    fontWeight: "800"
-  },
-  guessPill: {
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderColor: "#61b7ff",
-    borderRadius: radii.pill,
-    borderWidth: 4,
-    flexDirection: "row",
-    justifyContent: "center",
-    minHeight: 70,
-    minWidth: 182,
+    minHeight: 88,
+    minWidth: 196,
     paddingHorizontal: spacing.lg
   },
-  guessValue: {
-    color: "#15181b",
-    fontSize: 42,
-    fontWeight: "400"
+  guessInputValue: {
+    color: colors.text,
+    fontSize: 68,
+    fontWeight: "900",
+    lineHeight: 74,
+    textAlign: "center"
   },
-  caret: {
-    backgroundColor: "#61b7ff",
-    borderRadius: 2,
-    height: 42,
-    marginLeft: 2,
-    width: 4
+  guessInputValueEmpty: {
+    color: "#8b9298",
+    fontSize: 48,
+    letterSpacing: 4
+  },
+  historyList: {
+    gap: spacing.xs,
+    width: "100%"
+  },
+  historyCard: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: "#d6dce2",
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 42,
+    paddingHorizontal: spacing.md,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1
+  },
+  historyGuess: {
+    color: "#606367",
+    fontSize: 24,
+    fontWeight: "900",
+    lineHeight: 32
+  },
+  historyResultBadge: {
+    alignItems: "center",
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 28,
+    minWidth: 78,
+    paddingHorizontal: spacing.sm
+  },
+  historyResultText: {
+    fontSize: 12,
+    fontWeight: "900"
   },
   error: {
     color: colors.danger,
@@ -759,7 +1111,7 @@ const styles = StyleSheet.create({
     flex: 1
   },
   bottomControls: {
-    gap: spacing.sm
+    gap: spacing.xs
   },
   actionRow: {
     flexDirection: "row",
@@ -767,8 +1119,8 @@ const styles = StyleSheet.create({
   },
   keypadWrap: {
     backgroundColor: "#ffffff",
-    borderRadius: 28,
-    gap: spacing.sm,
+    borderRadius: 26,
+    gap: spacing.xs,
     padding: spacing.sm
   },
   keyRow: {
@@ -780,7 +1132,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#e6e7e8",
     borderRadius: radii.pill,
     flex: 1,
-    height: 44,
+    height: 40,
     justifyContent: "center"
   },
   keyButtonPressed: {
@@ -800,8 +1152,8 @@ const styles = StyleSheet.create({
     borderBottomColor: "#025a29",
     borderBottomWidth: 6,
     borderRadius: radii.pill,
-    flex: 0.92,
-    height: 48,
+    flex: 1,
+    height: 46,
     justifyContent: "center"
   },
   powerUpButton: {
@@ -809,35 +1161,37 @@ const styles = StyleSheet.create({
     backgroundColor: "#1f6fb9",
     borderBottomColor: "#134c81",
     borderBottomWidth: 6,
-    borderRadius: 24,
-    flex: 1.08,
-    gap: 6,
-    height: 48,
+    borderRadius: 22,
+    height: 46,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm
+    overflow: "visible",
+    position: "relative",
+    width: 58
   },
-  powerUpButtonLabel: {
-    color: "#ffffff",
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 0.9
+  skipBoosterButton: {
+    backgroundColor: "#8859f2",
+    borderBottomColor: "#5d35b2"
   },
-  powerUpBadge: {
+  powerUpCountBadge: {
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.18)",
+    backgroundColor: "#ffcf4f",
+    borderColor: "#ffffff",
     borderRadius: radii.pill,
-    flexDirection: "row",
-    gap: 6,
+    borderWidth: 2,
+    height: 22,
     justifyContent: "center",
-    minHeight: 20,
-    minWidth: 76,
-    paddingHorizontal: 10
+    minWidth: 22,
+    paddingHorizontal: 4,
+    position: "absolute",
+    right: -7,
+    top: -7,
+    zIndex: 2
   },
-  powerUpBadgeText: {
-    color: "#ffffff",
+  powerUpCountBadgeText: {
+    color: "#3a2a00",
     fontSize: 11,
     fontWeight: "900",
-    letterSpacing: 0.6
+    letterSpacing: 0.4
   },
   gameOverOverlay: {
     alignItems: "center",
@@ -958,6 +1312,253 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0.8,
     textDecorationLine: "underline"
+  },
+  winCard: {
+    backgroundColor: "#eafff3",
+    borderColor: "#1fc46d",
+    borderWidth: 6,
+    borderRadius: 30,
+    gap: spacing.sm,
+    padding: spacing.lg,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 12,
+    width: "100%",
+    maxWidth: 420
+  },
+  winTitle: {
+    color: "#15181b",
+    fontSize: 26,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    textAlign: "center"
+  },
+  winIconWrap: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "#1fc46d",
+    borderColor: "#0f9b52",
+    borderRadius: 42,
+    borderWidth: 6,
+    height: 84,
+    justifyContent: "center",
+    width: 84
+  },
+  winMessage: {
+    color: "#1f5d3c",
+    fontSize: 18,
+    fontWeight: "800",
+    lineHeight: 26,
+    textAlign: "center"
+  },
+  winScoreBox: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "#bdebd0",
+    borderRadius: radii.lg,
+    borderWidth: 2,
+    gap: 2,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    width: "100%"
+  },
+  winRewardRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    width: "100%"
+  },
+  winRewardCol: {
+    alignItems: "center",
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+    paddingHorizontal: spacing.xs
+  },
+  winRewardDivider: {
+    alignSelf: "stretch",
+    backgroundColor: "#bdebd0",
+    marginHorizontal: spacing.sm,
+    marginVertical: spacing.xs,
+    width: 2
+  },
+  winScoreLabel: {
+    color: "#4f8a6b",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.2
+  },
+  winScoreValue: {
+    color: "#0f9b52",
+    fontSize: 34,
+    fontWeight: "900",
+    lineHeight: 40
+  },
+  winCoinsValueRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexShrink: 1,
+    gap: 6
+  },
+  winCoinStack: {
+    height: 28,
+    position: "relative",
+    width: 34
+  },
+  winCoin: {
+    alignItems: "center",
+    backgroundColor: "#ffcf4f",
+    borderBottomWidth: 2,
+    borderColor: "#d89c16",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    height: 20,
+    justifyContent: "center",
+    position: "absolute",
+    width: 20
+  },
+  winCoinInner: {
+    alignItems: "center",
+    backgroundColor: "#f4b631",
+    borderRadius: radii.pill,
+    height: 12,
+    justifyContent: "center",
+    width: 12
+  },
+  winCoinBackLeft: {
+    bottom: 0,
+    left: 0
+  },
+  winCoinBackRight: {
+    bottom: 0,
+    left: 14
+  },
+  winCoinFront: {
+    bottom: 9,
+    left: 7
+  },
+  winNextButton: {
+    alignItems: "center",
+    backgroundColor: "#047a37",
+    borderBottomColor: "#025a29",
+    borderBottomWidth: 7,
+    borderRadius: 28,
+    justifyContent: "center",
+    minHeight: 56
+  },
+  winNextButtonText: {
+    color: "#ffffff",
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: 1
+  },
+  headerCoin: {
+    alignItems: "center",
+    backgroundColor: "#ffcf4f",
+    borderBottomWidth: 2,
+    borderColor: "#d89c16",
+    borderRadius: radii.pill,
+    height: 28,
+    justifyContent: "center",
+    width: 28
+  },
+  headerCoinInner: {
+    alignItems: "center",
+    backgroundColor: "#f4b631",
+    borderRadius: radii.pill,
+    height: 17,
+    justifyContent: "center",
+    width: 17
+  },
+  winClaimWrap: {
+    alignSelf: "stretch",
+    marginTop: spacing.sm,
+    position: "relative"
+  },
+  winClaimButton: {
+    alignItems: "center",
+    backgroundColor: "#ffc224",
+    borderBottomColor: "#dd9b10",
+    borderBottomWidth: 6,
+    borderRadius: 26,
+    flexDirection: "row",
+    justifyContent: "center",
+    minHeight: 56,
+    overflow: "visible",
+    paddingHorizontal: spacing.lg,
+    position: "relative"
+  },
+  winClaimButtonClaimed: {
+    backgroundColor: "#e9c25a",
+    borderBottomColor: "#c79a1f"
+  },
+  winClaimContent: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8
+  },
+  winClaimLabel: {
+    color: "#ffffff",
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textShadowColor: "rgba(120, 70, 0, 0.45)",
+    textShadowOffset: { height: 1, width: 0 },
+    textShadowRadius: 1
+  },
+  winClaimAmount: {
+    color: "#ffffff",
+    fontSize: 22,
+    fontWeight: "900",
+    textShadowColor: "rgba(120, 70, 0, 0.45)",
+    textShadowOffset: { height: 1, width: 0 },
+    textShadowRadius: 1
+  },
+  winClaimAdBadge: {
+    alignItems: "center",
+    backgroundColor: "#5a5a5a",
+    borderColor: "rgba(255, 255, 255, 0.55)",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    justifyContent: "center",
+    left: 14,
+    minHeight: 18,
+    paddingHorizontal: 9,
+    position: "absolute",
+    top: -10,
+    zIndex: 2
+  },
+  winClaimAdBadgeText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.5
+  },
+  winClaimMultiplierBadge: {
+    alignItems: "center",
+    backgroundColor: "#ff8a1f",
+    borderColor: "#ffffff",
+    borderRadius: radii.pill,
+    borderWidth: 2,
+    height: 34,
+    justifyContent: "center",
+    position: "absolute",
+    right: -8,
+    shadowColor: "#000000",
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    top: -12,
+    width: 34,
+    zIndex: 2
+  },
+  winClaimMultiplierText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "900"
   },
   guessButtonPressed: {
     transform: [{ scale: 0.99 }]

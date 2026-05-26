@@ -4,17 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Animated, Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
-import { AppHeader, HeaderCoinsPill } from "../components/AppHeader";
+import { AppHeader, HeaderBackButton, HeaderCoinsPill } from "../components/AppHeader";
 import { BottomTabs, MiniCard, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
+import { ShopTab, ShopTabHeader } from "../components/ShopTab";
 import { TextField } from "../components/TextField";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import { formatDuration, getAchievementMeta, getTodayKey } from "../utils/progression";
 import { colors, radii, shadows, spacing } from "../utils/theme";
 
-type HomeTab = "play" | "stats" | "profile" | "settings";
+type HomeTab = "play" | "stats" | "shop" | "profile" | "settings";
 
 const titleLetters = [
   { accent: "#f28f67", letter: "C" },
@@ -90,6 +91,7 @@ export default function HomeScreen() {
   const today = new Date();
   const dailyMonth = today.toLocaleString("en-US", { month: "short" }).toUpperCase();
   const dailyDay = today.getDate();
+
   const handleClaimDailyReward = async () => {
     try {
       setIsClaimingReward(true);
@@ -135,60 +137,59 @@ export default function HomeScreen() {
       <Animated.View style={[styles.shell, { opacity: fadeIn }]}>
         <AppHeader
           center={
-            <View style={styles.homeHeaderCenter}>
-              <Pressable onPress={openProfileModal} style={({ pressed }) => [styles.profileCrest, pressed && styles.pressed]}>
-                <View style={styles.levelBurstShadow} />
-                <View style={styles.levelBurst}>
-                  <View style={[styles.levelBurstLayer, styles.levelBurstLayerA]} />
-                  {/* <View style={[styles.levelBurstLayer, styles.levelBurstLayerB]} /> */}
-                  <Text style={styles.levelBurstText}>{profile.level}</Text>
-                </View>
-
-                <View style={styles.profileMedallion}>
-                  <View style={styles.profileRingBase}>
-                    <Svg height={PROFILE_RING_SIZE} style={styles.profileRingSvg} width={PROFILE_RING_SIZE}>
-                      <Circle
-                        cx={PROFILE_RING_SIZE / 2}
-                        cy={PROFILE_RING_SIZE / 2}
-                        fill="none"
-                        r={PROFILE_RING_RADIUS}
-                        stroke="#aa5139"
-                        strokeWidth={PROFILE_RING_STROKE}
-                      />
-                      <Circle
-                        cx={PROFILE_RING_SIZE / 2}
-                        cy={PROFILE_RING_SIZE / 2}
-                        fill="none"
-                        r={PROFILE_RING_RADIUS}
-                        stroke="#19d6e9"
-                        strokeDasharray={PROFILE_RING_CIRCUMFERENCE}
-                        strokeDashoffset={levelProgressOffset}
-                        strokeLinecap="round"
-                        strokeWidth={PROFILE_RING_STROKE}
-                        transform={`rotate(-90 ${PROFILE_RING_SIZE / 2} ${PROFILE_RING_SIZE / 2})`}
-                      />
-                    </Svg>
+            activeTab === "shop" ? (
+              <ShopTabHeader />
+            ) : (
+              <View style={styles.homeHeaderCenter}>
+                <Pressable onPress={openProfileModal} style={({ pressed }) => [styles.profileCrest, pressed && styles.pressed]}>
+                  <View style={styles.levelBurstShadow} />
+                  <View style={styles.levelBurst}>
+                    <View style={[styles.levelBurstLayer, styles.levelBurstLayerA]} />
+                    <Text style={styles.levelBurstText}>{profile.level}</Text>
                   </View>
 
-                  <View style={styles.profileRingInner}>
-                    <View style={styles.profileAvatarCore}>
-                      <Ionicons color="#173d64" name="school" size={18} />
+                  <View style={styles.profileMedallion}>
+                    <View style={styles.profileRingBase}>
+                      <Svg height={PROFILE_RING_SIZE} style={styles.profileRingSvg} width={PROFILE_RING_SIZE}>
+                        <Circle
+                          cx={PROFILE_RING_SIZE / 2}
+                          cy={PROFILE_RING_SIZE / 2}
+                          fill="none"
+                          r={PROFILE_RING_RADIUS}
+                          stroke="#aa5139"
+                          strokeWidth={PROFILE_RING_STROKE}
+                        />
+                        <Circle
+                          cx={PROFILE_RING_SIZE / 2}
+                          cy={PROFILE_RING_SIZE / 2}
+                          fill="none"
+                          r={PROFILE_RING_RADIUS}
+                          stroke="#19d6e9"
+                          strokeDasharray={PROFILE_RING_CIRCUMFERENCE}
+                          strokeDashoffset={levelProgressOffset}
+                          strokeLinecap="round"
+                          strokeWidth={PROFILE_RING_STROKE}
+                          transform={`rotate(-90 ${PROFILE_RING_SIZE / 2} ${PROFILE_RING_SIZE / 2})`}
+                        />
+                      </Svg>
+                    </View>
+
+                    <View style={styles.profileRingInner}>
+                      <View style={styles.profileAvatarCore}>
+                        <Ionicons color="#173d64" name="school" size={18} />
+                      </View>
                     </View>
                   </View>
-                </View>
-
-                {/* <View style={styles.profileShield}>
-                  <Ionicons color="#7a8794" name="shield-half" size={12} />
-                  <Text style={styles.profileShieldText}>{displayName.slice(0, 1).toUpperCase()}</Text>
-                </View> */}
-              </Pressable>
-            </View>
+                </Pressable>
+              </View>
+            )
           }
-          right={
+          left={activeTab === "shop" ? <HeaderBackButton onPress={() => setActiveTab("play")} /> : undefined}
+          right={activeTab === "shop" ? <View /> : (
             <View style={styles.homeHeaderRight}>
               <HeaderCoinsPill coins={profile.coins} />
             </View>
-          }
+          )}
         />
 
         <View style={styles.mainPane}>
@@ -314,6 +315,10 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
+          {activeTab === "shop" ? (
+            <ShopTab />
+          ) : null}
+
           {activeTab === "profile" ? (
             <View style={styles.tabPane}>
               <View style={styles.profileCard}>
@@ -409,9 +414,11 @@ export default function HomeScreen() {
           ) : null}
         </View>
 
-        <View style={styles.bottomDock}>
-          <BottomTabs activeTab={activeTab} onChange={setActiveTab} />
-        </View>
+        {activeTab === "shop" ? null : (
+          <View style={styles.bottomDock}>
+            <BottomTabs activeTab={activeTab} onChange={setActiveTab} />
+          </View>
+        )}
       </Animated.View>
 
       <Modal animationType="fade" transparent visible={showTutorial}>

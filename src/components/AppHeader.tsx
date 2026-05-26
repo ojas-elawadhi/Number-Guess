@@ -9,7 +9,7 @@ export const APP_HEADER_CONTENT_HEIGHT = 72;
 export const APP_HEADER_SEPARATOR_HEIGHT = 4;
 export const APP_HEADER_HEIGHT = APP_HEADER_CONTENT_HEIGHT + APP_HEADER_SEPARATOR_HEIGHT;
 
-const HEADER_SIDE_WIDTH = 60;
+const HEADER_SIDE_WIDTH = 84;
 
 interface AppHeaderProps {
   left?: ReactNode;

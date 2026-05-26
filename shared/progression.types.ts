@@ -129,6 +129,7 @@ export interface PlayerProfile {
   currentWinStreak: number;
   bestWinStreak: number;
   extraGuessPowerUps: number;
+  skipBoosters: number;
   coins: number;
   achievements: AchievementId[];
   history: MatchRecord[];
@@ -173,6 +174,7 @@ export interface ProgressPreferencesPayload {
   singlePlayerHighRounds?: Partial<SinglePlayerHighRounds>;
   singlePlayerHighScores?: Partial<SinglePlayerHighScores>;
   extraGuessPowerUpsDelta?: number;
+  skipBoostersDelta?: number;
   coinsDelta?: number;
   activePracticeRun?: {
     difficulty: Difficulty;

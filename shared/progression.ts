@@ -145,6 +145,7 @@ export const createInitialProfile = (updatedAt = new Date().toISOString()): Play
   currentWinStreak: 0,
   bestWinStreak: 0,
   extraGuessPowerUps: 0,
+  skipBoosters: 0,
   coins: 0,
   achievements: [],
   history: [],
@@ -213,6 +214,10 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
             Number.isFinite((profile as Partial<{ reviveTokens: number }>).reviveTokens)
           ? Math.max(0, Math.floor((profile as Partial<{ reviveTokens: number }>).reviveTokens ?? 0))
           : baseProfile.extraGuessPowerUps,
+    skipBoosters:
+      typeof profile.skipBoosters === "number" && Number.isFinite(profile.skipBoosters)
+        ? Math.max(0, Math.floor(profile.skipBoosters))
+        : baseProfile.skipBoosters,
     coins:
       typeof profile.coins === "number" && Number.isFinite(profile.coins)
         ? Math.max(0, Math.floor(profile.coins))
@@ -608,6 +613,17 @@ export const applyExtraGuessPowerUps = (profile: PlayerProfile, delta: number) =
   return {
     ...currentProfile,
     extraGuessPowerUps: nextExtraGuessPowerUps,
+    updatedAt: new Date().toISOString()
+  };
+};
+
+export const applySkipBoosters = (profile: PlayerProfile, delta: number) => {
+  const currentProfile = normalizeProfile(profile);
+  const nextSkipBoosters = Math.max(0, currentProfile.skipBoosters + Math.floor(delta));
+
+  return {
+    ...currentProfile,
+    skipBoosters: nextSkipBoosters,
     updatedAt: new Date().toISOString()
   };
 };

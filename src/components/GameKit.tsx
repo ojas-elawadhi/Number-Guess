@@ -362,8 +362,8 @@ export function HistoryStrip({ compact = false, emptyLabel, items, title }: Hist
 }
 
 interface BottomTabsProps {
-  activeTab: "play" | "stats" | "profile" | "settings";
-  onChange: (tab: "play" | "stats" | "profile" | "settings") => void;
+  activeTab: "play" | "stats" | "shop" | "profile" | "settings";
+  onChange: (tab: "play" | "stats" | "shop" | "profile" | "settings") => void;
 }
 
 export function BottomTabs({ activeTab, onChange }: BottomTabsProps) {
@@ -376,6 +376,10 @@ export function BottomTabs({ activeTab, onChange }: BottomTabsProps) {
       <Pressable onPress={() => onChange("stats")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
         <Ionicons color={activeTab === "stats" ? colors.practice : colors.tab} name="stats-chart-outline" size={22} />
         <Text style={[styles.tabLabel, activeTab === "stats" && styles.tabLabelActive]}>Stats</Text>
+      </Pressable>
+      <Pressable onPress={() => onChange("shop")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
+        <Ionicons color={activeTab === "shop" ? colors.practice : colors.tab} name="cart-outline" size={22} />
+        <Text style={[styles.tabLabel, activeTab === "shop" && styles.tabLabelActive]}>Shop</Text>
       </Pressable>
       <Pressable onPress={() => onChange("profile")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
         <Ionicons color={activeTab === "profile" ? colors.practice : colors.tab} name="person-outline" size={22} />
