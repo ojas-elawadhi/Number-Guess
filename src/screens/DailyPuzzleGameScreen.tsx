@@ -535,27 +535,7 @@ export default function DailyPuzzleGameScreen() {
               <Text style={styles.guessButtonText}>{isSubmitting ? "LOADING..." : "GUESS >"}</Text>
             </Pressable>
 
-            <Pressable
-              disabled={!canTriggerSkipBooster}
-              onPress={() => handlePowerUpPress("skip")}
-              style={({ pressed }) => [
-                styles.powerUpButton,
-                styles.skipBoosterButton,
-                pressed && canTriggerSkipBooster && styles.keyButtonPressed,
-                !canTriggerSkipBooster && styles.keyButtonDisabled
-              ]}
-            >
-              <Ionicons color="#fff6c8" name="play-forward" size={24} />
-              {skipBoosters > 0 ? (
-                <View style={styles.powerUpCountBadge}>
-                  <Text style={styles.powerUpCountBadgeText}>x{skipBoosters}</Text>
-                </View>
-              ) : canShowRewardedRevive ? (
-                <View style={styles.powerUpCountBadge}>
-                  <Ionicons color="#3a2a00" name="play" size={11} />
-                </View>
-              ) : null}
-            </Pressable>
+            <View style={styles.actionSpacer} />
           </View>
         </View>
       )}
@@ -749,6 +729,10 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     gap: spacing.sm
+  },
+  actionSpacer: {
+    height: 46,
+    width: 58
   },
   keypadWrap: {
     backgroundColor: "#ffffff",
