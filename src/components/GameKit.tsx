@@ -223,7 +223,7 @@ export function NumberPad({
   onChange,
   onSubmit,
   submitLabel = "GUESS",
-  title = "Your guess",
+  title,
   value
 }: NumberPadProps) {
   const appendDigit = (digit: string) => {
@@ -251,7 +251,7 @@ export function NumberPad({
             {value.length > 0 ? value : "--"}
           </Text>
         </View>
-        <Text style={[styles.inputTitle, compact && styles.inputTitleCompact]}>{title}</Text>
+        {title ? <Text style={[styles.inputTitle, compact && styles.inputTitleCompact]}>{title}</Text> : null}
       </View>
 
       <View style={[styles.keyGrid, compact && styles.keyGridCompact]}>
