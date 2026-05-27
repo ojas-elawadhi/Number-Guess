@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AppHeader, HeaderBackButton } from "../components/AppHeader";
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
@@ -13,7 +14,7 @@ import type { Difficulty, GuessFeedback } from "../types/game.types";
 import type { MatchRecord } from "../types/progression.types";
 import { formatDuration } from "../utils/progression";
 import { colors, radii, spacing } from "../utils/theme";
-import { getDifficultyConfig, getDifficultyRangeLabel, parseDifficulty } from "../../shared/difficulty";
+import { getDifficultyConfig, parseDifficulty } from "../../shared/difficulty";
 
 interface AiDuelRoundEntry {
   roundNumber: number;
@@ -57,24 +58,10 @@ export default function VsAiDuelScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
 
-  const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-
-    router.replace({
-      pathname: "/vs-ai-difficulty",
-      params: { mode: "duel" }
-    });
-  };
-
+  const modeRangeLabel = `1-${difficultyConfig.maxNumber}`;
   const isSetup = playerSecretNumber === null || aiSecretNumber === null;
   const isComplete = winner !== null;
   const activeValue = isSetup ? playerSecretInput : guess;
-  const revealAiSecret = !isSetup && isComplete && winner === "ai" ? aiSecretNumber : null;
-  const emptyGuessValue =
-    difficulty === "impossible" ? "_ _ _ _" : difficulty === "hard" ? "- - -" : "- -";
   const bannerTone =
     isSetup
       ? "setup"
@@ -127,12 +114,23 @@ export default function VsAiDuelScreen() {
             : bannerTone === "higher"
               ? "#ff8a6a"
               : "#61b7ff";
-  const historyItems = history.slice(0, 3).reverse();
+  const historyItems = history.slice(0, 2);
   const ctaDisabled = countdownActive || activeValue.length === 0 || (!isSetup && isComplete);
-  const winDetail = matchSummary
+  const resultDetail = matchSummary
     ? `Solved in ${history.length} rounds | +${matchSummary.points} pts | ${formatDuration(matchSummary.durationMs)}`
     : `Solved in ${history.length} rounds`;
   const showResultModal = winner === "player" || winner === "ai";
+  const statusMeta = isSetup
+    ? "Choose your secret. Nova AI will try to crack it."
+    : isComplete
+      ? matchSummary
+        ? `${bannerTitle} | +${matchSummary.points} pts | ${formatDuration(matchSummary.durationMs)}`
+        : bannerTitle
+      : lastRound
+        ? `Nova AI guessed ${lastRound.aiGuess} on round ${lastRound.roundNumber}.`
+        : "Guess Nova AI's number before it cracks yours.";
+  const heroValue = activeValue.length > 0 ? activeValue : "--";
+  const statusPillLabel = isSetup ? "LOCK IT" : isComplete ? "MATCH END" : "NOVA AI";
 
   useEffect(() => {
     if (!isComplete || recordedMatchRef.current) {
@@ -155,6 +153,18 @@ export default function VsAiDuelScreen() {
       .then(setMatchSummary)
       .catch(() => {});
   }, [difficulty, history.length, isComplete, recordMatch, winner]);
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace({
+      pathname: "/vs-ai-difficulty",
+      params: { mode: "duel" }
+    });
+  };
 
   const handleStartDuel = () => {
     const parsedSecretNumber = Number(playerSecretInput);
@@ -325,7 +335,7 @@ export default function VsAiDuelScreen() {
         buttonShadowColor={winner === "ai" ? "#bb4e5d" : undefined}
         cardBackgroundColor={winner === "ai" ? "#fff4f6" : undefined}
         detailColor={winner === "ai" ? "#9d5761" : undefined}
-        detail={winDetail}
+        detail={resultDetail}
         iconColor={winner === "ai" ? "#fff2f4" : undefined}
         iconName={winner === "ai" ? "hardware-chip" : undefined}
         iconRingColor={winner === "ai" ? "#ec7683" : undefined}
@@ -349,69 +359,78 @@ export default function VsAiDuelScreen() {
         visible={showResultModal}
       />
 
-      <View style={styles.topRow}>
-        <Pressable
-          hitSlop={10}
-          onPress={handleBack}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-        >
-          <Ionicons color="#636b72" name="arrow-back" size={22} />
-        </Pressable>
+      <AppHeader
+        left={<HeaderBackButton onPress={handleBack} />}
+        right={
+          <View style={styles.headerRoundPill}>
+            <Text style={styles.headerRoundLabel}>{isSetup ? "MODE" : "ROUND"}</Text>
+            <Text style={styles.headerRoundValue}>{isSetup ? "SET" : roundNumber}</Text>
+          </View>
+        }
+      />
 
-        <View style={styles.miniHistory}>
-          {isSetup ? (
-            <Text style={styles.historyPlaceholder}>Secret Range {getDifficultyRangeLabel(difficulty)}</Text>
-          ) : historyItems.length === 0 ? (
-            <Text style={styles.historyPlaceholder}>AI search {aiMin}-{aiMax}</Text>
-          ) : (
-            historyItems.map((entry, index) => (
-              <View key={`${entry.playerGuess}-${index}`} style={styles.historyChip}>
-                <Text style={styles.historyGuess}>{entry.playerGuess}</Text>
-                <Ionicons
-                  color={entry.playerResult === "higher" ? "#ff8a6a" : entry.playerResult === "lower" ? "#61b7ff" : "#1fc46d"}
-                  name={entry.playerResult === "higher" ? "arrow-up" : entry.playerResult === "lower" ? "arrow-down" : "checkmark"}
-                  size={12}
-                />
-              </View>
-            ))
-          )}
+      <View style={styles.playInfoBar}>
+        <View style={styles.playInfoCenter}>
+          <View style={styles.modeHint}>
+            <Text style={styles.modeHintMode}>{difficultyConfig.label}</Text>
+            <Text style={styles.modeHintRange}>{modeRangeLabel}</Text>
+          </View>
         </View>
-      </View>
 
-      <View style={[styles.bannerCard, { backgroundColor: bannerColor }]}>
-        <Ionicons color="#0d3f68" name={bannerIcon} size={22} />
-        <Text style={styles.bannerText}>{bannerTitle}</Text>
+        <View style={[styles.statusPillWrap, isSetup && styles.statusPillSetup]}>
+          <Ionicons color="#fff4f5" name={isSetup ? "lock-closed" : "hardware-chip"} size={12} />
+          <Text style={styles.statusPillText}>{statusPillLabel}</Text>
+        </View>
       </View>
 
       <View style={styles.guessPanel}>
-        <Text style={styles.rangeLabel}>
-          {isSetup
-            ? `Choose your secret ${getDifficultyRangeLabel(difficulty)}`
-            : revealAiSecret !== null
-              ? "Nova AI secret"
-              : `Your secret ${playerSecretNumber}`}
-        </Text>
-        <View style={styles.guessPill}>
-          <Text style={styles.guessValue}>
-            {activeValue.length > 0 ? activeValue : revealAiSecret !== null ? `${revealAiSecret}` : emptyGuessValue}
+        <View style={styles.guessHero}>
+          <Text style={[styles.guessInputValue, activeValue.length === 0 && styles.guessInputValueEmpty]}>
+            {heroValue}
           </Text>
-          {!countdownActive && (!isSetup ? !isComplete : true) ? <View style={styles.caret} /> : null}
         </View>
+
+        <View style={[styles.bannerCard, { borderColor: bannerColor }]}>
+          <Ionicons color={bannerColor} name={bannerIcon} size={20} />
+          <Text style={[styles.bannerText, { color: bannerColor }]}>{bannerTitle}</Text>
+        </View>
+
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-        <Text style={styles.helperText}>
-          {isSetup
-            ? "Set your secret, then face Nova AI."
-            : isComplete
-              ? matchSummary
-                ? `${bannerTitle} | +${matchSummary.points} pts | ${formatDuration(matchSummary.durationMs)}`
-                : bannerTitle
-              : `Nova AI search ${aiMin}-${aiMax} | Round ${roundNumber}`}
-        </Text>
+        <Text style={styles.statusMeta}>{statusMeta}</Text>
+        {!isSetup && playerSecretNumber !== null ? (
+          <Text style={styles.secretMeta}>Your secret: {playerSecretNumber}</Text>
+        ) : null}
       </View>
 
       <View style={styles.bottomSpacer} />
 
       <View style={styles.bottomControls}>
+        {!isSetup && historyItems.length > 0 ? (
+          <View style={styles.historyList}>
+            {historyItems.map((entry, index) => {
+              const resultColor =
+                entry.playerResult === "higher" ? "#ff8a6a" : entry.playerResult === "lower" ? "#61b7ff" : "#1fc46d";
+              const resultLabel =
+                entry.playerResult === "higher" ? "GO HIGHER" : entry.playerResult === "lower" ? "GO LOWER" : "CORRECT";
+
+              return (
+                <View key={`${entry.playerGuess}-${index}`} style={styles.historyCard}>
+                  <View style={styles.historyLeft}>
+                    <Text style={styles.historyGuess}>{entry.playerGuess}</Text>
+                    <Text style={styles.historyMeta}>Round {entry.roundNumber}</Text>
+                  </View>
+
+                  <View style={styles.historyBadgeWrap}>
+                    <View style={[styles.historyResultBadge, { borderColor: resultColor }]}>
+                      <Text style={[styles.historyResultText, { color: resultColor }]}>{resultLabel}</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
         <View style={styles.keypadWrap}>
           {keypadRows.map((row, rowIndex) => (
             <View key={rowIndex} style={styles.keyRow}>
@@ -430,7 +449,7 @@ export default function VsAiDuelScreen() {
           ]}
         >
           <Text style={styles.guessButtonText}>
-            {isSetup ? "START DUEL >" : isComplete ? "REMATCH" : "LOCK >"}
+            {isSetup ? "LOCK NUMBER >" : isComplete ? "REMATCH" : "LOCK >"}
           </Text>
         </Pressable>
       </View>
@@ -441,94 +460,133 @@ export default function VsAiDuelScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    paddingBottom: spacing.md,
-    paddingTop: spacing.sm
+    paddingBottom: 0,
+    paddingTop: 0
   },
-  topRow: {
+  headerRoundPill: {
     alignItems: "center",
-    flexDirection: "row",
-    minHeight: 30
-  },
-  backButton: {
-    alignItems: "center",
-    height: 30,
+    backgroundColor: "#ffffff",
+    borderColor: "#d8dde2",
+    borderRadius: radii.pill,
+    borderWidth: 1,
     justifyContent: "center",
-    width: 30
+    minHeight: 38,
+    minWidth: 62,
+    paddingHorizontal: spacing.sm
   },
-  miniHistory: {
-    alignItems: "center",
-    flex: 1,
-    flexDirection: "row",
-    gap: spacing.xs,
-    justifyContent: "center",
-    paddingRight: 30
-  },
-  historyPlaceholder: {
-    color: "#9ca3a8",
-    fontSize: 11,
-    fontWeight: "800"
-  },
-  historyChip: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 2
-  },
-  historyGuess: {
+  headerRoundLabel: {
     color: "#8b9298",
-    fontSize: 11,
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.8
+  },
+  headerRoundValue: {
+    color: colors.text,
+    fontSize: 16,
     fontWeight: "900"
   },
-  bannerCard: {
+  playInfoBar: {
     alignItems: "center",
     alignSelf: "center",
-    borderBottomColor: "rgba(13, 63, 104, 0.35)",
-    borderBottomWidth: 5,
-    borderRadius: radii.pill,
+    flexDirection: "row",
+    justifyContent: "center",
+    minHeight: 28,
+    position: "relative",
+    width: "100%"
+  },
+  playInfoCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+    maxWidth: "70%",
+    minHeight: 28
+  },
+  modeHint: {
+    alignItems: "center",
     flexDirection: "row",
     gap: spacing.xs,
-    justifyContent: "center",
-    marginTop: spacing.sm,
-    minHeight: 44,
-    minWidth: 174,
-    paddingHorizontal: spacing.lg
+    justifyContent: "center"
   },
-  bannerText: {
-    color: "#0d3f68",
-    fontSize: 18,
+  modeHintMode: {
+    color: "#8b9298",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  modeHintRange: {
+    color: "#66717a",
+    fontSize: 12,
+    fontWeight: "900"
+  },
+  statusPillWrap: {
+    alignItems: "center",
+    backgroundColor: "#ef6d7a",
+    borderBottomColor: "#ce5662",
+    borderBottomWidth: 3,
+    borderRadius: radii.pill,
+    flexDirection: "row",
+    gap: 4,
+    justifyContent: "center",
+    minHeight: 26,
+    minWidth: 84,
+    paddingHorizontal: 9,
+    position: "absolute",
+    right: 0
+  },
+  statusPillSetup: {
+    backgroundColor: "#4aa7ff",
+    borderBottomColor: "#2d79cf"
+  },
+  statusPillText: {
+    color: "#ffffff",
+    fontSize: 11,
     fontWeight: "900"
   },
   guessPanel: {
     alignItems: "center",
-    gap: spacing.sm
+    gap: spacing.xs,
+    paddingTop: spacing.sm
   },
-  rangeLabel: {
-    color: "#9aa1a7",
-    fontSize: 13,
-    fontWeight: "800"
-  },
-  guessPill: {
+  guessHero: {
     alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderColor: "#61b7ff",
-    borderRadius: radii.pill,
-    borderWidth: 4,
-    flexDirection: "row",
     justifyContent: "center",
-    minHeight: 70,
-    minWidth: 182,
+    minHeight: 88,
+    minWidth: 196,
     paddingHorizontal: spacing.lg
   },
-  guessValue: {
-    color: "#15181b",
-    fontSize: 42,
-    fontWeight: "400"
+  guessInputValue: {
+    color: colors.text,
+    fontSize: 68,
+    fontWeight: "900",
+    lineHeight: 74,
+    textAlign: "center"
   },
-  caret: {
-    backgroundColor: "#61b7ff",
-    borderRadius: 2,
-    height: 42,
-    marginLeft: 2,
-    width: 4
+  guessInputValueEmpty: {
+    color: "#8b9298",
+    fontSize: 48,
+    letterSpacing: 4
+  },
+  bannerCard: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: colors.surface,
+    borderRadius: radii.pill,
+    borderWidth: 2,
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "center",
+    minHeight: 38,
+    minWidth: 150,
+    paddingHorizontal: spacing.md,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2
+  },
+  bannerText: {
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 0.6
   },
   error: {
     color: colors.danger,
@@ -536,22 +594,82 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textAlign: "center"
   },
-  helperText: {
+  statusMeta: {
     color: "#6d757b",
     fontSize: 12,
     fontWeight: "800",
+    textAlign: "center"
+  },
+  secretMeta: {
+    color: "#7f3440",
+    fontSize: 12,
+    fontWeight: "900",
     textAlign: "center"
   },
   bottomSpacer: {
     flex: 1
   },
   bottomControls: {
-    gap: spacing.sm
+    gap: spacing.xs
+  },
+  historyList: {
+    gap: spacing.xs,
+    width: "100%"
+  },
+  historyCard: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: "#d6dce2",
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    flexDirection: "row",
+    minHeight: 56,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1
+  },
+  historyLeft: {
+    alignItems: "flex-start",
+    justifyContent: "center",
+    flex: 1
+  },
+  historyGuess: {
+    color: "#606367",
+    fontSize: 24,
+    fontWeight: "900",
+    lineHeight: 32
+  },
+  historyMeta: {
+    color: "#9aa1a7",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.8
+  },
+  historyBadgeWrap: {
+    alignItems: "flex-end",
+    minWidth: 108
+  },
+  historyResultBadge: {
+    alignItems: "center",
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 28,
+    minWidth: 78,
+    paddingHorizontal: spacing.sm
+  },
+  historyResultText: {
+    fontSize: 12,
+    fontWeight: "900"
   },
   keypadWrap: {
     backgroundColor: "#ffffff",
-    borderRadius: 28,
-    gap: spacing.sm,
+    borderRadius: 26,
+    gap: spacing.xs,
     padding: spacing.sm
   },
   keyRow: {
@@ -563,7 +681,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#e6e7e8",
     borderRadius: radii.pill,
     flex: 1,
-    height: 44,
+    height: 40,
     justifyContent: "center"
   },
   keyButtonPressed: {
@@ -583,7 +701,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#025a29",
     borderBottomWidth: 6,
     borderRadius: radii.pill,
-    height: 54,
+    height: 46,
     justifyContent: "center"
   },
   guessButtonPressed: {
@@ -594,11 +712,8 @@ const styles = StyleSheet.create({
   },
   guessButtonText: {
     color: "#ffffff",
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: "900",
     letterSpacing: 1
-  },
-  pressed: {
-    opacity: 0.82
   }
 });
