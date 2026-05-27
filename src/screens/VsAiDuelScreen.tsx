@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
+import { VsAiWinModal } from "../components/VsAiWinModal";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
@@ -128,6 +129,10 @@ export default function VsAiDuelScreen() {
               : "#61b7ff";
   const historyItems = history.slice(0, 3).reverse();
   const ctaDisabled = countdownActive || activeValue.length === 0 || (!isSetup && isComplete);
+  const winDetail = matchSummary
+    ? `Solved in ${history.length} rounds | +${matchSummary.points} pts | ${formatDuration(matchSummary.durationMs)}`
+    : `Solved in ${history.length} rounds`;
+  const showResultModal = winner === "player" || winner === "ai";
 
   useEffect(() => {
     if (!isComplete || recordedMatchRef.current) {
@@ -313,6 +318,36 @@ export default function VsAiDuelScreen() {
     <ScreenContainer contentStyle={styles.screen}>
       <ConfettiBurst visible={winner === "player" || winner === "tie"} />
       <GameStartCountdown controller={countdown} />
+      <VsAiWinModal
+        actionLabel="REMATCH"
+        accentColor={winner === "ai" ? "#f58b96" : undefined}
+        buttonColor={winner === "ai" ? "#de6674" : undefined}
+        buttonShadowColor={winner === "ai" ? "#bb4e5d" : undefined}
+        cardBackgroundColor={winner === "ai" ? "#fff4f6" : undefined}
+        detailColor={winner === "ai" ? "#9d5761" : undefined}
+        detail={winDetail}
+        iconColor={winner === "ai" ? "#fff2f4" : undefined}
+        iconName={winner === "ai" ? "hardware-chip" : undefined}
+        iconRingColor={winner === "ai" ? "#ec7683" : undefined}
+        message={
+          winner === "ai"
+            ? playerSecretNumber !== null
+              ? `Your secret was ${playerSecretNumber}.`
+              : "Nova AI cracked your secret."
+            : aiSecretNumber !== null
+              ? `Nova AI's secret was ${aiSecretNumber}.`
+              : "You cracked Nova AI's secret."
+        }
+        messageColor={winner === "ai" ? "#8b3e49" : undefined}
+        onAction={handlePlayAgain}
+        onSecondaryAction={() => router.replace("/")}
+        secondaryAccentColor={winner === "ai" ? "#cf5c69" : undefined}
+        secondaryActionLabel="MENU"
+        showConfetti={winner === "player"}
+        title={winner === "ai" ? "AI WINS" : "YOU WIN"}
+        titleColor={winner === "ai" ? "#5d2430" : undefined}
+        visible={showResultModal}
+      />
 
       <View style={styles.topRow}>
         <Pressable
