@@ -37,19 +37,16 @@ const PROFILE_RING_CIRCUMFERENCE = 2 * Math.PI * PROFILE_RING_RADIUS;
 export default function HomeScreen() {
   const isConnected = useOnlineGameStore((state) => state.isConnected);
   const errorMessage = useOnlineGameStore((state) => state.errorMessage);
-  const hydrated = usePlayerProgressStore((state) => state.hydrated);
   const displayName = usePlayerProgressStore((state) => state.displayName);
   const profile = usePlayerProgressStore((state) => state.profile);
   const leaderboard = usePlayerProgressStore((state) => state.leaderboard);
   const singlePlayerHighScores = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighScores);
   const claimDailyReward = usePlayerProgressStore((state) => state.claimDailyReward);
-  const markTutorialSeen = usePlayerProgressStore((state) => state.markTutorialSeen);
   const toggleSoundPlaceholders = usePlayerProgressStore((state) => state.toggleSoundPlaceholders);
   const updateDisplayName = usePlayerProgressStore((state) => state.updateDisplayName);
 
   const [activeTab, setActiveTab] = useState<HomeTab>("play");
   const [isClaimingReward, setIsClaimingReward] = useState(false);
-  const [showTutorial, setShowTutorial] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState("");
   const [isSavingUsername, setIsSavingUsername] = useState(false);
@@ -63,12 +60,6 @@ export default function HomeScreen() {
       useNativeDriver: true
     }).start();
   }, [fadeIn]);
-
-  useEffect(() => {
-    if (hydrated && !profile.tutorialSeen) {
-      setShowTutorial(true);
-    }
-  }, [hydrated, profile.tutorialSeen]);
 
   const lastClaimedToday =
     profile.dailyReward.lastClaimedOn !== null &&
@@ -106,11 +97,6 @@ export default function HomeScreen() {
     } finally {
       setIsClaimingReward(false);
     }
-  };
-
-  const closeTutorial = async () => {
-    setShowTutorial(false);
-    await markTutorialSeen();
   };
 
   const openProfileModal = () => {
@@ -379,17 +365,6 @@ export default function HomeScreen() {
               </View>
 
               <View style={styles.panelCard}>
-                <Text style={styles.panelTitle}>Help</Text>
-                <View style={styles.settingsActionRow}>
-                  <View style={styles.settingsActionCopy}>
-                    <Text style={styles.settingsActionTitle}>Tutorial</Text>
-                    <Text style={styles.panelSubtext}>Replay the onboarding tips anytime.</Text>
-                  </View>
-                  <PrimaryButton label="OPEN" onPress={() => setShowTutorial(true)} variant="secondary" />
-                </View>
-              </View>
-
-              <View style={styles.panelCard}>
                 <Text style={styles.panelTitle}>Profile Shortcuts</Text>
                 <View style={styles.settingsActionRow}>
                   <View style={styles.settingsActionCopy}>
@@ -420,16 +395,6 @@ export default function HomeScreen() {
           </View>
         )}
       </Animated.View>
-
-      <Modal animationType="fade" transparent visible={showTutorial}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Find the number</Text>
-            <Text style={styles.modalText}>Guess. Read higher or lower. Keep going.</Text>
-            <PrimaryButton label="PLAY" onPress={() => void closeTutorial()} variant="success" />
-          </View>
-        </View>
-      </Modal>
 
       <Modal animationType="fade" transparent visible={showProfileModal}>
         <View style={styles.modalBackdrop}>
@@ -967,11 +932,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 26,
     fontWeight: "900"
-  },
-  modalText: {
-    color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22
   },
   modalSwitchRow: {
     alignItems: "center",
