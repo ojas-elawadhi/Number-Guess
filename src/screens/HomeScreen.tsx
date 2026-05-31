@@ -932,8 +932,13 @@ export default function HomeScreen() {
             <View style={styles.tabPane}>
               <View style={styles.panelCard}>
                 <Text style={styles.panelTitle}>Settings</Text>
-                <View style={styles.modalSwitchRow}>
-                  <Text style={styles.modalSwitchLabel}>Audio</Text>
+                <View style={styles.settingsActionRow}>
+                  <View style={styles.settingsActionCopy}>
+                    <Text style={styles.settingsActionTitle}>Sound Effects</Text>
+                    <Text style={styles.panelSubtext}>
+                      {profile.soundPlaceholdersEnabled ? "Game sounds are on." : "Game sounds are off."}
+                    </Text>
+                  </View>
                   <Switch
                     onValueChange={() => {
                       playSoundAlways(profile.soundPlaceholdersEnabled ? "switchOff" : "switchOn");
@@ -961,7 +966,7 @@ export default function HomeScreen() {
                 <Text style={styles.panelTitle}>Connection</Text>
                 <View style={styles.profileStatusRow}>
                   <StatusPill label={isConnected ? "Server Ready" : "Connecting"} tone={isConnected ? "success" : "neutral"} />
-                  <StatusPill label={profile.soundPlaceholdersEnabled ? "Audio On" : "Audio Off"} tone="neutral" />
+                  <StatusPill label={profile.soundPlaceholdersEnabled ? "Sound On" : "Sound Off"} tone="neutral" />
                 </View>
                 <Text style={[styles.panelSubtext, errorMessage && styles.errorText]}>
                   {errorMessage ?? "Settings are stored locally and sync when the server is available."}
