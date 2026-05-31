@@ -58,6 +58,18 @@ const profileAvatarOptions = [
   ring: string;
 }>;
 
+const difficultyChartConfig = [
+  { key: "easy", label: "Easy", accent: colors.practice },
+  { key: "hard", label: "Hard", accent: colors.warning },
+  { key: "impossible", label: "Impossible", accent: colors.online }
+] as const;
+
+const modeChartConfig = [
+  { key: "single-player", label: "Single Player", accent: colors.practice },
+  { key: "vs-ai", label: "VS AI", accent: colors.ai },
+  { key: "online", label: "Online", accent: colors.online }
+] as const;
+
 export default function HomeScreen() {
   const pathname = usePathname();
   const params = useLocalSearchParams<{ tab?: string }>();
@@ -96,8 +108,9 @@ export default function HomeScreen() {
   }, [displayName]);
 
   useEffect(() => {
-    if (pathname === "/profile") {
+    if (pathname === "/profile" || pathname === "/stats") {
       setActiveTab("profile");
+      setProfileSection(pathname === "/stats" ? "stats" : "profile");
       return;
     }
 
@@ -106,6 +119,7 @@ export default function HomeScreen() {
       : "play";
 
     setActiveTab(nextTab);
+    setProfileSection("profile");
   }, [params.tab, pathname]);
 
   const lastClaimedToday =
@@ -127,6 +141,37 @@ export default function HomeScreen() {
   const today = new Date();
   const dailyMonth = today.toLocaleString("en-US", { month: "short" }).toUpperCase();
   const dailyDay = today.getDate();
+  const totalMatches = profile.stats.matches;
+  const overallWinRate = totalMatches > 0 ? Math.round((profile.stats.wins / totalMatches) * 100) : 0;
+  const streakProgressTarget = Math.max(3, profile.bestWinStreak, profile.currentWinStreak);
+  const streakProgressPercent = Math.max(
+    profile.currentWinStreak > 0 ? 10 : 0,
+    Math.min(100, Math.round((profile.currentWinStreak / streakProgressTarget) * 100))
+  );
+  const streakCaption = profile.currentWinStreak <= 0
+    ? "Your next win starts a streak"
+    : profile.currentWinStreak >= profile.bestWinStreak && profile.bestWinStreak > 0
+      ? "You are matching your best run"
+      : `${Math.max(0, profile.bestWinStreak - profile.currentWinStreak)} away from your best`;
+  const bestScoreCeiling = Math.max(
+    1,
+    profile.stats.singlePlayerHighScores.easy,
+    profile.stats.singlePlayerHighScores.hard,
+    profile.stats.singlePlayerHighScores.impossible
+  );
+  const modePerformance = modeChartConfig.map((mode) => {
+    const stats = profile.stats.category[mode.key];
+    const winRate = stats.matches > 0 ? Math.round((stats.wins / stats.matches) * 100) : 0;
+
+    return {
+      ...mode,
+      matches: stats.matches,
+      points: stats.points,
+      winRate
+    };
+  });
+  const modeMatchesCeiling = Math.max(1, ...modePerformance.map((mode) => mode.matches));
+  const recentMatches = profile.history.slice(0, 5);
 
   const handleClaimDailyReward = async () => {
     try {
@@ -196,6 +241,11 @@ export default function HomeScreen() {
   const handleTabChange = (tab: HomeTab) => {
     if (tab === "profile") {
       openProfileEditor();
+      return;
+    }
+
+    if (tab === "stats") {
+      router.replace("/stats");
       return;
     }
 
@@ -497,7 +547,14 @@ export default function HomeScreen() {
                     return (
                       <Pressable
                         key={section}
-                        onPress={() => setProfileSection(section)}
+                        onPress={() => {
+                          if (section === "stats") {
+                            router.replace("/stats");
+                            return;
+                          }
+
+                          router.replace("/profile");
+                        }}
                         style={({ pressed }) => [
                           styles.profileSectionTab,
                           isActive && styles.profileSectionTabActive,
@@ -519,7 +576,234 @@ export default function HomeScreen() {
               </View>
 
               {profileSection === "stats" ? (
-                <View style={[styles.profilePanelEmpty, { width: profileContentWidth }]} />
+                <View style={[styles.profileStatsPanel, { width: profileContentWidth }]}>
+                  <View style={styles.profileStatsHeroGrid}>
+                    <View style={[styles.profileStatsHeroCard, styles.profileStatsHeroCardPrimary]}>
+                      <View style={[styles.profileStatsHeroGlow, styles.profileStatsHeroGlowPrimaryA]} />
+                      <View style={[styles.profileStatsHeroGlow, styles.profileStatsHeroGlowPrimaryB]} />
+
+                      <View style={styles.profileStatsHeroTopRow}>
+                        <View style={[styles.profileStatsHeroBadge, styles.profileStatsHeroBadgePrimary]}>
+                          <Ionicons color={colors.accent} name="trending-up" size={16} />
+                        </View>
+                        <View style={styles.profileStatsHeroTag}>
+                          <Text style={styles.profileStatsHeroTagText}>Overall</Text>
+                        </View>
+                      </View>
+
+                      <Text style={styles.profileStatsHeroLabel}>Win Rate</Text>
+                      <Text style={styles.profileStatsHeroValue}>{overallWinRate}%</Text>
+                      <Text style={styles.profileStatsHeroCaption}>
+                        {totalMatches > 0 ? `${profile.stats.wins} wins in ${totalMatches} matches` : "Start playing to build your record"}
+                      </Text>
+
+                      <View style={styles.profileStatsHeroMeterTrack}>
+                        <View
+                          style={[
+                            styles.profileStatsHeroMeterFill,
+                            styles.profileStatsHeroMeterFillPrimary,
+                            { width: `${Math.max(overallWinRate > 0 ? 12 : 0, overallWinRate)}%` }
+                          ]}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={[styles.profileStatsHeroCard, styles.profileStatsHeroCardAccent]}>
+                      <View style={[styles.profileStatsHeroGlow, styles.profileStatsHeroGlowAccentA]} />
+                      <View style={[styles.profileStatsHeroGlow, styles.profileStatsHeroGlowAccentB]} />
+
+                      <View style={styles.profileStatsHeroTopRow}>
+                        <View style={[styles.profileStatsHeroBadge, styles.profileStatsHeroBadgeAccent]}>
+                          <Ionicons color="#0f5f87" name="flame" size={16} />
+                        </View>
+                        <View style={styles.profileStatsHeroTag}>
+                          <Text style={styles.profileStatsHeroTagText}>Live</Text>
+                        </View>
+                      </View>
+
+                      <Text style={styles.profileStatsHeroLabel}>Current Streak</Text>
+                      <Text style={styles.profileStatsHeroValue}>{profile.currentWinStreak}</Text>
+                      <Text style={styles.profileStatsHeroCaption}>{streakCaption}</Text>
+
+                      <View style={styles.profileStatsHeroMeterTrack}>
+                        <View
+                          style={[
+                            styles.profileStatsHeroMeterFill,
+                            styles.profileStatsHeroMeterFillAccent,
+                            { width: `${streakProgressPercent}%` }
+                          ]}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.profileStatsMiniRow}>
+                      <View style={[styles.profileStatsMiniCard, styles.profileStatsMiniCardWarm]}>
+                        <View style={styles.profileStatsMiniTopRow}>
+                          <View style={[styles.profileStatsMiniBadge, styles.profileStatsMiniBadgeWarm]}>
+                            <Ionicons color="#8a5e00" name="trophy" size={14} />
+                          </View>
+                        </View>
+                        <Text style={styles.profileStatsMiniLabel}>Best Streak</Text>
+                        <Text style={styles.profileStatsMiniValue}>{profile.bestWinStreak}</Text>
+                        <Text style={styles.profileStatsMiniCaption}>Personal best</Text>
+                      </View>
+
+                      <View style={[styles.profileStatsMiniCard, styles.profileStatsMiniCardCool]}>
+                        <View style={styles.profileStatsMiniTopRow}>
+                          <View style={[styles.profileStatsMiniBadge, styles.profileStatsMiniBadgeCool]}>
+                            <Ionicons color="#1f74b0" name="podium" size={14} />
+                          </View>
+                        </View>
+                        <Text style={styles.profileStatsMiniLabel}>Rank</Text>
+                        <Text style={styles.profileStatsMiniValue}>{playerRank ? `#${playerRank}` : "--"}</Text>
+                        <Text style={styles.profileStatsMiniCaption}>{playerRank ? "Online leaderboard" : "Play online to place"}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.profileStatsFeatureCard}>
+                    <View style={styles.profileStatsSectionHeader}>
+                      <View>
+                        <Text style={styles.profileStatsSectionEyebrow}>Single Player</Text>
+                        <Text style={styles.profileStatsSectionTitle}>Difficulty Mastery</Text>
+                      </View>
+                      <View style={styles.profileStatsChip}>
+                        <Text style={styles.profileStatsChipText}>Best Score {singlePlayerBestScore}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.profileStatsChart}>
+                      {difficultyChartConfig.map((difficulty) => {
+                        const score = profile.stats.singlePlayerHighScores[difficulty.key];
+                        const rounds = profile.stats.singlePlayerHighRounds[difficulty.key];
+                        const widthPercent = score > 0 ? Math.max(8, Math.round((score / bestScoreCeiling) * 100)) : 0;
+
+                        return (
+                          <View key={difficulty.key} style={styles.profileStatsChartRow}>
+                            <View style={styles.profileStatsChartHead}>
+                              <View style={[styles.profileStatsChartDot, { backgroundColor: difficulty.accent }]} />
+                              <Text style={styles.profileStatsChartLabel}>{difficulty.label}</Text>
+                              <Text style={styles.profileStatsChartScore}>{score}</Text>
+                            </View>
+
+                            <View style={styles.profileStatsChartTrack}>
+                              <View
+                                style={[
+                                  styles.profileStatsChartFill,
+                                  {
+                                    backgroundColor: difficulty.accent,
+                                    width: `${widthPercent}%`
+                                  }
+                                ]}
+                              />
+                            </View>
+
+                            <Text style={styles.profileStatsChartMeta}>
+                              Best Round {rounds}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  <View style={styles.profileStatsFeatureCard}>
+                    <View style={styles.profileStatsSectionHeader}>
+                      <View>
+                        <Text style={styles.profileStatsSectionEyebrow}>Overview</Text>
+                        <Text style={styles.profileStatsSectionTitle}>Mode Performance</Text>
+                      </View>
+                      <View style={styles.profileStatsChip}>
+                        <Text style={styles.profileStatsChipText}>{totalMatches} Matches</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.profileStatsModeList}>
+                      {modePerformance.map((mode) => {
+                        const barWidth = mode.matches > 0 ? Math.max(10, Math.round((mode.matches / modeMatchesCeiling) * 100)) : 0;
+
+                        return (
+                          <View key={mode.key} style={styles.profileStatsModeCard}>
+                            <View style={styles.profileStatsModeHeader}>
+                              <View style={styles.profileStatsModeIdentity}>
+                                <View style={[styles.profileStatsModeBadge, { backgroundColor: `${mode.accent}22` }]}>
+                                  <View style={[styles.profileStatsModeBadgeCore, { backgroundColor: mode.accent }]} />
+                                </View>
+                                <View style={styles.profileStatsModeCopy}>
+                                  <Text style={styles.profileStatsModeTitle}>{mode.label}</Text>
+                                  <Text style={styles.profileStatsModeMeta}>{mode.matches} matches played</Text>
+                                </View>
+                              </View>
+
+                              <View style={styles.profileStatsModeMetrics}>
+                                <Text style={styles.profileStatsModeMetricValue}>{mode.winRate}%</Text>
+                                <Text style={styles.profileStatsModeMetricLabel}>win rate</Text>
+                              </View>
+                            </View>
+
+                            <View style={styles.profileStatsModeBarTrack}>
+                              <View
+                                style={[
+                                  styles.profileStatsModeBarFill,
+                                  {
+                                    backgroundColor: mode.accent,
+                                    width: `${barWidth}%`
+                                  }
+                                ]}
+                              />
+                            </View>
+
+                            <View style={styles.profileStatsModeFooter}>
+                              <Text style={styles.profileStatsModeFooterText}>{mode.points} pts earned</Text>
+                              <Text style={styles.profileStatsModeFooterText}>
+                                {mode.matches > 0 ? Math.round(mode.points / mode.matches) : 0} avg pts
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  <View style={styles.profileStatsFeatureCard}>
+                    <View style={styles.profileStatsSectionHeader}>
+                      <View>
+                        <Text style={styles.profileStatsSectionEyebrow}>Recent Form</Text>
+                        <Text style={styles.profileStatsSectionTitle}>Latest Matches</Text>
+                      </View>
+                    </View>
+
+                    {recentMatches.length > 0 ? recentMatches.map((match) => {
+                      const outcomeColor =
+                        match.outcome === "win" ? colors.practice : match.outcome === "tie" ? colors.warning : colors.ai;
+
+                      return (
+                        <View key={match.id} style={styles.profileStatsMatchRow}>
+                          <View style={[styles.profileStatsMatchPill, { backgroundColor: outcomeColor }]}>
+                            <Text style={styles.profileStatsMatchPillText}>{match.outcome.toUpperCase()}</Text>
+                          </View>
+
+                          <View style={styles.profileStatsMatchCopy}>
+                            <Text numberOfLines={1} style={styles.profileStatsMatchTitle}>
+                              {match.mode === "daily" ? "Daily Puzzle" : match.category === "single-player" ? "Single Player" : match.category === "vs-ai" ? "VS AI" : "Online"} · {match.difficulty}
+                            </Text>
+                            <Text numberOfLines={1} style={styles.profileStatsMatchSubtitle}>
+                              {match.points} pts · {formatDuration(match.durationMs)} · {match.attempts} attempts
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    }) : (
+                      <View style={styles.profileStatsEmptyState}>
+                        <Ionicons color={colors.textMuted} name="stats-chart-outline" size={20} />
+                        <Text style={styles.profileStatsEmptyTitle}>No match history yet</Text>
+                        <Text style={styles.profileStatsEmptyCaption}>
+                          Your recent games will show up here once you start playing.
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
               ) : (
                 <View style={[styles.profilePanel, { width: profileContentWidth }]}>
                   <View style={styles.profileNameRow}>
@@ -1320,6 +1604,433 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     gap: 10,
     marginTop: 8
+  },
+  profileStatsPanel: {
+    alignSelf: "flex-start",
+    gap: 12,
+    marginTop: 8
+  },
+  profileStatsHeroGrid: {
+    gap: 8
+  },
+  profileStatsHeroCard: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 24,
+    gap: 4,
+    minHeight: 108,
+    overflow: "hidden",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    position: "relative",
+    ...shadows.card
+  },
+  profileStatsHeroCardPrimary: {
+    backgroundColor: "#f7fbf7"
+  },
+  profileStatsHeroCardAccent: {
+    backgroundColor: "#f5f9fc"
+  },
+  profileStatsHeroGlow: {
+    borderRadius: radii.pill,
+    position: "absolute"
+  },
+  profileStatsHeroGlowPrimaryA: {
+    backgroundColor: "rgba(46, 204, 113, 0.16)",
+    height: 124,
+    right: -18,
+    top: -18,
+    width: 124
+  },
+  profileStatsHeroGlowPrimaryB: {
+    backgroundColor: "rgba(0, 109, 55, 0.08)",
+    height: 88,
+    left: -16,
+    top: 28,
+    width: 88
+  },
+  profileStatsHeroGlowAccentA: {
+    backgroundColor: "rgba(92, 184, 253, 0.18)",
+    height: 124,
+    right: -16,
+    top: -20,
+    width: 124
+  },
+  profileStatsHeroGlowAccentB: {
+    backgroundColor: "rgba(15, 95, 135, 0.08)",
+    height: 96,
+    left: -14,
+    top: 34,
+    width: 96
+  },
+  profileStatsHeroTopRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+    zIndex: 1
+  },
+  profileStatsHeroBadge: {
+    alignItems: "center",
+    borderRadius: 16,
+    height: 32,
+    justifyContent: "center",
+    width: 32
+  },
+  profileStatsHeroBadgePrimary: {
+    backgroundColor: "#dcf7e5"
+  },
+  profileStatsHeroBadgeAccent: {
+    backgroundColor: "#d9effd"
+  },
+  profileStatsHeroTag: {
+    backgroundColor: "rgba(255, 255, 255, 0.72)",
+    borderColor: "rgba(25, 28, 29, 0.06)",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5
+  },
+  profileStatsHeroTagText: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+    textTransform: "uppercase"
+  },
+  profileStatsHeroLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    zIndex: 1
+  },
+  profileStatsHeroValue: {
+    color: colors.text,
+    fontSize: 34,
+    fontWeight: "900",
+    lineHeight: 38,
+    zIndex: 1
+  },
+  profileStatsHeroCaption: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginTop: 2,
+    zIndex: 1
+  },
+  profileStatsHeroMeterTrack: {
+    backgroundColor: "rgba(25, 28, 29, 0.08)",
+    borderRadius: radii.pill,
+    height: 7,
+    marginTop: 12,
+    overflow: "hidden",
+    zIndex: 1
+  },
+  profileStatsHeroMeterFill: {
+    borderRadius: radii.pill,
+    height: "100%"
+  },
+  profileStatsHeroMeterFillPrimary: {
+    backgroundColor: colors.accent
+  },
+  profileStatsHeroMeterFillAccent: {
+    backgroundColor: colors.online
+  },
+  profileStatsMiniRow: {
+    flexDirection: "row",
+    gap: 8
+  },
+  profileStatsMiniCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    flex: 1,
+    gap: 4,
+    minHeight: 76,
+    overflow: "hidden",
+    paddingHorizontal: 12,
+    position: "relative",
+    paddingVertical: 10,
+    ...shadows.card
+  },
+  profileStatsMiniCardWarm: {
+    backgroundColor: "#fff3d6",
+    borderColor: "#f4cd74"
+  },
+  profileStatsMiniCardCool: {
+    backgroundColor: "#e8f5ff",
+    borderColor: "#9cd8ff"
+  },
+  profileStatsMiniCardOnline: {
+    backgroundColor: "#eaf8f0",
+    borderColor: "#93d1aa"
+  },
+  profileStatsMiniTopRow: {
+    alignItems: "flex-start",
+    marginBottom: 8
+  },
+  profileStatsMiniBadge: {
+    alignItems: "center",
+    borderRadius: 14,
+    height: 28,
+    justifyContent: "center",
+    width: 28
+  },
+  profileStatsMiniBadgeWarm: {
+    backgroundColor: "rgba(244, 205, 116, 0.4)"
+  },
+  profileStatsMiniBadgeCool: {
+    backgroundColor: "rgba(156, 216, 255, 0.4)"
+  },
+  profileStatsMiniLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    textTransform: "uppercase"
+  },
+  profileStatsMiniValue: {
+    color: colors.text,
+    fontSize: 26,
+    fontWeight: "900",
+    lineHeight: 30
+  },
+  profileStatsMiniCaption: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 16,
+    marginTop: 2
+  },
+  profileStatsFeatureCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    ...shadows.card
+  },
+  profileStatsSectionHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "space-between"
+  },
+  profileStatsSectionEyebrow: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase"
+  },
+  profileStatsSectionTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "900",
+    lineHeight: 23
+  },
+  profileStatsChip: {
+    backgroundColor: colors.surfaceCool,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  profileStatsChipText: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+    textTransform: "uppercase"
+  },
+  profileStatsChart: {
+    gap: 10
+  },
+  profileStatsChartRow: {
+    gap: 5
+  },
+  profileStatsChartHead: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8
+  },
+  profileStatsChartDot: {
+    borderRadius: radii.pill,
+    height: 10,
+    width: 10
+  },
+  profileStatsChartLabel: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  profileStatsChartScore: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "900"
+  },
+  profileStatsChartTrack: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.pill,
+    height: 12,
+    overflow: "hidden"
+  },
+  profileStatsChartFill: {
+    borderRadius: radii.pill,
+    height: "100%"
+  },
+  profileStatsChartMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  profileStatsModeList: {
+    gap: 10
+  },
+  profileStatsModeCard: {
+    backgroundColor: "#f8fafa",
+    borderColor: colors.surfaceAlt,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12
+  },
+  profileStatsModeHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  profileStatsModeIdentity: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: 10
+  },
+  profileStatsModeBadge: {
+    alignItems: "center",
+    borderRadius: 16,
+    height: 32,
+    justifyContent: "center",
+    width: 32
+  },
+  profileStatsModeBadgeCore: {
+    borderRadius: radii.pill,
+    height: 12,
+    width: 12
+  },
+  profileStatsModeCopy: {
+    flex: 1,
+    gap: 1
+  },
+  profileStatsModeTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "900"
+  },
+  profileStatsModeMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  profileStatsModeMetrics: {
+    alignItems: "flex-end",
+    marginLeft: 10
+  },
+  profileStatsModeMetricValue: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "900",
+    lineHeight: 20
+  },
+  profileStatsModeMetricLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase"
+  },
+  profileStatsModeBarTrack: {
+    backgroundColor: "rgba(25, 28, 29, 0.08)",
+    borderRadius: radii.pill,
+    height: 10,
+    overflow: "hidden"
+  },
+  profileStatsModeBarFill: {
+    borderRadius: radii.pill,
+    height: "100%"
+  },
+  profileStatsModeFooter: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  profileStatsModeFooterText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  profileStatsMatchRow: {
+    alignItems: "center",
+    borderTopColor: colors.surfaceAlt,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 58,
+    paddingTop: 10
+  },
+  profileStatsMatchPill: {
+    alignItems: "center",
+    borderRadius: radii.pill,
+    justifyContent: "center",
+    minHeight: 28,
+    minWidth: 64,
+    paddingHorizontal: 10
+  },
+  profileStatsMatchPillText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.4
+  },
+  profileStatsMatchCopy: {
+    flex: 1,
+    gap: 2
+  },
+  profileStatsMatchTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  profileStatsMatchSubtitle: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  profileStatsEmptyState: {
+    alignItems: "center",
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 20,
+    gap: 4,
+    paddingHorizontal: 18,
+    paddingVertical: 18
+  },
+  profileStatsEmptyTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  profileStatsEmptyCaption: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 17,
+    textAlign: "center"
   },
   profilePanelEmpty: {
     alignSelf: "flex-start",
