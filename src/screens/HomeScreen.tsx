@@ -409,15 +409,7 @@ export default function HomeScreen() {
                   <Pressable onPress={() => router.replace("/")} style={({ pressed }) => [styles.profileHeroBackButton, pressed && styles.pressed]}>
                     <Ionicons color={colors.text} name="arrow-back" size={21} />
                   </Pressable>
-                  <View style={styles.profileHeroCoinsPill}>
-                    <View style={styles.profileHeroCoinIcon}>
-                      <Ionicons color="#ffffff" name="star" size={13} />
-                    </View>
-                    <Text style={styles.profileHeroCoinText}>{profile.coins.toLocaleString("en-US")}</Text>
-                    <View style={styles.profileHeroCoinAdd}>
-                      <Ionicons color="#ffffff" name="add" size={14} />
-                    </View>
-                  </View>
+                  <HeaderCoinsPill coins={profile.coins} />
                 </View>
 
                 <View
@@ -1150,45 +1142,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 34,
     ...shadows.card
-  },
-  profileHeroCoinsPill: {
-    alignItems: "center",
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 6,
-    minHeight: 30,
-    minWidth: 86,
-    paddingLeft: 4,
-    paddingRight: 3,
-    ...shadows.card
-  },
-  profileHeroCoinIcon: {
-    alignItems: "center",
-    backgroundColor: colors.warning,
-    borderColor: colors.warning,
-    borderRadius: radii.pill,
-    borderWidth: 2,
-    height: 24,
-    justifyContent: "center",
-    width: 24
-  },
-  profileHeroCoinText: {
-    color: colors.textMuted,
-    flex: 1,
-    fontSize: 12,
-    fontWeight: "900",
-    textAlign: "center"
-  },
-  profileHeroCoinAdd: {
-    alignItems: "center",
-    backgroundColor: colors.practice,
-    borderRadius: radii.pill,
-    height: 22,
-    justifyContent: "center",
-    width: 22
   },
   profileHeroCard: {
     backgroundColor: colors.surface,
