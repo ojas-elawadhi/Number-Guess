@@ -70,6 +70,14 @@ const modeChartConfig = [
   { key: "online", label: "Online", accent: colors.online }
 ] as const;
 
+function OnlineVsBadge() {
+  return (
+    <View style={styles.onlineVsBadge}>
+      <Text style={styles.onlineVsBadgeText}>VS!</Text>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const pathname = usePathname();
   const params = useLocalSearchParams<{ tab?: string }>();
@@ -143,6 +151,7 @@ export default function HomeScreen() {
   const dailyDay = today.getDate();
   const totalMatches = profile.stats.matches;
   const overallWinRate = totalMatches > 0 ? Math.round((profile.stats.wins / totalMatches) * 100) : 0;
+  const aiWins = profile.stats.category["vs-ai"].wins;
   const streakProgressTarget = Math.max(3, profile.bestWinStreak, profile.currentWinStreak);
   const streakProgressPercent = Math.max(
     profile.currentWinStreak > 0 ? 10 : 0,
@@ -360,8 +369,33 @@ export default function HomeScreen() {
                   subtitle="Endless Mode"
                   title="Single Player"
                 />
-                <ModeTile accent={colors.ai} compact icon="hardware-chip-outline" onPress={() => router.push("/vs-ai")} subtitle="Practice & Learn" title="VS AI" />
-                <ModeTile accent={colors.online} compact icon="globe-outline" onPress={() => router.push("/online")} subtitle="Ranked Match" title="Online" />
+                <ModeTile
+                  accent={colors.ai}
+                  compact
+                  icon="hardware-chip-outline"
+                  onPress={() => router.push("/vs-ai")}
+                  rightAccessory={
+                    <View style={styles.modeBestCard}>
+                      <View style={styles.modeBestTop}>
+                        <Text style={styles.modeBestLabel}>WINS</Text>
+                      </View>
+                      <View style={styles.modeBestBottom}>
+                        <Text style={styles.modeBestValue}>{aiWins}</Text>
+                      </View>
+                    </View>
+                  }
+                  subtitle="Battle Mode"
+                  title="VS AI"
+                />
+                <ModeTile
+                  accent={colors.online}
+                  compact
+                  icon="globe-outline"
+                  onPress={() => router.push("/online")}
+                  rightAccessory={<OnlineVsBadge />}
+                  subtitle="Ranked Match"
+                  title="Online"
+                />
               </View>
 
               <Pressable onPress={() => router.push("/daily-puzzle")} style={({ pressed }) => [styles.dailyCard, pressed && styles.pressed]}>
@@ -1248,35 +1282,56 @@ const styles = StyleSheet.create({
     gap: spacing.sm
   },
   modeBestCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 8,
-    overflow: "hidden",
+    alignItems: "center",
+    backgroundColor: "transparent",
+    justifyContent: "center",
     width: 44
   },
   modeBestTop: {
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 15,
-    paddingHorizontal: 5,
-    paddingTop: 1
+    minHeight: 12,
+    paddingHorizontal: 2
   },
   modeBestLabel: {
-    color: "#58d83c",
-    fontSize: 8,
+    color: "#ffffff",
+    fontSize: 11,
     fontWeight: "900",
-    letterSpacing: 0.4
+    letterSpacing: 0.4,
+    textShadowColor: "rgba(0, 0, 0, 0.18)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1
   },
   modeBestBottom: {
     alignItems: "center",
-    borderTopColor: "#58d83c",
-    borderTopWidth: 1.5,
+    borderTopColor: "transparent",
+    borderTopWidth: 0,
     justifyContent: "center",
-    minHeight: 24
+    marginTop: -2,
+    minHeight: 18
   },
   modeBestValue: {
-    color: "#58d83c",
-    fontSize: 18,
-    fontWeight: "900"
+    color: "#ffffff",
+    fontSize: 24,
+    fontWeight: "900",
+    textShadowColor: "rgba(0, 0, 0, 0.18)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1
+  },
+  onlineVsBadge: {
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  onlineVsBadgeText: {
+    color: "#ffffff",
+    fontSize: 24,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+    lineHeight: 26,
+    paddingHorizontal: 10,
+    textShadowColor: "rgba(0, 0, 0, 0.18)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1
   },
   panelRow: {
     flexDirection: "row",
