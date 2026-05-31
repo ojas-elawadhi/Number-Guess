@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { getDayFromDateKey, getShortMonthLabel } from "../utils/dailyPuzzle";
 import { colors, radii, shadows, spacing } from "../utils/theme";
+import { playSound } from "../services/soundEffects";
 
 export const APP_HEADER_CONTENT_HEIGHT = 72;
 export const APP_HEADER_SEPARATOR_HEIGHT = 4;
@@ -37,8 +38,13 @@ interface HeaderBackButtonProps {
 }
 
 export function HeaderBackButton({ onPress }: HeaderBackButtonProps) {
+  const handlePress = () => {
+    playSound("back");
+    onPress?.();
+  };
+
   return (
-    <Pressable hitSlop={10} onPress={onPress} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+    <Pressable hitSlop={10} onPress={handlePress} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
       <Ionicons color={colors.text} name="arrow-back" size={22} />
     </Pressable>
   );

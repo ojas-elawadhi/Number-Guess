@@ -1,6 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
 
 import { colors, radii, shadows, spacing } from "../utils/theme";
+import { playButtonSound } from "../services/soundEffects";
 
 interface PrimaryButtonProps {
   label: string;
@@ -18,11 +19,15 @@ export function PrimaryButton({
   variant = "primary"
 }: PrimaryButtonProps) {
   const isDisabled = disabled || loading;
+  const handlePress = () => {
+    playButtonSound();
+    onPress();
+  };
 
   return (
     <Pressable
       disabled={isDisabled}
-      onPress={onPress}
+      onPress={handlePress}
       style={({ pressed }) => [
         styles.button,
         variant === "secondary" && styles.secondaryButton,

@@ -14,6 +14,7 @@ module.exports = {
     newArchEnabled: true,
     plugins: [
       "expo-router",
+      "expo-audio",
       [
         "react-native-google-mobile-ads",
         {

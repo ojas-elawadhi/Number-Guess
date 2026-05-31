@@ -6,7 +6,17 @@ interface SoundPlaceholdersCardProps {
   enabled: boolean;
 }
 
-const placeholders = ["Countdown", "Guess Lock", "Result Reveal", "Victory", "Defeat"];
+const placeholders = [
+  "Countdown",
+  "Buttons",
+  "Guess Lock",
+  "Result Reveal",
+  "Victory",
+  "Defeat",
+  "Rewards",
+  "Power-ups",
+  "Online"
+];
 
 export function SoundPlaceholdersCard({ enabled }: SoundPlaceholdersCardProps) {
   return (

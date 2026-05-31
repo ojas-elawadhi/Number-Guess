@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ModeTile, TopBar } from "../components/GameKit";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { TextField } from "../components/TextField";
+import { playSound } from "../services/soundEffects";
 import { joinRoom } from "../socket/onlineSocket";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
@@ -38,11 +39,13 @@ export default function OnlineSetupScreen() {
 
       const response = await joinRoom(roomId.trim().toUpperCase(), displayName.trim());
       setSession(response.player, response.room);
+      playSound("onlineNotify");
       router.push({
         pathname: "/online-lobby",
         params: { returnTo: "/online" }
       });
     } catch (error) {
+      playSound("error");
       setErrorMessage(error instanceof Error ? error.message : "Could not join room.");
     } finally {
       setLoadingAction(null);

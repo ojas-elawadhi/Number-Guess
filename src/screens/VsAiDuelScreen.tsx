@@ -9,6 +9,7 @@ import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { VsAiWinModal } from "../components/VsAiWinModal";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
+import { playResultSound, playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
 import type { MatchRecord } from "../types/progression.types";
@@ -170,10 +171,12 @@ export default function VsAiDuelScreen() {
     const parsedSecretNumber = Number(playerSecretInput);
 
     if (!Number.isInteger(parsedSecretNumber) || parsedSecretNumber < 1 || parsedSecretNumber > difficultyConfig.maxNumber) {
+      playSound("error");
       setErrorMessage(`Use 1-${difficultyConfig.maxNumber}.`);
       return;
     }
 
+    playSound("guessLock");
     startTimeRef.current = Date.now();
     recordedMatchRef.current = false;
     setPlayerSecretNumber(parsedSecretNumber);
@@ -198,6 +201,7 @@ export default function VsAiDuelScreen() {
     const parsedGuess = Number(guess);
 
     if (!Number.isInteger(parsedGuess) || parsedGuess < 1 || parsedGuess > difficultyConfig.maxNumber) {
+      playSound("error");
       setErrorMessage(`Use 1-${difficultyConfig.maxNumber}.`);
       return;
     }
@@ -213,19 +217,24 @@ export default function VsAiDuelScreen() {
     setHistory((currentHistory) => [roundEntry, ...currentHistory].slice(0, 8));
     setGuess("");
     setErrorMessage(null);
+    playSound("guessLock");
+    playResultSound(playerResult);
 
     if (playerResult === "correct" && aiResult === "correct") {
       setWinner("tie");
+      playSound("tie");
       return;
     }
 
     if (playerResult === "correct") {
       setWinner("player");
+      playSound("victory");
       return;
     }
 
     if (aiResult === "correct") {
       setWinner("ai");
+      playSound("defeat");
       return;
     }
 
@@ -239,6 +248,7 @@ export default function VsAiDuelScreen() {
   };
 
   const handlePlayAgain = () => {
+    playSound("uiTap");
     startTimeRef.current = Date.now();
     recordedMatchRef.current = false;
     setPlayerSecretInput("");
@@ -260,6 +270,7 @@ export default function VsAiDuelScreen() {
       return;
     }
 
+    playSound("numberKey");
     if (isSetup) {
       setPlayerSecretInput((currentValue) => `${currentValue}${digit}`);
     } else {
@@ -273,6 +284,7 @@ export default function VsAiDuelScreen() {
       return;
     }
 
+    playSound("erase");
     if (isSetup) {
       setPlayerSecretInput((currentValue) => currentValue.slice(0, -1));
     } else {
@@ -286,6 +298,7 @@ export default function VsAiDuelScreen() {
       return;
     }
 
+    playSound("clear");
     if (isSetup) {
       setPlayerSecretInput("");
     } else {

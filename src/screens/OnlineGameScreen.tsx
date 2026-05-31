@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ScreenContainer } from "../components/ScreenContainer";
+import { playResultSound, playSound } from "../services/soundEffects";
 import { makeGuess, setSecretNumber } from "../socket/onlineSocket";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { colors, radii, spacing } from "../utils/theme";
@@ -37,6 +38,8 @@ export default function OnlineGameScreen() {
   const previousOpponentReadyRef = useRef(false);
   const previousRoundStatusRef = useRef<string | null>(null);
   const previousSummaryRoundRef = useRef<number | null>(null);
+  const previousResultSoundRoundRef = useRef<number | null>(null);
+  const lastTimerBeepSecondRef = useRef<number | null>(null);
   const roundSummaryOpacity = useRef(new Animated.Value(0)).current;
   const roundSummaryTranslateY = useRef(new Animated.Value(-12)).current;
   const roundSummaryBackdropOpacity = useRef(new Animated.Value(0)).current;
@@ -114,7 +117,17 @@ export default function OnlineGameScreen() {
   useEffect(() => {
     if (!lastGuessResult) {
       previousSummaryRoundRef.current = null;
+      previousResultSoundRoundRef.current = null;
     }
+  }, [lastGuessResult]);
+
+  useEffect(() => {
+    if (!lastGuessResult || previousResultSoundRoundRef.current === lastGuessResult.roundNumber) {
+      return;
+    }
+
+    previousResultSoundRoundRef.current = lastGuessResult.roundNumber;
+    playResultSound(lastGuessResult.result);
   }, [lastGuessResult]);
 
   useEffect(() => {
@@ -140,6 +153,7 @@ export default function OnlineGameScreen() {
 
     if (opponentHasSubmittedSecret && !previousOpponentReadyRef.current && room.roundStatus === "setup") {
       setToastMessage("Opponent locked in.");
+      playSound("onlineNotify");
     }
 
     if (
@@ -148,11 +162,26 @@ export default function OnlineGameScreen() {
       personalSecretNumber !== null
     ) {
       setToastMessage("Round 1 started.");
+      playSound("countdownGo");
     }
 
     previousOpponentReadyRef.current = opponentHasSubmittedSecret;
     previousRoundStatusRef.current = room.roundStatus;
   }, [mode, opponentHasSubmittedSecret, personalSecretNumber, room]);
+
+  useEffect(() => {
+    if (!isCollecting || secondsRemaining <= 0 || secondsRemaining > 3) {
+      lastTimerBeepSecondRef.current = null;
+      return;
+    }
+
+    if (lastTimerBeepSecondRef.current === secondsRemaining) {
+      return;
+    }
+
+    lastTimerBeepSecondRef.current = secondsRemaining;
+    playSound("timerLow");
+  }, [isCollecting, secondsRemaining]);
 
   useEffect(() => {
     if (!room || mode !== "duel" || !lastGuessResult) {
@@ -320,6 +349,7 @@ export default function OnlineGameScreen() {
     const parsedSecretNumber = Number(secretNumber);
 
     if (!Number.isInteger(parsedSecretNumber) || parsedSecretNumber < 1 || parsedSecretNumber > maxNumber) {
+      playSound("error");
       setErrorMessage(`Use 1-${maxNumber}.`);
       return;
     }
@@ -330,7 +360,9 @@ export default function OnlineGameScreen() {
       await setSecretNumber(room.roomId, parsedSecretNumber);
       setPersonalSecretNumber(parsedSecretNumber);
       setToastMessage("Secret locked.");
+      playSound("guessLock");
     } catch (error) {
+      playSound("error");
       setErrorMessage(error instanceof Error ? error.message : "Could not lock secret.");
     } finally {
       setIsSubmittingSecret(false);
@@ -339,11 +371,13 @@ export default function OnlineGameScreen() {
 
   const handleSubmitGuess = async () => {
     if (!isCollecting) {
+      playSound("error");
       setErrorMessage("Wait for the round.");
       return;
     }
 
     if (hasSubmitted) {
+      playSound("error");
       setErrorMessage("Already locked.");
       return;
     }
@@ -351,6 +385,7 @@ export default function OnlineGameScreen() {
     const parsedGuess = Number(guess);
 
     if (!Number.isInteger(parsedGuess) || parsedGuess < 1 || parsedGuess > maxNumber) {
+      playSound("error");
       setErrorMessage(`Use 1-${maxNumber}.`);
       return;
     }
@@ -360,7 +395,9 @@ export default function OnlineGameScreen() {
       setErrorMessage(null);
       await makeGuess(room.roomId, parsedGuess);
       setGuess("");
+      playSound("guessLock");
     } catch (error) {
+      playSound("error");
       setErrorMessage(error instanceof Error ? error.message : "Could not submit.");
     } finally {
       setIsSubmitting(false);
@@ -372,6 +409,7 @@ export default function OnlineGameScreen() {
       return;
     }
 
+    playSound("numberKey");
     if (isSecretSetup) {
       setSecretNumberInput((currentValue) => `${currentValue}${digit}`);
     } else {
@@ -386,6 +424,7 @@ export default function OnlineGameScreen() {
       return;
     }
 
+    playSound("erase");
     if (isSecretSetup) {
       setSecretNumberInput((currentValue) => currentValue.slice(0, -1));
     } else {
@@ -400,6 +439,7 @@ export default function OnlineGameScreen() {
       return;
     }
 
+    playSound("clear");
     if (isSecretSetup) {
       setSecretNumberInput("");
     } else {

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { DifficultyOptionCard } from "../components/DifficultyOptionCard";
 import { TopBar } from "../components/GameKit";
 import { ScreenContainer } from "../components/ScreenContainer";
+import { playSound } from "../services/soundEffects";
 import { createRoom } from "../socket/onlineSocket";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
@@ -34,6 +35,7 @@ export default function OnlineDifficultyScreen() {
 
   const handleCreateRoom = async (difficulty: Difficulty) => {
     if (!isConnected || displayName.trim().length < 2) {
+      playSound("error");
       setErrorMessage("Connect first and use a valid name.");
       return;
     }
@@ -44,11 +46,13 @@ export default function OnlineDifficultyScreen() {
 
       const response = await createRoom(displayName.trim(), mode, difficulty);
       setSession(response.player, response.room, mode);
+      playSound("onlineNotify");
       router.push({
         pathname: "/online-lobby",
         params: { returnTo: "/online-difficulty", mode }
       });
     } catch (error) {
+      playSound("error");
       setErrorMessage(error instanceof Error ? error.message : "Could not create room.");
     } finally {
       setLoadingDifficulty(null);

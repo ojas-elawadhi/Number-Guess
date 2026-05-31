@@ -9,6 +9,7 @@ import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { VsAiWinModal } from "../components/VsAiWinModal";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
+import { playResultSound, playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
 import type { MatchRecord } from "../types/progression.types";
@@ -158,6 +159,7 @@ export default function VsAiClassicScreen() {
     const parsedGuess = Number(guess);
 
     if (!Number.isInteger(parsedGuess) || parsedGuess < 1 || parsedGuess > difficultyConfig.maxNumber) {
+      playSound("error");
       setErrorMessage(`Use 1-${difficultyConfig.maxNumber}.`);
       return;
     }
@@ -173,19 +175,24 @@ export default function VsAiClassicScreen() {
     setHistory((currentHistory) => [roundEntry, ...currentHistory].slice(0, 8));
     setGuess("");
     setErrorMessage(null);
+    playSound("guessLock");
+    playResultSound(playerResult);
 
     if (playerResult === "correct" && aiResult === "correct") {
       setWinner("tie");
+      playSound("tie");
       return;
     }
 
     if (playerResult === "correct") {
       setWinner("player");
+      playSound("victory");
       return;
     }
 
     if (aiResult === "correct") {
       setWinner("ai");
+      playSound("defeat");
       return;
     }
 
@@ -199,6 +206,7 @@ export default function VsAiClassicScreen() {
   };
 
   const handlePlayAgain = () => {
+    playSound("uiTap");
     recordedMatchRef.current = false;
     startTimeRef.current = Date.now();
     setTargetNumber(randomBetween(1, difficultyConfig.maxNumber));
@@ -219,6 +227,7 @@ export default function VsAiClassicScreen() {
       return;
     }
 
+    playSound("numberKey");
     setGuess((currentGuess) => `${currentGuess}${digit}`);
     setErrorMessage(null);
   };
@@ -228,6 +237,7 @@ export default function VsAiClassicScreen() {
       return;
     }
 
+    playSound("erase");
     setGuess((currentGuess) => currentGuess.slice(0, -1));
     setErrorMessage(null);
   };
@@ -237,6 +247,7 @@ export default function VsAiClassicScreen() {
       return;
     }
 
+    playSound("clear");
     setGuess("");
     setErrorMessage(null);
   };

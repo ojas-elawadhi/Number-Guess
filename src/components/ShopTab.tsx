@@ -3,6 +3,7 @@ import type { ComponentProps } from "react";
 import { useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
+import { playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import { colors, radii, shadows, spacing } from "../utils/theme";
 import { PrimaryButton } from "./PrimaryButton";
@@ -363,7 +364,10 @@ export function ShopTab() {
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft | null>(null);
   const [processingPurchase, setProcessingPurchase] = useState(false);
 
-  const openPurchase = (draft: PurchaseDraft) => setPurchaseDraft(draft);
+  const openPurchase = (draft: PurchaseDraft) => {
+    playSound("modalOpen");
+    setPurchaseDraft(draft);
+  };
 
   const handleConfirmPurchase = async () => {
     if (!purchaseDraft) {
@@ -377,6 +381,7 @@ export function ShopTab() {
         const spent = await spendCoins(Number(purchaseDraft.priceLabel));
 
         if (!spent) {
+          playSound("purchaseFail");
           Alert.alert("Not enough coins", "Play a few more rounds or buy a larger coin pack first.");
           return;
         }
@@ -398,6 +403,7 @@ export function ShopTab() {
       const wasNoAds = purchaseDraft.removesAds;
 
       setPurchaseDraft(null);
+      playSound("purchaseSuccess");
       Alert.alert(
         wasNoAds ? "Demo purchase complete" : "Purchase complete",
         wasNoAds
@@ -405,6 +411,7 @@ export function ShopTab() {
           : `${purchasedTitle} was added to your profile.`
       );
     } catch (error) {
+      playSound("purchaseFail");
       Alert.alert(
         "Purchase unavailable",
         error instanceof Error ? error.message : "Please try again."
@@ -415,6 +422,7 @@ export function ShopTab() {
   };
 
   const handleBoosterPurchase = (offer: BoosterShopOffer, packSize: 1 | 3) => {
+    playSound("powerup");
     const isExtraGuess = offer.rewardKind === "extra-guess";
     const count = packSize === 1 ? 1 : 3;
     const cost = packSize === 1 ? offer.singleCost : offer.tripleCost;
@@ -566,7 +574,10 @@ export function ShopTab() {
         </View>
 
         <Pressable
-          onPress={() => setShowBoosters((current) => !current)}
+          onPress={() => {
+            playSound("tabSwitch");
+            setShowBoosters((current) => !current);
+          }}
           style={({ pressed }) => [styles.boostersToggle, isCompact && styles.boostersToggleCompact, pressed && styles.pressed]}
         >
           <Text style={[styles.boostersToggleText, isCompact && styles.boostersToggleTextCompact]}>BUY BOOSTERS</Text>

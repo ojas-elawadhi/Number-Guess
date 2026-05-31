@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensio
 
 import { ScreenContainer } from "../components/ScreenContainer";
 import { TopBar } from "../components/GameKit";
+import { playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import { colors, radii, shadows, spacing } from "../utils/theme";
 import {
@@ -178,6 +179,7 @@ export default function DailyPuzzleCalendarScreen() {
         <View style={styles.boardHeader}>
           <Pressable
             onPress={() => {
+              playSound("tabSwitch");
               const previousMonth = shiftMonthKey(monthKey, -1);
               setSelectedMonthKey(previousMonth);
               setSelectedDateKey(`${previousMonth}-01`);
@@ -200,6 +202,7 @@ export default function DailyPuzzleCalendarScreen() {
                 return;
               }
 
+              playSound("tabSwitch");
               const nextMonth = shiftMonthKey(monthKey, 1);
               setSelectedMonthKey(nextMonth);
               setSelectedDateKey(`${nextMonth}-01`);
@@ -299,6 +302,7 @@ export default function DailyPuzzleCalendarScreen() {
                 <View key={cell.dateKey} style={styles.daySlot}>
                   <Pressable
                     onPress={() => {
+                      playSound(isTodayPuzzleDate(cell.dateKey) ? "uiTap" : "softNoise");
                       setSelectedDateKey(cell.dateKey);
 
                       if (isTodayPuzzleDate(cell.dateKey)) {
@@ -359,10 +363,12 @@ export default function DailyPuzzleCalendarScreen() {
             disabled={!canOpenSelected}
             onPress={() => {
               if (loadError && selectedDateKey !== todayKey) {
+                playSound("onlineNotify");
                 setReloadKey((current) => current + 1);
                 return;
               }
 
+              playSound("uiTap");
               openPuzzle(selectedDateKey);
             }}
             style={({ pressed }) => [

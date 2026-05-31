@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Difficulty } from "../types/game.types";
 import { colors, radii, spacing } from "../utils/theme";
 import { DIFFICULTY_CONFIG, getDifficultyRangeLabel } from "../../shared/difficulty";
+import { playButtonSound } from "../services/soundEffects";
 
 interface DifficultyOptionCardProps {
   difficulty: Difficulty;
@@ -11,6 +12,10 @@ interface DifficultyOptionCardProps {
 }
 
 export function DifficultyOptionCard({ difficulty, highScore, onPress }: DifficultyOptionCardProps) {
+  const handlePress = () => {
+    playButtonSound();
+    onPress();
+  };
   const bestRound = highScore ?? 0;
   const theme =
     difficulty === "easy"
@@ -39,7 +44,7 @@ export function DifficultyOptionCard({ difficulty, highScore, onPress }: Difficu
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       style={({ pressed }) => [
         styles.card,
         {

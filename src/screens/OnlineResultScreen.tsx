@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
+import { playSound } from "../services/soundEffects";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { MatchRecord } from "../types/progression.types";
@@ -71,6 +72,14 @@ export default function OnlineResultScreen() {
     recordMatch,
     room
   ]);
+
+  useEffect(() => {
+    if (!player || !room) {
+      return;
+    }
+
+    playSound(isTie ? "tie" : didPlayerWin ? "victory" : "defeat");
+  }, [didPlayerWin, isTie, player, room]);
 
   if (!room || !player) {
     return null;

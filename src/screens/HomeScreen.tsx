@@ -9,6 +9,7 @@ import { BottomTabs, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { ShopTab, ShopTabHeader } from "../components/ShopTab";
+import { playSound, playSoundAlways } from "../services/soundEffects";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { AvatarId } from "../types/progression.types";
@@ -188,10 +189,12 @@ export default function HomeScreen() {
       const reward = await claimDailyReward();
 
       if (!reward.claimed) {
+        playSound("error");
         Alert.alert("Already claimed", "Come back tomorrow.");
         return;
       }
 
+      playSound("coinReward");
       Alert.alert("Daily reward", `+${reward.points} pts, +${reward.xp} XP`);
     } finally {
       setIsClaimingReward(false);
@@ -210,7 +213,9 @@ export default function HomeScreen() {
       setIsSavingUsername(true);
       setUsernameError(null);
       await updateDisplayName(usernameDraft);
+      playSound("purchaseSuccess");
     } catch (error) {
+      playSound("error");
       setUsernameError(error instanceof Error ? error.message : "Try again.");
     } finally {
       setIsSavingUsername(false);
@@ -226,9 +231,11 @@ export default function HomeScreen() {
       setAvatarError(null);
       setSavingAvatarId(avatarId);
       await updateAvatarId(avatarId);
+      playSound("tabSwitch");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Try again.";
       setAvatarError(message);
+      playSound("error");
       Alert.alert("Avatar not saved", message);
     } finally {
       setSavingAvatarId(null);
@@ -929,6 +936,7 @@ export default function HomeScreen() {
                   <Text style={styles.modalSwitchLabel}>Audio</Text>
                   <Switch
                     onValueChange={() => {
+                      playSoundAlways(profile.soundPlaceholdersEnabled ? "switchOff" : "switchOn");
                       toggleSoundPlaceholders().catch(() => { });
                     }}
                     thumbColor="#ffffff"

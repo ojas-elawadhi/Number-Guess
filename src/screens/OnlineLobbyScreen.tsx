@@ -6,6 +6,7 @@ import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
 import { ScreenContainer } from "../components/ScreenContainer";
 import { TopBar } from "../components/GameKit";
+import { playSound } from "../services/soundEffects";
 import { leaveRoom, startGame } from "../socket/onlineSocket";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { colors, radii, spacing } from "../utils/theme";
@@ -85,7 +86,9 @@ export default function OnlineLobbyScreen() {
       setIsStarting(true);
       setErrorMessage(null);
       await startGame(room.roomId);
+      playSound("countdownGo");
     } catch (error) {
+      playSound("error");
       setErrorMessage(error instanceof Error ? error.message : "Could not start.");
     } finally {
       setIsStarting(false);
@@ -94,11 +97,13 @@ export default function OnlineLobbyScreen() {
 
   const handleLeaveRoom = async () => {
     try {
+      playSound("back");
       setIsLeaving(true);
       setErrorMessage(null);
       await leaveRoom(room.roomId);
     } catch (error) {
       setIsLeaving(false);
+      playSound("error");
       setErrorMessage(error instanceof Error ? error.message : "Could not leave.");
       return;
     }
@@ -119,12 +124,14 @@ export default function OnlineLobbyScreen() {
   const handleCopyCode = async () => {
     await Clipboard.setStringAsync(room.roomId);
     setCopySuccessMessage("Copied");
+    playSound("onlineNotify");
   };
 
   const handleShareCode = async () => {
     await Share.share({
       message: `Join my Code Guess room: ${room.roomId}`
     });
+    playSound("onlineNotify");
   };
 
   return (

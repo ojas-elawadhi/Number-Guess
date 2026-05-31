@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 
 import { AppHeader, HeaderBackButton } from "./AppHeader";
 import { colors, radii, shadows, spacing } from "../utils/theme";
+import { playButtonSound, playSound } from "../services/soundEffects";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -48,6 +49,11 @@ export function TopBar({
   title,
   variant = "default"
 }: TopBarProps) {
+  const handleBackPress = () => {
+    playSound("back");
+    onBack?.();
+  };
+
   if (variant === "header-only") {
     return <AppHeader left={<HeaderBackButton onPress={onBack} />} />;
   }
@@ -55,7 +61,7 @@ export function TopBar({
   return (
     <View style={styles.topBar}>
       <View style={styles.topHeader}>
-        <Pressable onPress={onBack} style={({ pressed }) => [styles.headerIcon, pressed && styles.pressed]}>
+        <Pressable onPress={handleBackPress} style={({ pressed }) => [styles.headerIcon, pressed && styles.pressed]}>
           <Ionicons color={colors.text} name="arrow-back" size={22} />
         </Pressable>
         <View style={styles.headerSpacer} />
@@ -135,10 +141,14 @@ interface ModeTileProps {
 export function ModeTile({ accent, active = false, compact = false, onPress, rightAccessory, subtitle, title }: ModeTileProps) {
   const backgroundColor = pastelFor(accent);
   const foregroundColor = darkFor(accent);
+  const handlePress = () => {
+    playButtonSound();
+    onPress();
+  };
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       style={({ pressed }) => [
         styles.modeTile,
         compact && styles.modeTileCompact,
@@ -231,6 +241,7 @@ export function NumberPad({
       return;
     }
 
+    playSound("numberKey");
     onChange(`${value}${digit}`);
   };
 
@@ -239,7 +250,13 @@ export function NumberPad({
       return;
     }
 
+    playSound("erase");
     onChange(value.slice(0, -1));
+  };
+
+  const handleSubmit = () => {
+    playSound("guessLock");
+    onSubmit();
   };
 
   return (
@@ -284,7 +301,7 @@ export function NumberPad({
 
         <Pressable
           disabled={disabled || loading}
-          onPress={onSubmit}
+          onPress={handleSubmit}
           style={({ pressed }) => [
             styles.key,
             compact && styles.keyCompact,
@@ -304,7 +321,7 @@ export function NumberPad({
 
       <Pressable
         disabled={disabled || loading}
-        onPress={onSubmit}
+        onPress={handleSubmit}
         style={({ pressed }) => [
           styles.submitBar,
           compact && styles.submitBarCompact,
@@ -367,25 +384,32 @@ interface BottomTabsProps {
 }
 
 export function BottomTabs({ activeTab, onChange }: BottomTabsProps) {
+  const handleChange = (tab: "play" | "stats" | "shop" | "profile" | "settings") => {
+    if (tab !== activeTab) {
+      playSound("tabSwitch");
+    }
+    onChange(tab);
+  };
+
   return (
     <View style={styles.bottomTabs}>
-      <Pressable onPress={() => onChange("play")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
+      <Pressable onPress={() => handleChange("play")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
         <Ionicons color={activeTab === "play" ? colors.practice : colors.tab} name="game-controller-outline" size={22} />
         <Text style={[styles.tabLabel, activeTab === "play" && styles.tabLabelActive]}>Play</Text>
       </Pressable>
-      <Pressable onPress={() => onChange("stats")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
+      <Pressable onPress={() => handleChange("stats")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
         <Ionicons color={activeTab === "stats" ? colors.practice : colors.tab} name="stats-chart-outline" size={22} />
         <Text style={[styles.tabLabel, activeTab === "stats" && styles.tabLabelActive]}>Stats</Text>
       </Pressable>
-      <Pressable onPress={() => onChange("shop")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
+      <Pressable onPress={() => handleChange("shop")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
         <Ionicons color={activeTab === "shop" ? colors.practice : colors.tab} name="cart-outline" size={22} />
         <Text style={[styles.tabLabel, activeTab === "shop" && styles.tabLabelActive]}>Shop</Text>
       </Pressable>
-      <Pressable onPress={() => onChange("profile")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
+      <Pressable onPress={() => handleChange("profile")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
         <Ionicons color={activeTab === "profile" ? colors.practice : colors.tab} name="person-outline" size={22} />
         <Text style={[styles.tabLabel, activeTab === "profile" && styles.tabLabelActive]}>Profile</Text>
       </Pressable>
-      <Pressable onPress={() => onChange("settings")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
+      <Pressable onPress={() => handleChange("settings")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
         <Ionicons color={activeTab === "settings" ? colors.practice : colors.tab} name="settings-outline" size={22} />
         <Text style={[styles.tabLabel, activeTab === "settings" && styles.tabLabelActive]}>Settings</Text>
       </Pressable>

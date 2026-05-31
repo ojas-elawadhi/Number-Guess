@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 import { useEffect } from "react";
 
 import { initializeMobileAds } from "../src/services/mobileAds";
+import { initSoundEffects } from "../src/services/soundEffects";
 import { connectSocket } from "../src/socket/onlineSocket";
 import { usePlayerProgressStore } from "../src/store/usePlayerProgressStore";
 import { colors } from "../src/utils/theme";
@@ -11,6 +12,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     connectSocket();
+    initSoundEffects();
     initializeMobileAds().catch(() => {
       // Rewarded ads should fail quietly so the game can still load.
     });

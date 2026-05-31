@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 import { Animated } from "react-native";
 
+import { playSound } from "../services/soundEffects";
+
 export function useCountdownOverlay(initialValue = 3) {
   const [countdownValue, setCountdownValue] = useState<number | string | null>(null);
   const countdownOpacity = useRef(new Animated.Value(0)).current;
@@ -55,10 +57,12 @@ export function useCountdownOverlay(initialValue = 3) {
         return;
       }
 
-        setCountdownValue(currentValue);
+      setCountdownValue(currentValue);
+      playSound("countdownTick");
       pulse(() => {
         if (stepIndex === sequence.length - 1) {
           setCountdownValue("GO!");
+          playSound("countdownGo");
           pulse(() => {
             setCountdownValue(null);
           });

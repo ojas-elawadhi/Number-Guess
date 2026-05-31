@@ -9,6 +9,7 @@ import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
 import { isRewardedReviveSupported } from "../services/rewardedReviveAd";
+import { playResultSound, playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { GuessFeedback } from "../types/game.types";
 import type { MatchRecord } from "../types/progression.types";
@@ -196,6 +197,7 @@ export default function DailyPuzzleGameScreen() {
     const parsedGuess = Number(guess);
 
     if (!Number.isInteger(parsedGuess) || parsedGuess < 1 || parsedGuess > maxNumber) {
+      playSound("error");
       setErrorMessage(`Use a number from 1 to ${maxNumber}.`);
       return;
     }
@@ -207,6 +209,7 @@ export default function DailyPuzzleGameScreen() {
       setIsSubmitting(true);
       setErrorMessage(null);
       setPowerUpMessage(null);
+      playSound("guessLock");
 
       const response = await submitDailyPuzzleGuess({
         dateKey: puzzleDateKey,
@@ -219,6 +222,7 @@ export default function DailyPuzzleGameScreen() {
         setMatchSummary(response.record);
         setLastFeedback("correct");
         setGuess("");
+        playSound("victory");
         return;
       }
 
@@ -228,9 +232,12 @@ export default function DailyPuzzleGameScreen() {
       setLastFeedback(feedback);
       setGuessHistory((currentHistory) => [{ guess: parsedGuess, result: feedback }, ...currentHistory]);
       setGuess("");
+      playResultSound(feedback);
 
       if (feedback === "correct") {
         setMatchSummary(response.record);
+        playSound("victory");
+        playSound("coinReward");
       }
     } catch (error) {
       const offlineSecret = getDeterministicDailyPuzzleNumber(puzzleDateKey, maxNumber);
@@ -242,6 +249,7 @@ export default function DailyPuzzleGameScreen() {
       setLastFeedback(feedback);
       setGuessHistory((currentHistory) => [{ guess: parsedGuess, result: feedback }, ...currentHistory]);
       setGuess("");
+      playResultSound(feedback);
 
       if (feedback === "correct") {
         try {
@@ -264,7 +272,10 @@ export default function DailyPuzzleGameScreen() {
           });
 
           setMatchSummary(offlineRecord);
+          playSound("victory");
+          playSound("coinReward");
         } catch (fallbackError) {
+          playSound("error");
           setErrorMessage(
             fallbackError instanceof Error
               ? fallbackError.message
@@ -282,6 +293,7 @@ export default function DailyPuzzleGameScreen() {
       return;
     }
 
+    playSound("numberKey");
     setGuess((currentGuess) => `${currentGuess}${digit}`);
     setErrorMessage(null);
     setPowerUpMessage(null);
@@ -292,6 +304,7 @@ export default function DailyPuzzleGameScreen() {
       return;
     }
 
+    playSound("erase");
     setGuess((currentGuess) => currentGuess.slice(0, -1));
     setErrorMessage(null);
     setPowerUpMessage(null);
@@ -302,6 +315,7 @@ export default function DailyPuzzleGameScreen() {
       return;
     }
 
+    playSound("clear");
     setGuess("");
     setErrorMessage(null);
     setPowerUpMessage(null);
@@ -339,13 +353,16 @@ export default function DailyPuzzleGameScreen() {
 
   const handlePowerUpPress = (kind: "extra" | "skip") => {
     if (kind === "extra" && !canTriggerExtraGuess) {
+      playSound("error");
       return;
     }
 
     if (kind === "skip" && !canTriggerSkipBooster) {
+      playSound("error");
       return;
     }
 
+    playSound("powerup");
     setErrorMessage(null);
     setPowerUpMessage(
       kind === "extra"

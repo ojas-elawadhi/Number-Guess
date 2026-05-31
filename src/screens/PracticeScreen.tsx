@@ -9,6 +9,7 @@ import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
 import { isRewardedReviveSupported, showRewardedReviveAd } from "../services/rewardedReviveAd";
+import { playResultSound, playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
 import type { ActivePracticeRunSnapshot, MatchRecord } from "../types/progression.types";
@@ -250,6 +251,7 @@ function PracticeGame() {
     const parsedGuess = Number(guess);
 
     if (!Number.isInteger(parsedGuess) || parsedGuess < 1 || parsedGuess > difficultyConfig.maxNumber) {
+      playSound("error");
       setErrorMessage(`Use 1-${difficultyConfig.maxNumber}.`);
       return;
     }
@@ -267,6 +269,8 @@ function PracticeGame() {
     setMatchSummary(null);
     setPowerUpMessage(null);
     setRemainingChances(nextRemainingChances);
+    playSound("guessLock");
+    playResultSound(result);
 
     if (result === "correct") {
       const durationMs = Date.now() - roundStartTimeRef.current;
@@ -277,6 +281,7 @@ function PracticeGame() {
       setCurrentScore(nextScore);
       setLastScoreGain(scoreGain);
       setRunState("round-cleared");
+      playSound("roundClear");
 
       if (coinsEarned > 0) {
         void awardCoins(coinsEarned).catch(() => { });
@@ -304,10 +309,12 @@ function PracticeGame() {
       persistBestScoreIfNeeded(currentScore);
       setLastScoreGain(0);
       setRunState("game-over");
+      playSound("gameOver");
     }
   };
 
   const handleNextRound = () => {
+    playSound("uiTap");
     const nextRoundNumber = roundNumber + 1;
 
     persistHighScoreIfNeeded(nextRoundNumber);
@@ -359,6 +366,8 @@ function PracticeGame() {
     if (scoreGain > 0) {
       void awardCoins(scoreGain * 5).catch(() => { });
     }
+    playSound("powerup");
+    playSound("coinReward");
   };
 
   const applyRevive = () => {
@@ -371,6 +380,7 @@ function PracticeGame() {
     setRemainingChances(4);
     setRunState("playing");
     setReviveUsedThisRun(true);
+    playSound("revive");
   };
 
   const handleUseRewardedRevive = async () => {
@@ -384,6 +394,7 @@ function PracticeGame() {
       const rewarded = await showRewardedReviveAd();
 
       if (!rewarded) {
+        playSound("error");
         setReviveMessage("Ad was skipped or unavailable. Try again.");
         return;
       }
@@ -399,10 +410,12 @@ function PracticeGame() {
       return;
     }
 
+    playSound("modalOpen");
     setReviveMessage("150-coin revive UI is ready. Coin spending will be wired up next.");
   };
 
   const handlePlayAgain = () => {
+    playSound("uiTap");
     roundStartTimeRef.current = Date.now();
     setSecretNumber(createSecretNumber());
     setGuess("");
@@ -442,10 +455,12 @@ function PracticeGame() {
       const rewarded = await showRewardedReviveAd();
 
       if (!rewarded) {
+        playSound("error");
         return;
       }
 
       setCoinBonusClaimed(true);
+      playSound("coinReward");
       // Base coins were already granted on the win; top up the remaining 3x to reach 4x total.
       void awardCoins(baseCoinsEarned * 3).catch(() => { });
     } finally {
@@ -458,6 +473,7 @@ function PracticeGame() {
     setPowerUpMessage(
       source === "inventory" ? "Extra guess power-up used." : "Reward unlocked. You got 1 extra guess."
     );
+    playSound("powerup");
   };
 
   const handleUseExtraGuessPowerUp = async () => {
@@ -471,6 +487,7 @@ function PracticeGame() {
         const used = await consumeExtraGuessPowerUp();
 
         if (!used) {
+          playSound("error");
           setPowerUpMessage("That power-up could not be used right now.");
           return;
         }
@@ -492,6 +509,7 @@ function PracticeGame() {
       const rewarded = await showRewardedReviveAd();
 
       if (!rewarded) {
+        playSound("error");
         setPowerUpMessage("Ad was skipped or unavailable. Try again.");
         return;
       }
@@ -513,6 +531,7 @@ function PracticeGame() {
         const used = await consumeSkipBooster();
 
         if (!used) {
+          playSound("error");
           setPowerUpMessage("That skip booster could not be used right now.");
           return;
         }
@@ -534,6 +553,7 @@ function PracticeGame() {
       const rewarded = await showRewardedReviveAd();
 
       if (!rewarded) {
+        playSound("error");
         setPowerUpMessage("Ad was skipped or unavailable. Try again.");
         return;
       }
@@ -549,6 +569,7 @@ function PracticeGame() {
       return;
     }
 
+    playSound("numberKey");
     setGuess((currentGuess) => `${currentGuess}${digit}`);
     setErrorMessage(null);
   };
@@ -558,6 +579,7 @@ function PracticeGame() {
       return;
     }
 
+    playSound("erase");
     setGuess((currentGuess) => currentGuess.slice(0, -1));
     setErrorMessage(null);
   };
@@ -567,6 +589,7 @@ function PracticeGame() {
       return;
     }
 
+    playSound("clear");
     setGuess("");
     setErrorMessage(null);
   };
