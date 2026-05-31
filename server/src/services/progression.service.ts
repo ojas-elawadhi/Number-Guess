@@ -13,6 +13,7 @@ import type {
 import type { Difficulty } from "../../../shared/game.types";
 import {
   applyActivePracticeRun,
+  applyAvatarId,
   applyCoins,
   applyExtraGuessPowerUps,
   applySkipBoosters,
@@ -117,6 +118,10 @@ class ProgressionService {
 
   async setSoundPlaceholdersEnabled(playerKey: string, enabled: boolean) {
     return this.updateProfile(playerKey, (profile) => applySoundPlaceholdersEnabled(profile, enabled));
+  }
+
+  async updateAvatarId(playerKey: string, avatarId: string) {
+    return this.updateProfile(playerKey, (profile) => applyAvatarId(profile, avatarId));
   }
 
   async updateSinglePlayerHighRounds(

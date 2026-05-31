@@ -1,17 +1,39 @@
 import type { Difficulty } from "./game.types";
-import type {
-  AchievementDefinition,
-  AchievementId,
-  ActivePracticeRunSnapshot,
-  DailyPuzzleCompletion,
-  LeaderboardEntry,
-  MatchInput,
-  MatchOutcome,
-  MatchRecord,
-  PlayerProfile,
-  PlayerStats,
-  ScoreBreakdown
+import {
+  AVATAR_IDS,
+  type AvatarId,
+  type AchievementDefinition,
+  type AchievementId,
+  type ActivePracticeRunSnapshot,
+  type DailyPuzzleCompletion,
+  type LeaderboardEntry,
+  type MatchInput,
+  type MatchOutcome,
+  type MatchRecord,
+  type PlayerProfile,
+  type PlayerStats,
+  type ScoreBreakdown
 } from "./progression.types";
+
+export const DEFAULT_AVATAR_ID: AvatarId = "scholar";
+
+const validAvatarIds = new Set<string>(AVATAR_IDS);
+
+export const validateAvatarId = (value: string): AvatarId => {
+  if (validAvatarIds.has(value)) {
+    return value as AvatarId;
+  }
+
+  throw new Error("Choose a valid avatar.");
+};
+
+export const normalizeAvatarId = (value?: string | null): AvatarId => {
+  if (typeof value === "string" && validAvatarIds.has(value)) {
+    return value as AvatarId;
+  }
+
+  return DEFAULT_AVATAR_ID;
+};
 
 export const MAX_HISTORY_ITEMS = 20;
 export const DISPLAY_NAME_MIN_LENGTH = 3;
@@ -147,6 +169,7 @@ export const createInitialProfile = (updatedAt = new Date().toISOString()): Play
   extraGuessPowerUps: 0,
   skipBoosters: 0,
   coins: 0,
+  avatarId: DEFAULT_AVATAR_ID,
   achievements: [],
   history: [],
   stats: createInitialStats(),
@@ -222,6 +245,7 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
       typeof profile.coins === "number" && Number.isFinite(profile.coins)
         ? Math.max(0, Math.floor(profile.coins))
         : baseProfile.coins,
+    avatarId: normalizeAvatarId(profile.avatarId),
     achievements: Array.isArray(profile.achievements)
       ? [...new Set(profile.achievements as AchievementId[])]
       : baseProfile.achievements,
@@ -549,6 +573,12 @@ export const applyTutorialSeen = (profile: PlayerProfile) => ({
 export const applySoundPlaceholdersEnabled = (profile: PlayerProfile, enabled: boolean) => ({
   ...normalizeProfile(profile),
   soundPlaceholdersEnabled: enabled,
+  updatedAt: new Date().toISOString()
+});
+
+export const applyAvatarId = (profile: PlayerProfile, avatarId: string) => ({
+  ...normalizeProfile(profile),
+  avatarId: validateAvatarId(avatarId),
   updatedAt: new Date().toISOString()
 });
 

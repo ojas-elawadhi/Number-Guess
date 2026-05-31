@@ -3,6 +3,21 @@ import type { Difficulty, GuessFeedback } from "./game.types";
 export type MatchCategory = "single-player" | "vs-ai" | "online";
 export type MatchMode = "practice" | "classic" | "duel" | "daily";
 export type MatchOutcome = "win" | "loss" | "tie";
+export const AVATAR_IDS = [
+  "scholar",
+  "rocket",
+  "flash",
+  "planet",
+  "music",
+  "gamepad",
+  "paw",
+  "book",
+  "flame",
+  "cafe",
+  "tennis",
+  "bulb"
+] as const;
+export type AvatarId = (typeof AVATAR_IDS)[number];
 export type AchievementId =
   | "first-win"
   | "streak-3"
@@ -131,6 +146,7 @@ export interface PlayerProfile {
   extraGuessPowerUps: number;
   skipBoosters: number;
   coins: number;
+  avatarId: AvatarId;
   achievements: AchievementId[];
   history: MatchRecord[];
   stats: PlayerStats;
@@ -176,6 +192,7 @@ export interface ProgressPreferencesPayload {
   extraGuessPowerUpsDelta?: number;
   skipBoostersDelta?: number;
   coinsDelta?: number;
+  avatarId?: AvatarId;
   activePracticeRun?: {
     difficulty: Difficulty;
     snapshot: ActivePracticeRunSnapshot | null;

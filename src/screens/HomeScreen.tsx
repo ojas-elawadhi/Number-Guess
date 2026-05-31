@@ -1,21 +1,25 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { Alert, Animated, Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
-import Svg, { Circle } from "react-native-svg";
+import { router, useLocalSearchParams, usePathname } from "expo-router";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { Alert, Animated, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions } from "react-native";
+import Svg, { Circle, Polygon } from "react-native-svg";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill } from "../components/AppHeader";
-import { BottomTabs, MiniCard, ModeTile, StatusPill } from "../components/GameKit";
+import { BottomTabs, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { ShopTab, ShopTabHeader } from "../components/ShopTab";
-import { TextField } from "../components/TextField";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
-import { formatDuration, getAchievementMeta, getTodayKey } from "../utils/progression";
+import type { AvatarId } from "../types/progression.types";
+import { DEFAULT_AVATAR_ID, formatDuration, getTodayKey } from "../utils/progression";
 import { colors, radii, shadows, spacing } from "../utils/theme";
 
 type HomeTab = "play" | "stats" | "shop" | "profile" | "settings";
+type ProfileSection = "stats" | "profile";
+
+const isHomeTab = (value: string | undefined): value is HomeTab =>
+  value === "play" || value === "stats" || value === "shop" || value === "profile" || value === "settings";
 
 const titleLetters = [
   { accent: "#f28f67", letter: "C" },
@@ -33,8 +37,31 @@ const PROFILE_RING_SIZE = 40;
 const PROFILE_RING_STROKE = 4;
 const PROFILE_RING_RADIUS = (PROFILE_RING_SIZE - PROFILE_RING_STROKE) / 2;
 const PROFILE_RING_CIRCUMFERENCE = 2 * Math.PI * PROFILE_RING_RADIUS;
+const profileAvatarOptions = [
+  { id: "scholar", icon: "school", background: "#63b4ff", foreground: "#173d64", ring: "#f28f67" },
+  { id: "rocket", icon: "rocket", background: "#ffaf80", foreground: "#7a260d", ring: "#5db5f5" },
+  { id: "flash", icon: "flash", background: "#ffe174", foreground: "#7f5100", ring: "#9dc95b" },
+  { id: "planet", icon: "planet", background: "#c8a8ff", foreground: "#47217e", ring: "#f7b33d" },
+  { id: "music", icon: "musical-notes", background: "#8ddfc9", foreground: "#00583b", ring: "#d979bc" },
+  { id: "gamepad", icon: "game-controller", background: "#90d2ff", foreground: "#0f4970", ring: "#ee6b62" },
+  { id: "paw", icon: "paw", background: "#ffd2ad", foreground: "#7f3d00", ring: "#7cc8ff" },
+  { id: "book", icon: "book", background: "#f8a7d8", foreground: "#7d2052", ring: "#a98ee8" },
+  { id: "flame", icon: "flame", background: "#ffb0a6", foreground: "#80161a", ring: "#5cc78f" },
+  { id: "cafe", icon: "cafe", background: "#d8c4a8", foreground: "#5f3c15", ring: "#f28f67" },
+  { id: "tennis", icon: "tennisball", background: "#d8f58a", foreground: "#3f6b00", ring: "#5db5f5" },
+  { id: "bulb", icon: "bulb", background: "#ffe58c", foreground: "#885700", ring: "#d979bc" }
+] as const satisfies ReadonlyArray<{
+  id: AvatarId;
+  icon: ComponentProps<typeof Ionicons>["name"];
+  background: string;
+  foreground: string;
+  ring: string;
+}>;
 
 export default function HomeScreen() {
+  const pathname = usePathname();
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const { height: screenHeight, width: screenWidth } = useWindowDimensions();
   const isConnected = useOnlineGameStore((state) => state.isConnected);
   const errorMessage = useOnlineGameStore((state) => state.errorMessage);
   const displayName = usePlayerProgressStore((state) => state.displayName);
@@ -44,13 +71,16 @@ export default function HomeScreen() {
   const claimDailyReward = usePlayerProgressStore((state) => state.claimDailyReward);
   const toggleSoundPlaceholders = usePlayerProgressStore((state) => state.toggleSoundPlaceholders);
   const updateDisplayName = usePlayerProgressStore((state) => state.updateDisplayName);
+  const updateAvatarId = usePlayerProgressStore((state) => state.updateAvatarId);
 
   const [activeTab, setActiveTab] = useState<HomeTab>("play");
+  const [profileSection, setProfileSection] = useState<ProfileSection>("profile");
   const [isClaimingReward, setIsClaimingReward] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [usernameDraft, setUsernameDraft] = useState("");
+  const [savingAvatarId, setSavingAvatarId] = useState<AvatarId | null>(null);
+  const [usernameDraft, setUsernameDraft] = useState(displayName);
   const [isSavingUsername, setIsSavingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
   const fadeIn = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -61,19 +91,34 @@ export default function HomeScreen() {
     }).start();
   }, [fadeIn]);
 
+  useEffect(() => {
+    setUsernameDraft(displayName);
+  }, [displayName]);
+
+  useEffect(() => {
+    if (pathname === "/profile") {
+      setActiveTab("profile");
+      return;
+    }
+
+    const nextTab = typeof params.tab === "string" && isHomeTab(params.tab) && params.tab !== "profile"
+      ? params.tab
+      : "play";
+
+    setActiveTab(nextTab);
+  }, [params.tab, pathname]);
+
   const lastClaimedToday =
     profile.dailyReward.lastClaimedOn !== null &&
     profile.dailyReward.lastClaimedOn === getTodayKey();
   const latestMatch = profile.history[0] ?? null;
-  const bestBadge = profile.achievements
-    .map((achievementId) => getAchievementMeta(achievementId))
-    .find((achievement): achievement is NonNullable<typeof achievement> => achievement !== null);
   const playerRank = leaderboard.find((entry) => entry.isPlayer)?.rank ?? null;
   const currentLevelFloorXp = 140 * (Math.max(1, profile.level) - 1) ** 2;
   const nextLevelFloorXp = 140 * Math.max(1, profile.level) ** 2;
   const levelXpSpan = Math.max(1, nextLevelFloorXp - currentLevelFloorXp);
   const levelProgress = Math.min(1, Math.max(0, (profile.xp - currentLevelFloorXp) / levelXpSpan));
   const levelProgressOffset = PROFILE_RING_CIRCUMFERENCE * (1 - levelProgress);
+  const levelXpEarned = Math.max(0, profile.xp - currentLevelFloorXp);
   const singlePlayerBestScore = Math.max(
     singlePlayerHighScores.easy,
     singlePlayerHighScores.hard,
@@ -99,10 +144,11 @@ export default function HomeScreen() {
     }
   };
 
-  const openProfileModal = () => {
+  const openProfileEditor = () => {
+    setProfileSection("profile");
     setUsernameDraft(displayName);
     setUsernameError(null);
-    setShowProfileModal(true);
+    router.push("/profile");
   };
 
   const handleSaveUsername = async () => {
@@ -110,7 +156,6 @@ export default function HomeScreen() {
       setIsSavingUsername(true);
       setUsernameError(null);
       await updateDisplayName(usernameDraft);
-      setShowProfileModal(false);
     } catch (error) {
       setUsernameError(error instanceof Error ? error.message : "Try again.");
     } finally {
@@ -118,67 +163,113 @@ export default function HomeScreen() {
     }
   };
 
+  const handleSelectAvatar = async (avatarId: AvatarId) => {
+    if (savingAvatarId || avatarId === profile.avatarId) {
+      return;
+    }
+
+    try {
+      setAvatarError(null);
+      setSavingAvatarId(avatarId);
+      await updateAvatarId(avatarId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Try again.";
+      setAvatarError(message);
+      Alert.alert("Avatar not saved", message);
+    } finally {
+      setSavingAvatarId(null);
+    }
+  };
+
+  const selectedAvatarId = savingAvatarId ?? profile.avatarId ?? DEFAULT_AVATAR_ID;
+  const selectedAvatar =
+    profileAvatarOptions.find((option) => option.id === selectedAvatarId) ??
+    profileAvatarOptions.find((option) => option.id === DEFAULT_AVATAR_ID) ??
+    profileAvatarOptions[0];
+  const profileHeroAvatarSize = Math.max(72, Math.min(82, screenWidth * 0.2));
+  const profileHeroShellMinHeight = Math.max(232, Math.min(270, screenHeight * 0.36));
+  const profileHeroCardMinHeight = Math.max(128, Math.min(148, screenHeight * 0.19));
+  const profileHeroCardPaddingTop = Math.max(48, profileHeroAvatarSize * 0.62);
+  const profileHeroLevelBadgeSize = Math.max(44, Math.min(52, screenWidth * 0.125));
+  const profileContentWidth = Math.max(320, Math.min(360, screenWidth - spacing.md * 2));
+
+  const handleTabChange = (tab: HomeTab) => {
+    if (tab === "profile") {
+      openProfileEditor();
+      return;
+    }
+
+    if (tab === "play") {
+      router.replace("/");
+      return;
+    }
+
+    router.replace({ pathname: "/", params: { tab } });
+  };
+
   return (
     <ScreenContainer contentStyle={styles.screen}>
       <Animated.View style={[styles.shell, { opacity: fadeIn }]}>
-        <AppHeader
-          center={
-            activeTab === "shop" ? (
-              <ShopTabHeader />
-            ) : (
-              <View style={styles.homeHeaderCenter}>
-                <Pressable onPress={openProfileModal} style={({ pressed }) => [styles.profileCrest, pressed && styles.pressed]}>
-                  <View style={styles.levelBurstShadow} />
-                  <View style={styles.levelBurst}>
-                    <View style={[styles.levelBurstLayer, styles.levelBurstLayerA]} />
-                    <Text style={styles.levelBurstText}>{profile.level}</Text>
-                  </View>
-
-                  <View style={styles.profileMedallion}>
-                    <View style={styles.profileRingBase}>
-                      <Svg height={PROFILE_RING_SIZE} style={styles.profileRingSvg} width={PROFILE_RING_SIZE}>
-                        <Circle
-                          cx={PROFILE_RING_SIZE / 2}
-                          cy={PROFILE_RING_SIZE / 2}
-                          fill="none"
-                          r={PROFILE_RING_RADIUS}
-                          stroke="#aa5139"
-                          strokeWidth={PROFILE_RING_STROKE}
-                        />
-                        <Circle
-                          cx={PROFILE_RING_SIZE / 2}
-                          cy={PROFILE_RING_SIZE / 2}
-                          fill="none"
-                          r={PROFILE_RING_RADIUS}
-                          stroke="#19d6e9"
-                          strokeDasharray={PROFILE_RING_CIRCUMFERENCE}
-                          strokeDashoffset={levelProgressOffset}
-                          strokeLinecap="round"
-                          strokeWidth={PROFILE_RING_STROKE}
-                          transform={`rotate(-90 ${PROFILE_RING_SIZE / 2} ${PROFILE_RING_SIZE / 2})`}
-                        />
-                      </Svg>
+        {activeTab === "profile" ? null : (
+          <AppHeader
+            center={
+              activeTab === "shop" ? (
+                <ShopTabHeader />
+              ) : (
+                <View style={styles.homeHeaderCenter}>
+                  <Pressable onPress={openProfileEditor} style={({ pressed }) => [styles.profileCrest, pressed && styles.pressed]}>
+                    <View style={styles.levelBurstShadow} />
+                    <View style={styles.levelBurst}>
+                      <View style={[styles.levelBurstLayer, styles.levelBurstLayerA]} />
+                      <Text style={styles.levelBurstText}>{profile.level}</Text>
                     </View>
 
-                    <View style={styles.profileRingInner}>
-                      <View style={styles.profileAvatarCore}>
-                        <Ionicons color="#173d64" name="school" size={18} />
+                    <View style={styles.profileMedallion}>
+                      <View style={styles.profileRingBase}>
+                        <Svg height={PROFILE_RING_SIZE} style={styles.profileRingSvg} width={PROFILE_RING_SIZE}>
+                          <Circle
+                            cx={PROFILE_RING_SIZE / 2}
+                            cy={PROFILE_RING_SIZE / 2}
+                            fill="none"
+                            r={PROFILE_RING_RADIUS}
+                            stroke="#aa5139"
+                            strokeWidth={PROFILE_RING_STROKE}
+                          />
+                          <Circle
+                            cx={PROFILE_RING_SIZE / 2}
+                            cy={PROFILE_RING_SIZE / 2}
+                            fill="none"
+                            r={PROFILE_RING_RADIUS}
+                            stroke="#19d6e9"
+                            strokeDasharray={PROFILE_RING_CIRCUMFERENCE}
+                            strokeDashoffset={levelProgressOffset}
+                            strokeLinecap="round"
+                            strokeWidth={PROFILE_RING_STROKE}
+                            transform={`rotate(-90 ${PROFILE_RING_SIZE / 2} ${PROFILE_RING_SIZE / 2})`}
+                          />
+                        </Svg>
+                      </View>
+
+                      <View style={[styles.profileRingInner, { backgroundColor: selectedAvatar.ring }]}>
+                        <View style={[styles.profileAvatarCore, { backgroundColor: selectedAvatar.background }]}>
+                          <Ionicons color={selectedAvatar.foreground} name={selectedAvatar.icon} size={18} />
+                        </View>
                       </View>
                     </View>
-                  </View>
-                </Pressable>
+                  </Pressable>
+                </View>
+              )
+            }
+            left={activeTab === "shop" ? <HeaderBackButton onPress={() => router.replace("/")} /> : undefined}
+            right={activeTab === "shop" ? <View /> : (
+              <View style={styles.homeHeaderRight}>
+                <HeaderCoinsPill coins={profile.coins} />
               </View>
-            )
-          }
-          left={activeTab === "shop" ? <HeaderBackButton onPress={() => setActiveTab("play")} /> : undefined}
-          right={activeTab === "shop" ? <View /> : (
-            <View style={styles.homeHeaderRight}>
-              <HeaderCoinsPill coins={profile.coins} />
-            </View>
-          )}
-        />
+            )}
+          />
+        )}
 
-        <View style={styles.mainPane}>
+        <View style={[styles.mainPane, activeTab === "profile" && styles.profileMainPane]}>
           {activeTab === "play" ? (
             <View style={[styles.tabPane, styles.playPane]}>
               <View style={styles.wordmarkWrap}>
@@ -306,45 +397,218 @@ export default function HomeScreen() {
           ) : null}
 
           {activeTab === "profile" ? (
-            <View style={styles.tabPane}>
-              <View style={styles.profileCard}>
-                <View style={styles.profileHeader}>
-                  <View style={styles.profileAvatar}>
-                    <Text style={styles.avatarText}>{displayName.slice(0, 2).toUpperCase()}</Text>
+            <ScrollView
+              contentContainerStyle={styles.profileScrollContent}
+              showsVerticalScrollIndicator={false}
+              style={styles.profileScroll}
+            >
+              <View style={[styles.profileHeroShell, { minHeight: profileHeroShellMinHeight, width: profileContentWidth }]}>
+                <Text style={styles.profileRouteTitle}>YOUR PROFILE</Text>
+
+                <View style={styles.profileHeroHeaderRow}>
+                  <Pressable onPress={() => router.replace("/")} style={({ pressed }) => [styles.profileHeroBackButton, pressed && styles.pressed]}>
+                    <Ionicons color={colors.text} name="arrow-back" size={21} />
+                  </Pressable>
+                  <View style={styles.profileHeroCoinsPill}>
+                    <View style={styles.profileHeroCoinIcon}>
+                      <Ionicons color="#ffffff" name="star" size={13} />
+                    </View>
+                    <Text style={styles.profileHeroCoinText}>{profile.coins.toLocaleString("en-US")}</Text>
+                    <View style={styles.profileHeroCoinAdd}>
+                      <Ionicons color="#ffffff" name="add" size={14} />
+                    </View>
                   </View>
-                  <View style={styles.profileCopy}>
-                    <Text style={styles.profileName}>{displayName}</Text>
-                    <Text style={styles.profileSubtext}>Level {profile.level}</Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.profileHeroCard,
+                    {
+                      minHeight: profileHeroCardMinHeight,
+                      paddingTop: profileHeroCardPaddingTop
+                    }
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.profileHeroAvatarWrap,
+                      {
+                        height: profileHeroAvatarSize,
+                        marginLeft: -(profileHeroAvatarSize / 2),
+                        top: -(profileHeroAvatarSize * 0.5),
+                        width: profileHeroAvatarSize
+                      }
+                    ]}
+                  >
+                    <View style={styles.profileHeroShadow} />
+                    <View
+                      style={[
+                        styles.profileHeroAvatar,
+                        {
+                          backgroundColor: selectedAvatar.background,
+                          borderColor: selectedAvatar.ring,
+                          height: profileHeroAvatarSize,
+                          width: profileHeroAvatarSize
+                        }
+                      ]}
+                    >
+                      <Ionicons color={selectedAvatar.foreground} name={selectedAvatar.icon} size={Math.max(32, profileHeroAvatarSize * 0.42)} />
+                    </View>
                   </View>
-                  <PrimaryButton label="EDIT" onPress={openProfileModal} variant="secondary" />
-                </View>
 
-                <View style={styles.profileStatsRow}>
-                  <MiniCard accent={colors.accent} label="Best Streak" value={profile.bestWinStreak} />
-                  <MiniCard accent={colors.online} label="Matches" value={profile.stats.matches} />
-                  <MiniCard accent={colors.danger} label="Badges" value={profile.achievements.length} />
+                  <Text numberOfLines={1} style={styles.profileHeroName}>{displayName}</Text>
+
+                  <View style={styles.profileHeroProgressCluster}>
+                    <View
+                      style={[
+                        styles.profileHeroLevelBurst,
+                        {
+                          height: profileHeroLevelBadgeSize,
+                          width: profileHeroLevelBadgeSize
+                        }
+                      ]}
+                    >
+                      <Svg height="100%" style={styles.profileHeroLevelBurstSvg} viewBox="0 0 100 100" width="100%">
+                        <Polygon
+                          fill={colors.online}
+                          points="50,4 61,23 83,17 77,39 96,50 77,61 83,83 61,77 50,96 39,77 17,83 23,61 4,50 23,39 17,17 39,23"
+                          stroke={colors.surfaceCool}
+                          strokeLinejoin="round"
+                          strokeWidth={7}
+                        />
+                        <Circle cx={50} cy={50} fill={colors.online} r={27} stroke={colors.surface} strokeWidth={4} />
+                      </Svg>
+                      <Text style={styles.profileHeroLevelBurstText}>{profile.level}</Text>
+                    </View>
+
+                    <View style={styles.profileHeroProgressTrack}>
+                      <View
+                        style={[
+                          styles.profileHeroProgressFill,
+                          { width: `${Math.max(12, Math.round(levelProgress * 100))}%` }
+                        ]}
+                      >
+                        <View style={styles.profileHeroProgressFillGloss} />
+                      </View>
+                      <View pointerEvents="none" style={styles.profileHeroProgressTrackGloss} />
+                      <Text style={styles.profileHeroProgressValue}>{levelXpEarned}/{levelXpSpan}</Text>
+                    </View>
+                  </View>
                 </View>
               </View>
 
-              <View style={styles.panelCard}>
-                <Text style={styles.panelTitle}>Achievement</Text>
-                <Text style={styles.panelValue}>{bestBadge ? bestBadge.title : "First Win"}</Text>
-                <Text style={styles.panelSubtext}>
-                  {bestBadge ? bestBadge.description : "Win a match to unlock your first badge."}
-                </Text>
+              <View style={[styles.profileSectionBar, { marginLeft: -spacing.md, width: screenWidth }]}>
+                <View style={[styles.profileSectionTabs, { marginLeft: spacing.md, width: profileContentWidth }]}>
+                  {(["stats", "profile"] as const).map((section) => {
+                    const isActive = profileSection === section;
+
+                    return (
+                      <Pressable
+                        key={section}
+                        onPress={() => setProfileSection(section)}
+                        style={({ pressed }) => [
+                          styles.profileSectionTab,
+                          isActive && styles.profileSectionTabActive,
+                          pressed && styles.pressed
+                        ]}
+                      >
+                        <Text style={[styles.profileSectionTabText, isActive && styles.profileSectionTabTextActive]}>
+                          {section === "stats" ? "STATS" : "PROFILE"}
+                        </Text>
+                        {section === "profile" ? (
+                          <View style={styles.profileSectionTabIcon}>
+                            <Ionicons color={colors.surface} name="pencil" size={10} />
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
 
-              <View style={styles.panelCard}>
-                <Text style={styles.panelTitle}>Connection</Text>
-                <View style={styles.profileStatusRow}>
-                  <StatusPill label={isConnected ? "Server Ready" : "Connecting"} tone={isConnected ? "success" : "neutral"} />
-                  <StatusPill label={profile.soundPlaceholdersEnabled ? "Audio On" : "Audio Off"} tone="neutral" />
+              {profileSection === "stats" ? (
+                <View style={[styles.profilePanelEmpty, { width: profileContentWidth }]} />
+              ) : (
+                <View style={[styles.profilePanel, { width: profileContentWidth }]}>
+                  <View style={styles.profileNameRow}>
+                    <TextInput
+                      autoCapitalize="none"
+                      maxLength={20}
+                      onChangeText={(value) => {
+                        setUsernameDraft(value);
+                        setUsernameError(null);
+                      }}
+                      placeholder="Enter a nickname"
+                      placeholderTextColor="#aaa7b6"
+                      style={styles.profileNameInput}
+                      value={usernameDraft}
+                    />
+                    <Pressable
+                      disabled={isSavingUsername || usernameDraft.trim().length < 3 || usernameDraft.trim() === displayName.trim()}
+                      onPress={() => void handleSaveUsername()}
+                      style={({ pressed }) => [
+                        styles.profileNameAction,
+                        (isSavingUsername || usernameDraft.trim().length < 3 || usernameDraft.trim() === displayName.trim()) &&
+                        styles.profileNameActionDisabled,
+                        pressed && styles.pressed
+                      ]}
+                    >
+                      <Ionicons color="#ffffff" name="create-outline" size={15} />
+                    </Pressable>
+                  </View>
+                  {usernameError ? <Text style={styles.inlineError}>{usernameError}</Text> : null}
+
+                  <View style={styles.profileDivider} />
+
+                  <View style={styles.profilePanelHeader}>
+                    <View style={styles.profilePanelHeaderCopy}>
+                      <Text style={styles.profilePanelTitle}>Choose Avatar</Text>
+                      <Text style={styles.profilePanelCaption}>Pick a style for this first version.</Text>
+                    </View>
+                    <View style={styles.profileCurrentBadge}>
+                      <Text style={styles.profileCurrentBadgeText}>Selected</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.avatarGrid}>
+                    {profileAvatarOptions.map((option) => {
+                      const isSelected = option.id === selectedAvatarId;
+
+                      return (
+                        <Pressable
+                          key={option.id}
+                          onPress={() => void handleSelectAvatar(option.id)}
+                          style={({ pressed }) => [
+                            styles.avatarOption,
+                            isSelected && styles.avatarOptionSelected,
+                            savingAvatarId !== null && savingAvatarId !== option.id && styles.avatarOptionDisabled,
+                            pressed && styles.pressed
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.avatarOptionInner,
+                              {
+                                backgroundColor: option.background,
+                                borderColor: option.ring
+                              }
+                            ]}
+                          >
+                            <Ionicons color={option.foreground} name={option.icon} size={19} />
+                          </View>
+                          {isSelected ? (
+                            <View style={styles.avatarOptionCheck}>
+                              <Ionicons color="#ffffff" name="checkmark" size={10} />
+                            </View>
+                          ) : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {avatarError ? <Text style={styles.inlineError}>{avatarError}</Text> : null}
                 </View>
-                <Text style={[styles.panelSubtext, errorMessage && styles.errorText]}>
-                  {errorMessage ?? "Profile settings and progression are synced here."}
-                </Text>
-              </View>
-            </View>
+              )}
+            </ScrollView>
           ) : null}
 
           {activeTab === "settings" ? (
@@ -371,7 +635,7 @@ export default function HomeScreen() {
                     <Text style={styles.settingsActionTitle}>Display Name</Text>
                     <Text style={styles.panelSubtext}>Update how your name appears in matches.</Text>
                   </View>
-                  <PrimaryButton label="EDIT" onPress={openProfileModal} variant="secondary" />
+                  <PrimaryButton label="EDIT" onPress={openProfileEditor} variant="secondary" />
                 </View>
               </View>
 
@@ -389,40 +653,12 @@ export default function HomeScreen() {
           ) : null}
         </View>
 
-        {activeTab === "shop" ? null : (
+      {activeTab === "shop" || activeTab === "profile" ? null : (
           <View style={styles.bottomDock}>
-            <BottomTabs activeTab={activeTab} onChange={setActiveTab} />
+            <BottomTabs activeTab={activeTab} onChange={handleTabChange} />
           </View>
         )}
       </Animated.View>
-
-      <Modal animationType="fade" transparent visible={showProfileModal}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Profile</Text>
-            <TextField
-              autoCapitalize="none"
-              label="Display name"
-              maxLength={20}
-              onChangeText={(value) => {
-                setUsernameDraft(value);
-                setUsernameError(null);
-              }}
-              placeholder="player_53739"
-              value={usernameDraft}
-            />
-            {usernameError ? <Text style={styles.inlineError}>{usernameError}</Text> : null}
-            <PrimaryButton
-              disabled={usernameDraft.trim().length < 3}
-              label="SAVE"
-              loading={isSavingUsername}
-              onPress={() => void handleSaveUsername()}
-              variant="success"
-            />
-            <PrimaryButton label="CANCEL" onPress={() => setShowProfileModal(false)} variant="secondary" />
-          </View>
-        </View>
-      </Modal>
     </ScreenContainer>
   );
 }
@@ -592,6 +828,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingTop: spacing.md
   },
+  profileMainPane: {
+    justifyContent: "flex-start",
+    paddingTop: spacing.xs
+  },
   tabPane: {
     flex: 1,
     gap: spacing.sm
@@ -728,11 +968,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     lineHeight: 28
   },
-  avatarText: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: "900"
-  },
   modeStack: {
     gap: spacing.sm
   },
@@ -850,48 +1085,405 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "900"
   },
-  profileCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.xl,
-    gap: spacing.md,
-    padding: spacing.md,
-    ...shadows.card
-  },
-  profileHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing.sm
-  },
-  profileAvatar: {
-    alignItems: "center",
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.practice,
-    borderRadius: radii.pill,
-    borderWidth: 3,
-    height: 72,
-    justifyContent: "center",
-    width: 72
-  },
-  profileCopy: {
-    flex: 1
-  },
-  profileName: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: "900"
-  },
-  profileSubtext: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: "700"
-  },
-  profileStatsRow: {
-    flexDirection: "row",
-    gap: spacing.xs
-  },
   profileStatusRow: {
     flexDirection: "row",
     gap: spacing.xs
+  },
+  profileTopBar: {
+    alignItems: "center",
+    borderBottomColor: "#e2e6e1",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    marginHorizontal: -spacing.md,
+    marginBottom: spacing.xs,
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2
+  },
+  profileTopBarBack: {
+    alignItems: "center",
+    borderRadius: radii.pill,
+    height: 32,
+    justifyContent: "center",
+    width: 32
+  },
+  profileTopBarSpacer: {
+    width: 32
+  },
+  profileRouteTitle: {
+    color: colors.text,
+    fontSize: 21,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+    marginTop: 4,
+    textAlign: "center"
+  },
+  profileScroll: {
+    marginHorizontal: -spacing.md
+  },
+  profileScrollContent: {
+    gap: 0,
+    paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md
+  },
+  profileHeroShell: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.background,
+    gap: 2,
+    marginTop: -spacing.xs,
+    overflow: "visible",
+    paddingBottom: 10,
+    paddingHorizontal: 0,
+    paddingTop: 8
+  },
+  profileHeroHeaderRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 34
+  },
+  profileHeroBackButton: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: radii.pill,
+    height: 34,
+    justifyContent: "center",
+    width: 34,
+    ...shadows.card
+  },
+  profileHeroCoinsPill: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 30,
+    minWidth: 86,
+    paddingLeft: 4,
+    paddingRight: 3,
+    ...shadows.card
+  },
+  profileHeroCoinIcon: {
+    alignItems: "center",
+    backgroundColor: colors.warning,
+    borderColor: colors.warning,
+    borderRadius: radii.pill,
+    borderWidth: 2,
+    height: 24,
+    justifyContent: "center",
+    width: 24
+  },
+  profileHeroCoinText: {
+    color: colors.textMuted,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "900",
+    textAlign: "center"
+  },
+  profileHeroCoinAdd: {
+    alignItems: "center",
+    backgroundColor: colors.practice,
+    borderRadius: radii.pill,
+    height: 22,
+    justifyContent: "center",
+    width: 22
+  },
+  profileHeroCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    gap: spacing.xs,
+    marginHorizontal: 0,
+    marginTop: 18,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    position: "relative",
+    ...shadows.card
+  },
+  profileHeroAvatarWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    left: "50%",
+    position: "absolute"
+  },
+  profileHeroShadow: {
+    backgroundColor: "rgba(47, 50, 51, 0.12)",
+    borderRadius: radii.pill,
+    bottom: 8,
+    height: 12,
+    position: "absolute",
+    width: "62%"
+  },
+  profileHeroAvatar: {
+    alignItems: "center",
+    borderRadius: radii.pill,
+    borderWidth: 4,
+    justifyContent: "center",
+    ...shadows.tactile
+  },
+  profileHeroName: {
+    color: colors.accent,
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: 0.2,
+    lineHeight: 26,
+    marginTop: 1,
+    textAlign: "center"
+  },
+  profileHeroProgressCluster: {
+    alignItems: "center",
+    flexDirection: "row",
+    marginTop: 4,
+    paddingHorizontal: 18
+  },
+  profileHeroLevelBurst: {
+    alignItems: "center",
+    backgroundColor: "transparent",
+    borderRadius: radii.pill,
+    justifyContent: "center",
+    position: "relative",
+    zIndex: 2
+  },
+  profileHeroLevelBurstSvg: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0
+  },
+  profileHeroLevelBurstText: {
+    color: colors.surface,
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 18,
+    textShadowColor: colors.darkSurface,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1
+  },
+  profileHeroProgressTrack: {
+    backgroundColor: colors.darkSurface,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flex: 1,
+    height: 34,
+    justifyContent: "center",
+    marginLeft: -8,
+    overflow: "hidden",
+    position: "relative"
+  },
+  profileHeroProgressFill: {
+    backgroundColor: colors.online,
+    borderRadius: radii.pill,
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    top: 0
+  },
+  profileHeroProgressFillGloss: {
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    height: "42%",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0
+  },
+  profileHeroProgressTrackGloss: {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    height: "45%",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0
+  },
+  profileHeroProgressValue: {
+    color: colors.surface,
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 18,
+    textAlign: "center",
+    textShadowColor: colors.darkSurface,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+    zIndex: 1
+  },
+  profileSectionBar: {
+    alignSelf: "flex-start",
+    alignItems: "flex-start",
+    backgroundColor: "transparent",
+    borderBottomColor: colors.border,
+    borderBottomWidth: 3,
+    flexDirection: "column",
+    justifyContent: "flex-end",
+    marginTop: 6
+  },
+  profileSectionTabs: {
+    alignItems: "flex-end",
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 4
+  },
+  profileSectionTab: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceMuted,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    flex: 1,
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center",
+    minHeight: 34,
+    paddingHorizontal: spacing.xs,
+    paddingTop: 2
+  },
+  profileSectionTabActive: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderTopWidth: 1
+  },
+  profileSectionTabText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0.2
+  },
+  profileSectionTabTextActive: {
+    color: colors.accent
+  },
+  profileSectionTabIcon: {
+    alignItems: "center",
+    backgroundColor: colors.practice,
+    borderRadius: radii.pill,
+    height: 18,
+    justifyContent: "center",
+    width: 18
+  },
+  profilePanel: {
+    alignSelf: "flex-start",
+    gap: 10,
+    marginTop: 8
+  },
+  profilePanelEmpty: {
+    alignSelf: "flex-start",
+    backgroundColor: "transparent",
+    minHeight: 132,
+    marginTop: 8
+  },
+  profilePanelTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "900"
+  },
+  profileNameRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    marginHorizontal: 8
+  },
+  profileNameInput: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    color: colors.text,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "700",
+    minHeight: 42,
+    paddingHorizontal: 12
+  },
+  profileNameAction: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderRadius: radii.pill,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+    ...shadows.card
+  },
+  profileNameActionDisabled: {
+    opacity: 0.45
+  },
+  profileDivider: {
+    backgroundColor: colors.surfaceMuted,
+    height: 1,
+    marginHorizontal: 8,
+    opacity: 1
+  },
+  profilePanelHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "space-between",
+    marginHorizontal: 8
+  },
+  profilePanelHeaderCopy: {
+    flex: 1,
+    gap: 2
+  },
+  profilePanelCaption: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700"
+  },
+  profileCurrentBadge: {
+    backgroundColor: colors.surfaceCool,
+    borderRadius: radii.pill,
+    paddingHorizontal: 7,
+    paddingVertical: 4
+  },
+  profileCurrentBadgeText: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+    textTransform: "uppercase"
+  },
+  avatarGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    justifyContent: "space-between",
+    marginTop: 2
+  },
+  avatarOption: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+    position: "relative",
+    width: "22%"
+  },
+  avatarOptionSelected: {
+    transform: [{ scale: 1.02 }]
+  },
+  avatarOptionDisabled: {
+    opacity: 0.45
+  },
+  avatarOptionInner: {
+    alignItems: "center",
+    borderRadius: radii.pill,
+    borderWidth: 2.5,
+    height: 52,
+    justifyContent: "center",
+    width: 52
+  },
+  avatarOptionCheck: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderColor: "#ffffff",
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    bottom: 1,
+    height: 18,
+    justifyContent: "center",
+    position: "absolute",
+    right: 2,
+    width: 18
   },
   settingsActionRow: {
     alignItems: "center",
@@ -912,27 +1504,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs
   },
-  modalBackdrop: {
-    alignItems: "center",
-    backgroundColor: "rgba(25, 28, 29, 0.2)",
-    flex: 1,
-    justifyContent: "center",
-    padding: spacing.lg
-  },
-  modalCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.xl,
-    gap: spacing.md,
-    maxWidth: 420,
-    padding: spacing.lg,
-    width: "100%",
-    ...shadows.tactile
-  },
-  modalTitle: {
-    color: colors.text,
-    fontSize: 26,
-    fontWeight: "900"
-  },
   modalSwitchRow: {
     alignItems: "center",
     flexDirection: "row",
@@ -946,7 +1517,8 @@ const styles = StyleSheet.create({
   inlineError: {
     color: colors.danger,
     fontSize: 13,
-    fontWeight: "800"
+    fontWeight: "800",
+    marginHorizontal: 8
   },
   errorText: {
     color: colors.danger

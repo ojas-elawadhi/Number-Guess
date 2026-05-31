@@ -12,6 +12,7 @@ import {
 } from "../api/progressionApi";
 import type {
   ActivePracticeRunSnapshot,
+  AvatarId,
   DailyPuzzleGuessResponse,
   DailyPuzzleStatusResponse,
   LeaderboardEntry,
@@ -45,6 +46,7 @@ interface PlayerProgressStore {
   dailyPuzzleMaxNumber: number;
   hydrate: () => Promise<void>;
   updateDisplayName: (displayName: string) => Promise<void>;
+  updateAvatarId: (avatarId: AvatarId) => Promise<void>;
   markTutorialSeen: () => Promise<void>;
   toggleSoundPlaceholders: () => Promise<void>;
   updateSinglePlayerHighScore: (difficulty: import("../types/game.types").Difficulty, rounds: number) => Promise<void>;
@@ -197,6 +199,23 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     }
 
     const response = await updateDisplayNameRemote(get().playerKey!, displayName);
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
+  },
+  updateAvatarId: async (avatarId) => {
+    if (!get().playerKey) {
+      throw new Error("Your profile is still loading. Try again in a moment.");
+    }
+
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      avatarId
+    });
     const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
 
     set({

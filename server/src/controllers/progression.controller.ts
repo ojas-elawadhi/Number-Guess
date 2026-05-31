@@ -40,6 +40,11 @@ progressionRouter.patch("/preferences", async (request, response) => {
       return;
     }
 
+    if (typeof payload.avatarId === "string") {
+      response.json(await progressionService.updateAvatarId(payload.playerKey, payload.avatarId));
+      return;
+    }
+
     if (payload.singlePlayerHighRounds && Object.keys(payload.singlePlayerHighRounds).length > 0) {
       response.json(
         await progressionService.updateSinglePlayerHighRounds(payload.playerKey, payload.singlePlayerHighRounds)
