@@ -10,6 +10,7 @@ import { CoinIcon } from "./CoinIcon";
 import { PrimaryButton } from "./PrimaryButton";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
+type BoosterIconName = "flash" | "play-skip-forward";
 
 type StoreCurrency = "cash" | "coins" | "ad";
 
@@ -34,7 +35,7 @@ interface CoinPackOffer extends PurchaseDraft {
 interface BoosterShopOffer {
   id: string;
   title: string;
-  icon: IconName;
+  icon: BoosterIconName;
   accent: string;
   singleCost: number;
   tripleCost: number;
@@ -156,6 +157,11 @@ const coinPackArtSources: Record<CoinPackOffer["art"], ImageSourcePropType> = {
   treasure: require("../../assets/shop/coin-pack-treasure.png")
 };
 
+const boosterIconSources = {
+  flash: require("../../assets/ui/booster-extra-guess.png"),
+  "play-skip-forward": require("../../assets/ui/booster-skip.png")
+} satisfies Record<BoosterIconName, ImageSourcePropType>;
+
 function CoinToken({ size = 30, style }: { size?: number; style?: object }) {
   return <CoinIcon size={size} style={style} />;
 }
@@ -168,22 +174,10 @@ function CoinWatermark({ size = 16 }: { size?: number }) {
   );
 }
 
-function BoosterGlyph({ accent, icon, size = 52 }: { accent: string; icon: IconName; size?: number }) {
-  return (
-    <View
-      style={[
-        styles.boosterGlyph,
-        {
-          backgroundColor: accent,
-          borderRadius: size / 2,
-          height: size,
-          width: size
-        }
-      ]}
-    >
-      <Ionicons color="#ffffff" name={icon} size={Math.round(size * 0.48)} />
-    </View>
-  );
+function BoosterGlyph({ accent, icon, size = 52 }: { accent: string; icon: BoosterIconName; size?: number }) {
+  void accent;
+
+  return <Image resizeMode="contain" source={boosterIconSources[icon]} style={[styles.boosterGlyphImage, { height: size, width: size }]} />;
 }
 
 function CoinArt({ variant }: { variant: CoinPackOffer["art"] }) {
@@ -202,6 +196,8 @@ function ShopStatusStrip() {
   const { width } = useWindowDimensions();
   const isCompact = width <= 380;
   const isMediumPhone = width > 380 && width <= 410;
+  const statusIconSize = isCompact ? 22 : isMediumPhone ? 23 : 25;
+  const statusBoosterIconSize = isCompact ? 26 : isMediumPhone ? 27 : 30;
   const extraGuessPowerUps = usePlayerProgressStore((state) => state.profile.extraGuessPowerUps);
   const skipBoosters = usePlayerProgressStore((state) => state.profile.skipBoosters);
   const coins = usePlayerProgressStore((state) => state.profile.coins);
@@ -210,17 +206,17 @@ function ShopStatusStrip() {
     <View style={styles.statusStrip}>
       <View style={[styles.statusPill, isCompact && styles.statusPillCompact, isMediumPhone && styles.statusPillMedium]}>
         <Text style={[styles.statusPillValue, isCompact && styles.statusPillValueCompact, isMediumPhone && styles.statusPillValueMedium]}>{extraGuessPowerUps}</Text>
-        <BoosterGlyph accent="#b55cff" icon="flash" size={isCompact ? 19 : isMediumPhone ? 20 : 22} />
+        <BoosterGlyph accent="#b55cff" icon="flash" size={statusBoosterIconSize} />
       </View>
       <View style={[styles.statusPill, isCompact && styles.statusPillCompact, isMediumPhone && styles.statusPillMedium]}>
         <Text style={[styles.statusPillValue, isCompact && styles.statusPillValueCompact, isMediumPhone && styles.statusPillValueMedium]}>{skipBoosters}</Text>
-        <BoosterGlyph accent="#6bbdff" icon="play-skip-forward" size={isCompact ? 19 : isMediumPhone ? 20 : 22} />
+        <BoosterGlyph accent="#6bbdff" icon="play-skip-forward" size={statusBoosterIconSize} />
       </View>
       <View style={[styles.statusCoinPill, isCompact && styles.statusCoinPillCompact, isMediumPhone && styles.statusCoinPillMedium]}>
         <Text numberOfLines={1} style={[styles.statusCoinValue, isCompact && styles.statusCoinValueCompact, isMediumPhone && styles.statusCoinValueMedium]}>
           {coins.toLocaleString("en-US")}
         </Text>
-        <CoinToken size={isCompact ? 22 : isMediumPhone ? 23 : 25} />
+        <CoinToken size={statusIconSize} />
       </View>
     </View>
   );
@@ -550,10 +546,15 @@ export function ShopTab() {
           <View style={styles.boosterSections}>
             {boosterOffers.map((offer) => (
               <View key={offer.id} style={styles.boosterPanel}>
-                <View style={styles.boosterInfoBadge}>
-                  <Ionicons color="#ffffff" name="information" size={18} />
+                <View style={styles.boosterPanelHeader}>
+                  <View style={styles.boosterPanelIcon}>
+                    <BoosterGlyph accent={offer.accent} icon={offer.icon} size={32} />
+                  </View>
+                  <Text style={styles.boosterPanelTitle}>{offer.title}</Text>
+                  <View style={styles.boosterInfoBadge}>
+                    <Ionicons color="#ffffff" name="information" size={15} />
+                  </View>
                 </View>
-                <Text style={styles.boosterPanelTitle}>{offer.title}</Text>
 
                 <View style={styles.boosterCardsRow}>
                   <Pressable
@@ -564,10 +565,12 @@ export function ShopTab() {
                       pressed && styles.pressed
                     ]}
                   >
-                    <Text style={styles.boosterGetLabel}>GET 1</Text>
-                    <BoosterGlyph accent={offer.accent} icon={offer.icon} size={64} />
+                    <Text style={[styles.boosterGetLabel, { color: offer.accent }]}>GET 1</Text>
+                    <View style={styles.boosterIconStage}>
+                      <BoosterGlyph accent={offer.accent} icon={offer.icon} size={78} />
+                    </View>
                     <View style={styles.boosterCostPill}>
-                      <CoinToken size={24} />
+                      <CoinToken size={23} />
                       <Text style={styles.boosterCostText}>{offer.singleCost}</Text>
                     </View>
                   </Pressable>
@@ -580,23 +583,26 @@ export function ShopTab() {
                       pressed && styles.pressed
                     ]}
                   >
-                    <Text style={styles.boosterGetLabel}>GET 3</Text>
-                    <View style={styles.boosterTripleIcons}>
-                      <View style={[styles.boosterTripleIconSlot, styles.boosterTripleIconTop]}>
-                        <BoosterGlyph accent={offer.accent} icon={offer.icon} size={36} />
-                      </View>
-                      <View style={[styles.boosterTripleIconSlot, styles.boosterTripleIconLeft]}>
-                        <BoosterGlyph accent={offer.accent} icon={offer.icon} size={36} />
-                      </View>
-                      <View style={[styles.boosterTripleIconSlot, styles.boosterTripleIconRight]}>
-                        <BoosterGlyph accent={offer.accent} icon={offer.icon} size={36} />
-                      </View>
+                    <View style={styles.boosterValueBadge}>
+                      <View style={styles.boosterValueBadgeShine} />
+                      <Text style={styles.boosterValueBadgeText}>Best Value</Text>
                     </View>
-                    <View style={styles.boosterRibbon}>
-                      <Text style={styles.boosterRibbonText}>Best Value!</Text>
+                    <Text style={[styles.boosterGetLabel, { color: offer.accent }]}>GET 3</Text>
+                    <View style={styles.boosterIconStage}>
+                      <View style={styles.boosterTripleIcons}>
+                        <View style={[styles.boosterTripleIconSlot, styles.boosterTripleIconTop]}>
+                          <BoosterGlyph accent={offer.accent} icon={offer.icon} size={50} />
+                        </View>
+                        <View style={[styles.boosterTripleIconSlot, styles.boosterTripleIconLeft]}>
+                          <BoosterGlyph accent={offer.accent} icon={offer.icon} size={45} />
+                        </View>
+                        <View style={[styles.boosterTripleIconSlot, styles.boosterTripleIconRight]}>
+                          <BoosterGlyph accent={offer.accent} icon={offer.icon} size={45} />
+                        </View>
+                      </View>
                     </View>
                     <View style={styles.boosterCostPill}>
-                      <CoinToken size={24} />
+                      <CoinToken size={23} />
                       <Text style={styles.boosterCostText}>{offer.tripleCost}</Text>
                     </View>
                   </Pressable>
@@ -740,16 +746,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     maxWidth: 68
   },
-  boosterGlyph: {
-    alignItems: "center",
-    borderBottomColor: "rgba(0,0,0,0.16)",
-    borderBottomWidth: 3,
-    justifyContent: "center",
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.16,
-    shadowRadius: 5,
-    elevation: 2
+  boosterGlyphImage: {
+    flexShrink: 0
   },
   featuredCard: {
     backgroundColor: "#f4fbff",
@@ -1468,53 +1466,70 @@ const styles = StyleSheet.create({
     width: 74
   },
   boosterSections: {
-    gap: 12
+    gap: 18
   },
   boosterPanel: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.surfaceMuted,
-    borderRadius: 18,
-    borderWidth: 1,
     gap: 8,
-    padding: 10,
+    overflow: "visible",
+    paddingHorizontal: 0,
     position: "relative"
   },
-  boosterInfoBadge: {
+  boosterPanelHeader: {
     alignItems: "center",
-    backgroundColor: "#72c2ff",
-    borderRadius: 13,
-    height: 26,
+    flexDirection: "row",
+    gap: 7,
+    minHeight: 34,
+    paddingHorizontal: 2
+  },
+  boosterPanelIcon: {
+    alignItems: "center",
+    borderRadius: radii.pill,
+    height: 32,
     justifyContent: "center",
-    left: 10,
-    position: "absolute",
-    top: 10,
-    width: 26
+    marginLeft: -1,
+    width: 32
   },
   boosterPanelTitle: {
     color: colors.text,
-    fontSize: 16,
+    flex: 1,
+    fontSize: 15,
     fontWeight: "900",
-    paddingHorizontal: 24,
-    textAlign: "center"
+    letterSpacing: 0,
+    lineHeight: 18,
+    textAlign: "left"
+  },
+  boosterInfoBadge: {
+    alignItems: "center",
+    backgroundColor: "#74c4ff",
+    borderBottomColor: "#3e93d2",
+    borderBottomWidth: 2,
+    borderRadius: radii.pill,
+    height: 24,
+    justifyContent: "center",
+    width: 24
   },
   boosterCardsRow: {
     alignItems: "stretch",
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8
+    gap: 9
   },
   boosterCard: {
     alignItems: "center",
     backgroundColor: colors.surface,
     borderBottomColor: "rgba(0,0,0,0.08)",
-    borderBottomWidth: 2,
+    borderBottomWidth: 3,
     borderColor: colors.surfaceMuted,
     borderRadius: 16,
     borderWidth: 1,
     flex: 1,
-    gap: 8,
-    minHeight: 168,
-    padding: 10,
+    gap: 6,
+    minHeight: 182,
+    overflow: "visible",
+    paddingBottom: 10,
+    paddingHorizontal: 10,
+    paddingTop: 13,
+    position: "relative",
     ...shadows.card
   },
   boosterCardTwoUp: {
@@ -1522,47 +1537,82 @@ const styles = StyleSheet.create({
     width: "48.8%"
   },
   boosterGetLabel: {
-    color: colors.warning,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "900",
-    lineHeight: 18
+    lineHeight: 17,
+    marginTop: 2,
+    textAlign: "center"
+  },
+  boosterIconStage: {
+    alignItems: "center",
+    height: 84,
+    justifyContent: "center",
+    width: "100%"
   },
   boosterTripleIcons: {
     alignItems: "center",
-    height: 56,
+    height: 82,
     justifyContent: "center",
     position: "relative",
-    width: 72
+    width: 98
   },
   boosterTripleIconSlot: {
     position: "absolute"
   },
   boosterTripleIconTop: {
-    top: 0
+    top: 0,
+    zIndex: 3
   },
   boosterTripleIconLeft: {
-    left: 4,
-    top: 20
+    left: 5,
+    top: 30,
+    zIndex: 2
   },
   boosterTripleIconRight: {
-    right: 4,
-    top: 20
+    right: 5,
+    top: 30,
+    zIndex: 2
   },
-  boosterRibbon: {
+  boosterValueBadge: {
     alignItems: "center",
-    backgroundColor: "#e5565f",
+    backgroundColor: "#ffe27a",
+    borderBottomColor: "#d29a16",
+    borderBottomWidth: 2,
+    borderColor: "rgba(255,255,255,0.80)",
     borderRadius: 8,
-    marginTop: 0,
-    minHeight: 28,
+    borderWidth: 1,
+    height: 26,
     justifyContent: "center",
-    paddingHorizontal: 8,
-    width: "100%"
+    overflow: "hidden",
+    paddingHorizontal: 10,
+    position: "absolute",
+    right: -6,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    top: 51,
+    transform: [{ rotate: "5deg" }],
+    zIndex: 5
   },
-  boosterRibbonText: {
-    color: "#ffffff",
-    fontSize: 12,
+  boosterValueBadgeShine: {
+    backgroundColor: "rgba(255,255,255,0.35)",
+    borderRadius: 999,
+    height: 8,
+    left: 4,
+    position: "absolute",
+    right: 4,
+    top: 3
+  },
+  boosterValueBadgeText: {
+    color: "#7a4a00",
+    fontSize: 9.6,
     fontWeight: "900",
-    textAlign: "center"
+    lineHeight: 11,
+    textAlign: "center",
+    textShadowColor: "rgba(255,255,255,0.38)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1
   },
   boosterCostPill: {
     alignItems: "center",
@@ -1572,11 +1622,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderRadius: radii.pill,
     flexDirection: "row",
-    gap: 6,
+    gap: 5,
     justifyContent: "center",
     marginTop: "auto",
-    minHeight: 40,
-    paddingHorizontal: 8
+    minHeight: 42,
+    paddingHorizontal: 8,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.11,
+    shadowRadius: 5,
+    elevation: 2
   },
   boosterCostText: {
     color: "#ffffff",
