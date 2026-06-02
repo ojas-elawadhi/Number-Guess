@@ -262,6 +262,7 @@ export default function HomeScreen() {
   const profileAvatarOptionSize = Math.max(46, Math.min(52, profileContentWidth * 0.15));
   const profileAvatarOptionIconSize = Math.max(17, Math.min(20, profileAvatarOptionSize * 0.37));
   const profileInnerMargin = isProfileCompact ? 4 : 8;
+  const shopHeaderStatusWidth = Math.min(320, Math.max(250, screenWidth - 56));
 
   const handleTabChange = (tab: HomeTab) => {
     if (tab === "profile") {
@@ -288,9 +289,7 @@ export default function HomeScreen() {
         {activeTab === "profile" ? null : (
           <AppHeader
             center={
-              activeTab === "shop" ? (
-                <ShopTabHeader />
-              ) : (
+              activeTab === "shop" ? undefined : (
                 <View style={styles.homeHeaderCenter}>
                   <Pressable onPress={openProfileEditor} style={({ pressed }) => [styles.profileCrest, pressed && styles.pressed]}>
                     <View style={styles.levelBurstShadow} />
@@ -335,8 +334,17 @@ export default function HomeScreen() {
                 </View>
               )
             }
-            left={activeTab === "shop" ? <HeaderBackButton onPress={() => router.replace("/")} /> : undefined}
-            right={activeTab === "shop" ? <View /> : (
+            hideSeparator={activeTab === "shop"}
+            left={activeTab === "shop" ? (
+              <View style={styles.shopHeaderBackSlot}>
+                <HeaderBackButton onPress={() => router.replace("/")} />
+              </View>
+            ) : undefined}
+            right={activeTab === "shop" ? (
+              <View style={[styles.shopHeaderStatusSlot, { width: shopHeaderStatusWidth }]}>
+                <ShopTabHeader />
+              </View>
+            ) : (
               <View style={styles.homeHeaderRight}>
                 <HeaderCoinsPill coins={profile.coins} />
               </View>
@@ -344,7 +352,7 @@ export default function HomeScreen() {
           />
         )}
 
-        <View style={[styles.mainPane, activeTab === "profile" && styles.profileMainPane]}>
+        <View style={[styles.mainPane, activeTab === "shop" && styles.shopMainPane, activeTab === "profile" && styles.profileMainPane]}>
           {activeTab === "play" ? (
             <View style={[styles.tabPane, styles.playPane]}>
               <View style={styles.wordmarkWrap}>
@@ -1025,6 +1033,19 @@ const styles = StyleSheet.create({
   homeHeaderRight: {
     justifyContent: "center"
   },
+  shopHeaderBackSlot: {
+    alignItems: "flex-start",
+    justifyContent: "center",
+    width: 84
+  },
+  shopHeaderStatusSlot: {
+    alignItems: "stretch",
+    bottom: 0,
+    justifyContent: "center",
+    position: "absolute",
+    right: 0,
+    top: 0
+  },
   profileCrest: {
     alignItems: "center",
     height: 56,
@@ -1180,6 +1201,9 @@ const styles = StyleSheet.create({
   profileMainPane: {
     justifyContent: "flex-start",
     paddingTop: spacing.xs
+  },
+  shopMainPane: {
+    paddingTop: 0
   },
   tabPane: {
     flex: 1,

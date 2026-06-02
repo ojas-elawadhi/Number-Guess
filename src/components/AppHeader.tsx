@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { getDayFromDateKey, getShortMonthLabel } from "../utils/dailyPuzzle";
 import { colors, radii, shadows, spacing } from "../utils/theme";
 import { playSound } from "../services/soundEffects";
+import { CoinIcon } from "./CoinIcon";
 
 export const APP_HEADER_CONTENT_HEIGHT = 72;
 export const APP_HEADER_SEPARATOR_HEIGHT = 4;
@@ -15,12 +16,13 @@ const HEADER_SIDE_WIDTH = 84;
 interface AppHeaderProps {
   left?: ReactNode;
   center?: ReactNode;
+  hideSeparator?: boolean;
   right?: ReactNode;
 }
 
-export function AppHeader({ center, left, right }: AppHeaderProps) {
+export function AppHeader({ center, hideSeparator = false, left, right }: AppHeaderProps) {
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, hideSeparator && styles.wrapperNoSeparator]}>
       <View style={styles.bar}>
         <View style={[styles.sideSlot, styles.leftSlot]}>{left}</View>
         <View pointerEvents="box-none" style={styles.centerSlot}>
@@ -28,7 +30,7 @@ export function AppHeader({ center, left, right }: AppHeaderProps) {
         </View>
         <View style={[styles.sideSlot, styles.rightSlot]}>{right}</View>
       </View>
-      <View pointerEvents="none" style={styles.separator} />
+      {hideSeparator ? null : <View pointerEvents="none" style={styles.separator} />}
     </View>
   );
 }
@@ -57,11 +59,7 @@ interface HeaderCoinsPillProps {
 export function HeaderCoinsPill({ coins }: HeaderCoinsPillProps) {
   return (
     <View style={styles.coinPill}>
-      <View style={styles.coinBadge}>
-        <View style={styles.coinBadgeInner}>
-          <Ionicons color="#ffd85a" name="star" size={12} />
-        </View>
-      </View>
+      <CoinIcon size={30} />
 
       <View style={styles.coinValueWrap}>
         <Text style={styles.coinPillText}>{coins.toLocaleString("en-US")}</Text>
@@ -113,6 +111,9 @@ const styles = StyleSheet.create({
     minHeight: APP_HEADER_HEIGHT,
     overflow: "visible",
     position: "relative"
+  },
+  wrapperNoSeparator: {
+    minHeight: APP_HEADER_CONTENT_HEIGHT
   },
   bar: {
     justifyContent: "center",
@@ -175,28 +176,6 @@ const styles = StyleSheet.create({
     minWidth: 104,
     paddingRight: 4,
     ...shadows.card
-  },
-  coinBadge: {
-    alignItems: "center",
-    backgroundColor: "#ffcf4f",
-    borderColor: "#d89c16",
-    borderRadius: radii.pill,
-    borderBottomWidth: 2,
-    height: 30,
-    justifyContent: "center",
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 3,
-    width: 30
-  },
-  coinBadgeInner: {
-    alignItems: "center",
-    backgroundColor: "#f4b631",
-    borderRadius: radii.pill,
-    height: 16,
-    justifyContent: "center",
-    width: 16
   },
   coinValueWrap: {
     alignItems: "center",

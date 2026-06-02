@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderScorePill } from "../components/AppHeader";
+import { CoinIcon } from "../components/CoinIcon";
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
@@ -47,24 +48,14 @@ function CoinStack() {
   return (
     <View style={styles.winCoinStack}>
       {(["winCoinBackLeft", "winCoinBackRight", "winCoinFront"] as const).map((position) => (
-        <View key={position} style={[styles.winCoin, styles[position]]}>
-          <View style={styles.winCoinInner}>
-            <Ionicons color="#ffd85a" name="star" size={9} />
-          </View>
-        </View>
+        <CoinIcon key={position} size={20} style={[styles.winCoin, styles[position]]} />
       ))}
     </View>
   );
 }
 
 function Coin() {
-  return (
-    <View style={styles.headerCoin}>
-      <View style={styles.headerCoinInner}>
-        <Ionicons color="#ffd85a" name="star" size={13} />
-      </View>
-    </View>
-  );
+  return <CoinIcon size={28} />;
 }
 
 function PracticeGame() {
@@ -1432,24 +1423,7 @@ const styles = StyleSheet.create({
     width: 34
   },
   winCoin: {
-    alignItems: "center",
-    backgroundColor: "#ffcf4f",
-    borderBottomWidth: 2,
-    borderColor: "#d89c16",
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    height: 20,
-    justifyContent: "center",
-    position: "absolute",
-    width: 20
-  },
-  winCoinInner: {
-    alignItems: "center",
-    backgroundColor: "#f4b631",
-    borderRadius: radii.pill,
-    height: 12,
-    justifyContent: "center",
-    width: 12
+    position: "absolute"
   },
   winCoinBackLeft: {
     bottom: 0,
@@ -1477,24 +1451,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "900",
     letterSpacing: 1
-  },
-  headerCoin: {
-    alignItems: "center",
-    backgroundColor: "#ffcf4f",
-    borderBottomWidth: 2,
-    borderColor: "#d89c16",
-    borderRadius: radii.pill,
-    height: 28,
-    justifyContent: "center",
-    width: 28
-  },
-  headerCoinInner: {
-    alignItems: "center",
-    backgroundColor: "#f4b631",
-    borderRadius: radii.pill,
-    height: 17,
-    justifyContent: "center",
-    width: 17
   },
   winClaimWrap: {
     alignSelf: "stretch",

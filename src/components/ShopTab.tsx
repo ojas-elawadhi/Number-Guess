@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import { useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type ImageSourcePropType } from "react-native";
 
 import { playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import { colors, radii, shadows, spacing } from "../utils/theme";
+import { CoinIcon } from "./CoinIcon";
 import { PrimaryButton } from "./PrimaryButton";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -41,8 +42,8 @@ interface BoosterShopOffer {
 }
 
 const featuredOffer: PurchaseDraft = {
-  id: "wordy-offer",
-  title: "WORDY OFFER",
+  id: "starter-bundle",
+  title: "STARTER PACK",
   description: "Starter bundle for quick runs and skip saves.",
   priceLabel: "₹480.00",
   currency: "cash",
@@ -146,33 +147,17 @@ const boosterOffers: BoosterShopOffer[] = [
   }
 ];
 
+const coinPackArtSources: Record<CoinPackOffer["art"], ImageSourcePropType> = {
+  "small-stack": require("../../assets/shop/coin-pack-small.png"),
+  "medium-stack": require("../../assets/shop/coin-pack-medium.png"),
+  "large-stack": require("../../assets/shop/coin-pack-large.png"),
+  bag: require("../../assets/shop/coin-pack-bag.png"),
+  chest: require("../../assets/shop/coin-pack-chest.png"),
+  treasure: require("../../assets/shop/coin-pack-treasure.png")
+};
+
 function CoinToken({ size = 30, style }: { size?: number; style?: object }) {
-  return (
-    <View
-      style={[
-        styles.coinToken,
-        {
-          borderRadius: size / 2,
-          height: size,
-          width: size
-        },
-        style
-      ]}
-    >
-      <View
-        style={[
-          styles.coinTokenInner,
-          {
-            borderRadius: (size - 10) / 2,
-            height: size - 10,
-            width: size - 10
-          }
-        ]}
-      >
-        <Ionicons color="#ffd85a" name="star" size={Math.max(10, Math.round(size * 0.42))} />
-      </View>
-    </View>
-  );
+  return <CoinIcon size={size} style={style} />;
 }
 
 function CoinWatermark({ size = 16 }: { size?: number }) {
@@ -202,59 +187,7 @@ function BoosterGlyph({ accent, icon, size = 52 }: { accent: string; icon: IconN
 }
 
 function CoinArt({ variant }: { variant: CoinPackOffer["art"] }) {
-  if (variant === "bag") {
-    return (
-      <View style={styles.bagArt}>
-        <CoinToken size={18} style={styles.bagCoinTop} />
-        <CoinToken size={16} style={styles.bagCoinFront} />
-        <View style={styles.bagSack}>
-          <View style={styles.bagTie} />
-        </View>
-      </View>
-    );
-  }
-
-  if (variant === "chest") {
-    return (
-      <View style={styles.chestArt}>
-        <View style={styles.chestLid} />
-        <View style={styles.chestBase}>
-          <Ionicons color="#f2c55f" name="star" size={12} />
-        </View>
-        <CoinToken size={16} style={styles.chestCoinA} />
-        <CoinToken size={14} style={styles.chestCoinB} />
-      </View>
-    );
-  }
-
-  if (variant === "treasure") {
-    return (
-      <View style={styles.treasureArt}>
-        <View style={styles.treasureLid} />
-        <View style={styles.treasureBase}>
-          <Ionicons color="#f2c55f" name="star" size={12} />
-        </View>
-        <CoinToken size={18} style={styles.treasureCoinA} />
-        <CoinToken size={15} style={styles.treasureCoinB} />
-        <CoinToken size={13} style={styles.treasureCoinC} />
-      </View>
-    );
-  }
-
-  const stackStyles =
-    variant === "small-stack"
-      ? [styles.stackCoinA, styles.stackCoinB, styles.stackCoinC]
-      : variant === "medium-stack"
-        ? [styles.stackCoinD, styles.stackCoinE, styles.stackCoinF, styles.stackCoinG, styles.stackCoinH]
-        : [styles.stackCoinI, styles.stackCoinJ, styles.stackCoinK, styles.stackCoinL, styles.stackCoinM, styles.stackCoinN];
-
-  return (
-    <View style={styles.coinStackArt}>
-      {stackStyles.map((positionStyle, index) => (
-        <CoinToken key={`${variant}-${index}`} size={variant === "small-stack" ? 20 : 18} style={positionStyle} />
-      ))}
-    </View>
-  );
+  return <Image resizeMode="contain" source={coinPackArtSources[variant]} style={styles.coinPackImage} />;
 }
 
 function CoinPricePill({ label, style, textStyle }: { label: string; style?: object; textStyle?: object }) {
@@ -276,12 +209,12 @@ function ShopStatusStrip() {
   return (
     <View style={styles.statusStrip}>
       <View style={[styles.statusPill, isCompact && styles.statusPillCompact, isMediumPhone && styles.statusPillMedium]}>
-        <BoosterGlyph accent="#b55cff" icon="flash" size={isCompact ? 19 : isMediumPhone ? 20 : 22} />
         <Text style={[styles.statusPillValue, isCompact && styles.statusPillValueCompact, isMediumPhone && styles.statusPillValueMedium]}>{extraGuessPowerUps}</Text>
+        <BoosterGlyph accent="#b55cff" icon="flash" size={isCompact ? 19 : isMediumPhone ? 20 : 22} />
       </View>
       <View style={[styles.statusPill, isCompact && styles.statusPillCompact, isMediumPhone && styles.statusPillMedium]}>
-        <BoosterGlyph accent="#6bbdff" icon="play-skip-forward" size={isCompact ? 19 : isMediumPhone ? 20 : 22} />
         <Text style={[styles.statusPillValue, isCompact && styles.statusPillValueCompact, isMediumPhone && styles.statusPillValueMedium]}>{skipBoosters}</Text>
+        <BoosterGlyph accent="#6bbdff" icon="play-skip-forward" size={isCompact ? 19 : isMediumPhone ? 20 : 22} />
       </View>
       <View style={[styles.statusCoinPill, isCompact && styles.statusCoinPillCompact, isMediumPhone && styles.statusCoinPillMedium]}>
         <Text numberOfLines={1} style={[styles.statusCoinValue, isCompact && styles.statusCoinValueCompact, isMediumPhone && styles.statusCoinValueMedium]}>
@@ -456,58 +389,61 @@ export function ShopTab() {
       </View>
 
       <ScrollView contentContainerStyle={[styles.shopScrollContent, isMediumPhone && styles.shopScrollContentMedium]} showsVerticalScrollIndicator={false}>
-        <View style={[styles.featuredCard, isCompact ? styles.featuredCardCompact : isMediumPhone ? styles.featuredCardMedium : isLargePhone ? styles.featuredCardLarge : null]}>
+        <Pressable
+          onPress={() => openPurchase(featuredOffer)}
+          style={({ pressed }) => [
+            styles.featuredCard,
+            isCompact ? styles.featuredCardCompact : isMediumPhone ? styles.featuredCardMedium : isLargePhone ? styles.featuredCardLarge : null,
+            pressed && styles.pressed
+          ]}
+        >
           <View style={styles.featuredGlow} />
-          <View style={[styles.featuredReferenceLayout, isCompact && styles.featuredReferenceLayoutCompact]}>
-            <View style={styles.featuredReferenceLeft}>
-              <View style={[styles.featuredCoinRow, isCompact && styles.featuredCoinRowCompact]}>
-                <CoinToken size={isCompact ? 34 : 38} />
-                <Text style={[styles.featuredCoinValue, isCompact && styles.featuredCoinValueCompact]}>
-                  {featuredOffer.coinsReward}
-                </Text>
-              </View>
-
-              <View style={[styles.featuredRewardPair, isCompact && styles.featuredRewardPairCompact]}>
-                <View style={[styles.featuredMiniCard, styles.featuredMiniCardHorizontal, isCompact && styles.featuredMiniCardCompact]}>
-                  <BoosterGlyph accent="#b55cff" icon="flash" size={isCompact ? 30 : 34} />
-                  <Text style={[styles.featuredMiniValue, isCompact && styles.featuredMiniValueCompact]}>3</Text>
-                </View>
-                <View style={[styles.featuredMiniCard, styles.featuredMiniCardHorizontal, isCompact && styles.featuredMiniCardCompact]}>
-                  <BoosterGlyph accent="#6bbdff" icon="play-skip-forward" size={isCompact ? 30 : 34} />
-                  <Text style={[styles.featuredMiniValue, isCompact && styles.featuredMiniValueCompact]}>2</Text>
-                </View>
-              </View>
+          <View style={styles.featuredHeaderRow}>
+            <View style={styles.featuredCopy}>
+              <Text style={[styles.featuredTitle, isCompact && styles.featuredTitleCompact]}>{featuredOffer.title}</Text>
             </View>
-
-            <View style={[styles.featuredReferenceRight, isCompact && styles.featuredReferenceRightCompact]}>
-              <View style={[styles.featuredIllustration, isCompact && styles.featuredIllustrationCompact, styles.featuredReferenceArt]}>
-                <CoinToken size={isCompact ? 18 : 20} style={styles.featuredCoinA} />
-                <CoinToken size={isCompact ? 16 : 18} style={styles.featuredCoinB} />
-                <CoinToken size={isCompact ? 14 : 16} style={styles.featuredCoinC} />
-                <View style={styles.featuredBundleOrbLeft}>
-                  <BoosterGlyph accent="#b55cff" icon="flash" size={isCompact ? 26 : 30} />
-                </View>
-                <View style={styles.featuredBundleOrbRight}>
-                  <BoosterGlyph accent="#6bbdff" icon="play-skip-forward" size={isCompact ? 26 : 30} />
-                </View>
-                <View style={styles.featuredCoinCluster}>
-                  <CoinToken size={isCompact ? 18 : 20} style={styles.featuredClusterCoinA} />
-                  <CoinToken size={isCompact ? 18 : 20} style={styles.featuredClusterCoinB} />
-                  <CoinToken size={isCompact ? 18 : 20} style={styles.featuredClusterCoinC} />
-                  <CoinToken size={isCompact ? 18 : 20} style={styles.featuredClusterCoinD} />
-                </View>
-              </View>
-              <Pressable
-                onPress={() => openPurchase(featuredOffer)}
-                style={({ pressed }) => [styles.featuredPriceButton, isCompact && styles.featuredPriceButtonCompact, styles.featuredReferencePriceButton, pressed && styles.pressed]}
-              >
-                <Text style={[styles.featuredPriceButtonText, isCompact && styles.featuredPriceButtonTextCompact]}>
-                  {featuredOffer.priceLabel}
-                </Text>
-              </Pressable>
+            <View style={[styles.featuredBadge, isCompact && styles.featuredBadgeCompact]}>
+              <Text style={[styles.featuredBadgeText, isCompact && styles.featuredBadgeTextCompact]}>BEST VALUE</Text>
             </View>
           </View>
-        </View>
+
+          <View style={[styles.featuredRewardGrid, isCompact && styles.featuredRewardGridCompact]}>
+            <View style={[styles.featuredRewardChip, isCompact && styles.featuredRewardChipCompact]}>
+              <CoinToken size={isCompact ? 28 : 31} />
+              <View style={styles.featuredRewardTextBlock}>
+                <Text style={[styles.featuredRewardValue, isCompact && styles.featuredRewardValueCompact]}>
+                  {featuredOffer.coinsReward?.toLocaleString("en-US")}
+                </Text>
+                <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={[styles.featuredRewardLabel, isCompact && styles.featuredRewardLabelCompact]}>COINS</Text>
+              </View>
+            </View>
+
+            <View style={[styles.featuredRewardChip, isCompact && styles.featuredRewardChipCompact]}>
+              <BoosterGlyph accent="#b55cff" icon="flash" size={isCompact ? 26 : 30} />
+              <View style={styles.featuredRewardTextBlock}>
+                <Text style={[styles.featuredRewardValue, isCompact && styles.featuredRewardValueCompact]}>{featuredOffer.extraGuessReward}</Text>
+                <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={[styles.featuredRewardLabel, isCompact && styles.featuredRewardLabelCompact]}>
+                  GUESS
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.featuredRewardChip, isCompact && styles.featuredRewardChipCompact]}>
+              <BoosterGlyph accent="#6bbdff" icon="play-skip-forward" size={isCompact ? 26 : 30} />
+              <View style={styles.featuredRewardTextBlock}>
+                <Text style={[styles.featuredRewardValue, isCompact && styles.featuredRewardValueCompact]}>{featuredOffer.skipReward}</Text>
+                <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={[styles.featuredRewardLabel, isCompact && styles.featuredRewardLabelCompact]}>SKIPS</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.featuredPriceButton, isCompact && styles.featuredPriceButtonCompact]}>
+            <Text style={[styles.featuredPriceButtonLabel, isCompact && styles.featuredPriceButtonLabelCompact]}>BUY BUNDLE</Text>
+            <Text style={[styles.featuredPriceButtonText, isCompact && styles.featuredPriceButtonTextCompact]}>
+              {featuredOffer.priceLabel}
+            </Text>
+          </View>
+        </Pressable>
 
         <Pressable
           onPress={() => openPurchase(noAdsOffer)}
@@ -541,33 +477,57 @@ export function ShopTab() {
             >
               <Text style={[styles.coinCardAmount, isCompact && styles.coinCardAmountCompact, isMediumPhone && styles.coinCardAmountMedium]}>{offer.amountLabel}</Text>
               <CoinArt variant={offer.art} />
-              <View style={[styles.coinCardMonogram, isMediumPhone && styles.coinCardMonogramMedium]}>
-                <CoinWatermark size={16} />
-              </View>
               {offer.badge ? (
                 <View
                   style={[
-                    styles.coinCardBadge,
-                    isMediumPhone && styles.coinCardBadgeMedium,
-                    offer.badge.includes("Best") ? styles.bestValueBadge : styles.popularBadge
+                    styles.coinCardBadgeShell,
+                    isCompact && styles.coinCardBadgeCompact,
+                    isMediumPhone && styles.coinCardBadgeMedium
                   ]}
                 >
-                  <Text style={[styles.coinCardBadgeText, isMediumPhone && styles.coinCardBadgeTextMedium]}>{offer.badge}</Text>
+                  <View
+                    style={[
+                      styles.coinCardBadgeFace,
+                      isCompact && styles.coinCardBadgeFaceCompact,
+                      isMediumPhone && styles.coinCardBadgeFaceMedium,
+                      offer.badge.includes("Best") ? styles.bestValueBadge : styles.popularBadge
+                    ]}
+                  >
+                    <View style={styles.coinCardBadgeShine} />
+                    <Text style={[styles.coinCardBadgeText, isCompact && styles.coinCardBadgeTextCompact, isMediumPhone && styles.coinCardBadgeTextMedium]}>
+                      {offer.badge.includes("Best") ? "Best\nValue" : "Most\nPopular"}
+                    </Text>
+                  </View>
                 </View>
               ) : null}
               <View style={[styles.coinCardFooter, isMediumPhone && styles.coinCardFooterMedium]}>
-                {offer.currency === "ad" ? <View style={styles.adBubble}><Text style={styles.adBubbleText}>AD</Text></View> : null}
-                <CoinPricePill
-                  label={offer.priceLabel}
-                  style={offer.currency === "ad" ? styles.freePill : undefined}
-                  textStyle={
-                    isCompact
-                      ? styles.coinCardPriceTextCompact
-                      : isMediumPhone
-                        ? styles.coinCardPriceTextMedium
-                        : undefined
-                  }
-                />
+                {offer.currency === "ad" ? (
+                  <View style={styles.freeOfferWrap}>
+                    <CoinPricePill
+                      label={offer.priceLabel}
+                      style={styles.freePill}
+                      textStyle={
+                        isCompact
+                          ? styles.coinCardPriceTextCompact
+                          : isMediumPhone
+                            ? styles.coinCardPriceTextMedium
+                            : undefined
+                      }
+                    />
+                    <View style={styles.adBubble}><Text style={styles.adBubbleText}>AD</Text></View>
+                  </View>
+                ) : (
+                  <CoinPricePill
+                    label={offer.priceLabel}
+                    textStyle={
+                      isCompact
+                        ? styles.coinCardPriceTextCompact
+                        : isMediumPhone
+                          ? styles.coinCardPriceTextMedium
+                          : undefined
+                    }
+                  />
+                )}
               </View>
             </Pressable>
           ))}
@@ -703,7 +663,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flex: 1,
     flexDirection: "row",
-    gap: 8
+    gap: 8,
+    justifyContent: "flex-end",
+    width: "100%"
   },
   statusPill: {
     alignSelf: "center",
@@ -712,20 +674,22 @@ const styles = StyleSheet.create({
     borderColor: colors.surfaceMuted,
     borderWidth: 1,
     borderRadius: radii.pill,
-    flex: 1,
     flexDirection: "row",
     gap: 6,
-    justifyContent: "center",
+    justifyContent: "flex-end",
     height: 40,
-    paddingHorizontal: 10
+    minWidth: 58,
+    paddingHorizontal: 6
   },
   statusPillCompact: {
     height: 36,
-    paddingHorizontal: 8
+    minWidth: 52,
+    paddingHorizontal: 4
   },
   statusPillMedium: {
-    height: 38,
-    paddingHorizontal: 9
+    height: 30,
+    minWidth: 70,
+    paddingHorizontal: 4
   },
   statusPillValue: {
     color: colors.text,
@@ -746,21 +710,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radii.pill,
     flexDirection: "row",
-    gap: 6,
-    justifyContent: "center",
+    gap: 3,
+    justifyContent: "flex-end",
     height: 40,
-    minWidth: 98,
-    paddingHorizontal: 10
+    minWidth: 88,
+    paddingHorizontal: 5
   },
   statusCoinPillCompact: {
     height: 36,
-    minWidth: 88,
-    paddingHorizontal: 8
+    minWidth: 80,
+    paddingHorizontal: 4
   },
   statusCoinPillMedium: {
-    height: 38,
-    minWidth: 94,
-    paddingHorizontal: 9
+    height: 30,
+    minWidth: 90,
+    paddingHorizontal: 4
   },
   statusCoinValue: {
     color: colors.text,
@@ -776,23 +740,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     maxWidth: 68
   },
-  coinToken: {
-    alignItems: "center",
-    backgroundColor: "#ffcc43",
-    borderColor: "#f0a000",
-    borderWidth: 1.5,
-    borderBottomWidth: 2.5,
-    justifyContent: "center"
-  },
-  coinTokenInner: {
-    alignItems: "center",
-    backgroundColor: "#ffb91f",
-    justifyContent: "center"
-  },
-  coinTokenText: {
-    color: "#fff7d5",
-    fontWeight: "900"
-  },
   boosterGlyph: {
     alignItems: "center",
     borderBottomColor: "rgba(0,0,0,0.16)",
@@ -805,224 +752,144 @@ const styles = StyleSheet.create({
     elevation: 2
   },
   featuredCard: {
-    backgroundColor: colors.surfaceCool,
-    borderBottomColor: "rgba(92,184,253,0.18)",
-    borderBottomWidth: 2,
-    borderColor: "#bfdfff",
-    borderRadius: 20,
+    backgroundColor: "#f4fbff",
+    borderBottomColor: "rgba(0,0,0,0.08)",
+    borderBottomWidth: 3,
+    borderColor: "#bfe4ff",
+    borderRadius: 18,
     borderWidth: 1,
+    gap: 10,
     overflow: "hidden",
-    padding: 12,
+    padding: 10,
     position: "relative",
     ...shadows.card
   },
   featuredCardCompact: {
-    borderRadius: 18,
-    padding: 10
+    borderRadius: 16,
+    gap: 8,
+    padding: 8
   },
   featuredCardMedium: {
-    borderRadius: 18,
-    padding: 10
+    borderRadius: 16
   },
   featuredCardLarge: {
     padding: 10
   },
   featuredGlow: {
-    backgroundColor: "rgba(92,184,253,0.08)",
-    borderRadius: 180,
-    height: 180,
+    backgroundColor: "rgba(92,184,253,0.12)",
+    borderRadius: 120,
+    height: 120,
     position: "absolute",
-    right: -42,
-    top: -26,
-    width: 180
+    right: -38,
+    top: -42,
+    width: 120
+  },
+  featuredHeaderRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between"
+  },
+  featuredCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  featuredEyebrow: {
+    color: "#397493",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.8
+  },
+  featuredEyebrowCompact: {
+    fontSize: 9
   },
   featuredTitle: {
     color: colors.text,
-    fontSize: 19,
+    fontSize: 22,
     fontWeight: "900",
-    marginBottom: 8,
-    textAlign: "center"
+    lineHeight: 26
   },
   featuredTitleCompact: {
-    fontSize: 17,
-    lineHeight: 20,
-    marginBottom: 6
+    fontSize: 19,
+    lineHeight: 22
   },
-  featuredTitleMedium: {
-    fontSize: 18,
-    lineHeight: 22,
-    marginBottom: 6
-  },
-  featuredReferenceLayout: {
-    flexDirection: "row",
-    gap: 10
-  },
-  featuredReferenceLayoutCompact: {
-    gap: 8
-  },
-  featuredReferenceLeft: {
-    flex: 1,
-    gap: 8
-  },
-  featuredReferenceRight: {
-    gap: 8,
-    justifyContent: "space-between",
-    width: "40%"
-  },
-  featuredReferenceRightCompact: {
-    width: "42%"
-  },
-  featuredCoinRow: {
+  featuredBadge: {
     alignItems: "center",
-    backgroundColor: colors.surface,
-    borderColor: colors.surfaceMuted,
-    borderRadius: 14,
+    backgroundColor: "#fff1a8",
+    borderColor: "#f3b22f",
+    borderBottomWidth: 2,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    flexDirection: "row",
-    gap: 8,
-    minHeight: 56,
-    paddingHorizontal: 10
-  },
-  featuredCoinRowCompact: {
-    alignSelf: "flex-start",
-    borderRadius: 14,
-    gap: 8,
-    minHeight: 52,
+    justifyContent: "center",
+    minHeight: 30,
     paddingHorizontal: 10,
-    paddingRight: 12
+    transform: [{ rotate: "-2deg" }],
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    elevation: 2
   },
-  featuredCoinRowMedium: {
-    flex: 1,
-    minHeight: 54,
-    paddingHorizontal: 9
+  featuredBadgeCompact: {
+    minHeight: 28,
+    paddingHorizontal: 8
   },
-  featuredCoinValue: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: "900"
+  featuredBadgeText: {
+    color: "#7a4a00",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.7
   },
-  featuredCoinValueCompact: {
-    fontSize: 20
+  featuredBadgeTextCompact: {
+    fontSize: 9
   },
-  featuredCoinValueMedium: {
-    fontSize: 21
-  },
-  featuredBoostersGrid: {
-    flexDirection: "row",
-    gap: spacing.sm
-  },
-  featuredRewardPair: {
+  featuredRewardGrid: {
     flexDirection: "row",
     gap: 8
   },
-  featuredRewardPairCompact: {
+  featuredRewardGridCompact: {
     gap: 6
   },
-  featuredBoostersGridCompact: {
-    gap: 8
-  },
-  featuredMiniCard: {
+  featuredRewardChip: {
     alignItems: "center",
     backgroundColor: colors.surface,
-    borderColor: colors.surfaceMuted,
+    borderColor: "#dce7ec",
     borderRadius: 14,
     borderWidth: 1,
     flex: 1,
-    gap: 4,
-    minHeight: 64,
-    justifyContent: "center",
-    padding: 6
-  },
-  featuredMiniCardHorizontal: {
     flexDirection: "row",
     gap: 8,
-    justifyContent: "flex-start",
-    paddingHorizontal: 10
+    minHeight: 54,
+    paddingHorizontal: 8
   },
-  featuredMiniCardCompact: {
-    minHeight: 58,
-    padding: 5
+  featuredRewardChipCompact: {
+    borderRadius: 12,
+    gap: 6,
+    minHeight: 48,
+    paddingHorizontal: 6
   },
-  featuredMiniValue: {
+  featuredRewardTextBlock: {
+    flex: 1,
+    minWidth: 0
+  },
+  featuredRewardValue: {
     color: colors.text,
-    fontSize: 18,
-    fontWeight: "900"
+    fontSize: 17,
+    fontWeight: "900",
+    lineHeight: 20
   },
-  featuredMiniValueCompact: {
-    fontSize: 17
+  featuredRewardValueCompact: {
+    fontSize: 15,
+    lineHeight: 18
   },
-  featuredIllustration: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderColor: colors.surfaceMuted,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: spacing.xs,
-    justifyContent: "center",
-    minHeight: 88,
-    overflow: "hidden",
-    padding: 6,
-    width: "100%"
+  featuredRewardLabel: {
+    color: "#58656b",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.5
   },
-  featuredIllustrationCompact: {
-    minHeight: 80
-  },
-  featuredReferenceArt: {
-    minHeight: 132
-  },
-  featuredCoinA: {
-    left: 12,
-    position: "absolute",
-    top: 58
-  },
-  featuredCoinB: {
-    position: "absolute",
-    right: 18,
-    top: 60
-  },
-  featuredCoinC: {
-    bottom: 22,
-    position: "absolute",
-    right: 38
-  },
-  featuredBundleOrbLeft: {
-    left: 18,
-    position: "absolute",
-    top: 18
-  },
-  featuredBundleOrbRight: {
-    position: "absolute",
-    right: 18,
-    top: 56
-  },
-  featuredCoinCluster: {
-    alignItems: "center",
-    height: 46,
-    justifyContent: "center",
-    position: "absolute",
-    right: 28,
-    top: 32,
-    width: 64
-  },
-  featuredClusterCoinA: {
-    left: 4,
-    position: "absolute",
-    top: 22
-  },
-  featuredClusterCoinB: {
-    left: 20,
-    position: "absolute",
-    top: 10
-  },
-  featuredClusterCoinC: {
-    position: "absolute",
-    right: 16,
-    top: 20
-  },
-  featuredClusterCoinD: {
-    position: "absolute",
-    right: 0,
-    top: 30
+  featuredRewardLabelCompact: {
+    fontSize: 8
   },
   featuredPriceButton: {
     alignItems: "center",
@@ -1030,16 +897,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     borderBottomColor: colors.accentDark,
     borderBottomWidth: 2,
-    borderRadius: 14,
-    justifyContent: "center",
-    minHeight: 40,
-    paddingHorizontal: 10
+    borderRadius: 13,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 44,
+    paddingHorizontal: 14
   },
   featuredPriceButtonCompact: {
-    minHeight: 38
+    minHeight: 40,
+    paddingHorizontal: 12
   },
-  featuredReferencePriceButton: {
-    minHeight: 48
+  featuredPriceButtonLabel: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.7
+  },
+  featuredPriceButtonLabelCompact: {
+    fontSize: 10
   },
   featuredPriceButtonText: {
     color: "#ffffff",
@@ -1175,7 +1050,7 @@ const styles = StyleSheet.create({
     gap: 4,
     minHeight: 154,
     minWidth: 0,
-    overflow: "hidden",
+    overflow: "visible",
     paddingHorizontal: 8,
     paddingTop: 8,
     position: "relative",
@@ -1202,193 +1077,225 @@ const styles = StyleSheet.create({
     fontSize: 19,
     lineHeight: 21
   },
-  coinStackArt: {
-    height: 42,
+  coinPackImage: {
+    height: 74,
+    marginTop: -1,
+    width: 108
+  },
+  coinArtStage: {
+    alignItems: "center",
+    height: 58,
+    justifyContent: "center",
     position: "relative",
-    width: 62
+    width: 82
   },
-  stackCoinA: {
-    left: 10,
+  coinArtShadow: {
+    backgroundColor: "rgba(22, 45, 53, 0.10)",
+    borderRadius: 999,
+    bottom: 1,
+    height: 9,
     position: "absolute",
-    top: 26
+    width: 54
   },
-  stackCoinB: {
-    left: 34,
+  coinPileA: {
+    left: 18,
     position: "absolute",
-    top: 18
+    top: 29,
+    zIndex: 3
   },
-  stackCoinC: {
-    left: 24,
+  coinPileB: {
+    left: 38,
     position: "absolute",
-    top: 42
+    top: 29,
+    zIndex: 3
   },
-  stackCoinD: {
-    left: 12,
+  coinPileC: {
+    left: 28,
     position: "absolute",
-    top: 40
+    top: 12,
+    zIndex: 4
   },
-  stackCoinE: {
-    left: 26,
-    position: "absolute",
-    top: 28
-  },
-  stackCoinF: {
-    left: 46,
-    position: "absolute",
-    top: 35
-  },
-  stackCoinG: {
-    left: 58,
-    position: "absolute",
-    top: 22
-  },
-  stackCoinH: {
-    left: 34,
-    position: "absolute",
-    top: 10
-  },
-  stackCoinI: {
-    left: 12,
-    position: "absolute",
-    top: 44
-  },
-  stackCoinJ: {
-    left: 30,
-    position: "absolute",
-    top: 34
-  },
-  stackCoinK: {
+  coinPileD: {
     left: 48,
     position: "absolute",
-    top: 42
+    top: 13,
+    zIndex: 4
   },
-  stackCoinL: {
-    left: 58,
+  coinPileE: {
+    left: 9,
     position: "absolute",
-    top: 26
+    top: 39,
+    zIndex: 2
   },
-  stackCoinM: {
-    left: 22,
+  coinPileF: {
+    left: 56,
     position: "absolute",
-    top: 18
+    top: 39,
+    zIndex: 2
   },
-  stackCoinN: {
-    left: 42,
+  coinPileG: {
+    left: 37,
     position: "absolute",
-    top: 10
-  },
-  bagArt: {
-    alignItems: "center",
-    height: 42,
-    justifyContent: "flex-end",
-    position: "relative",
-    width: 62
+    top: 0,
+    zIndex: 5
   },
   bagSack: {
-    backgroundColor: "#d7b084",
-    borderRadius: 22,
-    height: 32,
-    width: 28
+    alignItems: "center",
+    backgroundColor: "#c9965b",
+    borderBottomColor: "#9f6a34",
+    borderBottomWidth: 3,
+    borderColor: "#e0b77d",
+    borderRadius: 18,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: "center",
+    width: 40,
+    zIndex: 2
   },
   bagTie: {
     alignSelf: "center",
-    backgroundColor: "#b17d47",
-    borderRadius: 8,
-    height: 8,
-    marginTop: 6,
-    width: 18
+    backgroundColor: "#8b5a2b",
+    borderRadius: radii.pill,
+    height: 7,
+    position: "absolute",
+    top: 7,
+    width: 22
+  },
+  bagBadge: {
+    alignItems: "center",
+    backgroundColor: "#b47b3f",
+    borderColor: "#f2c55f",
+    borderRadius: 10,
+    borderWidth: 1,
+    height: 21,
+    justifyContent: "center",
+    marginTop: 8,
+    width: 21
   },
   bagCoinTop: {
-    left: 24,
+    left: 18,
     position: "absolute",
-    top: 6
+    top: 4,
+    zIndex: 1
   },
-  bagCoinFront: {
-    left: 14,
+  bagCoinSide: {
     position: "absolute",
-    top: 36
+    right: 15,
+    top: 14,
+    zIndex: 1
   },
-  chestArt: {
-    alignItems: "center",
-    height: 42,
-    justifyContent: "center",
-    position: "relative",
-    width: 62
+  chestPeekCoinA: {
+    left: 22,
+    position: "absolute",
+    top: 12,
+    zIndex: 1
+  },
+  chestPeekCoinB: {
+    position: "absolute",
+    right: 22,
+    top: 14,
+    zIndex: 1
   },
   chestLid: {
-    backgroundColor: "#5a3414",
+    backgroundColor: "#6a3d18",
+    borderColor: "#8f5b2d",
+    borderWidth: 1,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
-    height: 12,
-    marginBottom: -2,
-    width: 34
+    height: 18,
+    justifyContent: "center",
+    position: "absolute",
+    top: 18,
+    width: 52,
+    zIndex: 3
+  },
+  chestLidBand: {
+    backgroundColor: "#f2c55f",
+    height: 4,
+    opacity: 0.9,
+    width: "100%"
   },
   chestBase: {
     alignItems: "center",
-    backgroundColor: "#9b662f",
+    backgroundColor: "#9d642d",
     borderBottomLeftRadius: 14,
     borderBottomRightRadius: 14,
-    borderColor: "#f2c55f",
-    borderWidth: 2,
-    height: 22,
+    borderColor: "#c58a43",
+    borderWidth: 1,
+    height: 28,
     justifyContent: "center",
-    width: 38
-  },
-  chestLetter: {
-    color: "#f2c55f",
-    fontSize: 14,
-    fontWeight: "900"
-  },
-  chestCoinA: {
-    bottom: 6,
     position: "absolute",
-    right: 14
+    top: 34,
+    width: 58,
+    zIndex: 4
   },
-  chestCoinB: {
+  chestBand: {
+    backgroundColor: "#f2c55f",
     bottom: 0,
-    left: 18,
-    position: "absolute"
+    height: "100%",
+    left: 26,
+    position: "absolute",
+    width: 6
   },
-  treasureArt: {
-    alignItems: "center",
-    height: 42,
-    justifyContent: "center",
-    position: "relative",
-    width: 62
+  treasurePeekCoinA: {
+    left: 18,
+    position: "absolute",
+    top: 10,
+    zIndex: 1
+  },
+  treasurePeekCoinB: {
+    position: "absolute",
+    right: 20,
+    top: 8,
+    zIndex: 1
+  },
+  treasurePeekCoinC: {
+    left: 36,
+    position: "absolute",
+    top: 2,
+    zIndex: 1
   },
   treasureLid: {
-    backgroundColor: "#6d3d18",
+    backgroundColor: "#5f3516",
+    borderColor: "#8c5528",
+    borderWidth: 1,
     borderTopLeftRadius: 10,
     borderTopRightRadius: 10,
-    height: 10,
-    transform: [{ rotate: "-12deg" }, { translateY: -3 }],
-    width: 36
+    height: 16,
+    justifyContent: "center",
+    position: "absolute",
+    top: 16,
+    transform: [{ rotate: "-10deg" }],
+    width: 56,
+    zIndex: 3
+  },
+  treasureLidBand: {
+    backgroundColor: "#f2c55f",
+    height: 4,
+    opacity: 0.9,
+    width: "100%"
   },
   treasureBase: {
     alignItems: "center",
-    backgroundColor: "#99683b",
+    backgroundColor: "#a36a34",
     borderBottomLeftRadius: 12,
     borderBottomRightRadius: 12,
-    borderColor: "#d8edf7",
-    borderWidth: 2,
-    height: 22,
+    borderColor: "#d89b4f",
+    borderWidth: 1,
+    height: 29,
     justifyContent: "center",
-    width: 38
-  },
-  treasureCoinA: {
-    bottom: 2,
-    left: 14,
-    position: "absolute"
-  },
-  treasureCoinB: {
-    bottom: 6,
     position: "absolute",
-    right: 14
+    top: 34,
+    width: 62,
+    zIndex: 4
   },
-  treasureCoinC: {
+  treasureBand: {
+    backgroundColor: "#f2c55f",
+    bottom: 0,
+    height: "100%",
+    left: 28,
     position: "absolute",
-    right: 4,
-    top: 36
+    width: 6
   },
   coinCardMonogram: {
     alignItems: "center",
@@ -1414,15 +1321,22 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingBottom: 6
   },
+  freeOfferWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 42,
+    position: "relative",
+    width: 116
+  },
   adBubble: {
     alignItems: "center",
-    alignSelf: "flex-start",
     backgroundColor: "#8f398a",
     borderRadius: 14,
     height: 24,
     justifyContent: "center",
-    marginLeft: 4,
-    marginBottom: -8,
+    left: 2,
+    position: "absolute",
+    top: -2,
     width: 24,
     zIndex: 1
   },
@@ -1433,37 +1347,82 @@ const styles = StyleSheet.create({
   },
   freePill: {
     backgroundColor: "#f137b0",
-    borderBottomColor: "#a21f79"
+    borderBottomColor: "#a21f79",
+    minWidth: 100
   },
-  coinCardBadge: {
+  coinCardBadgeShell: {
     alignItems: "center",
-    borderRadius: 14,
     justifyContent: "center",
-    minHeight: 34,
-    minWidth: 34,
-    paddingHorizontal: 6,
     position: "absolute",
-    right: 6,
-    top: 38,
-    transform: [{ rotate: "16deg" }]
+    right: -3,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.24,
+    shadowRadius: 5,
+    top: 62,
+    transform: [{ rotate: "8deg" }],
+    elevation: 4,
+    zIndex: 3
+  },
+  coinCardBadgeFace: {
+    alignItems: "center",
+    borderColor: "rgba(255,255,255,0.76)",
+    borderWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.18)",
+    borderBottomWidth: 2,
+    borderRadius: 8,
+    height: 29,
+    justifyContent: "center",
+    minWidth: 61,
+    overflow: "hidden",
+    paddingHorizontal: 5
+  },
+  coinCardBadgeFaceCompact: {
+    height: 27,
+    minWidth: 58,
+    paddingHorizontal: 5
+  },
+  coinCardBadgeFaceMedium: {
+    height: 29,
+    minWidth: 61
+  },
+  coinCardBadgeShine: {
+    backgroundColor: "rgba(255,255,255,0.25)",
+    borderRadius: 999,
+    height: 11,
+    left: 5,
+    position: "absolute",
+    right: 5,
+    top: 3
+  },
+  coinCardBadgeCompact: {
+    right: -4,
+    top: 58
   },
   coinCardBadgeMedium: {
-    minHeight: 34,
-    minWidth: 34,
-    right: 8,
-    top: 38
+    right: -3,
+    top: 62
   },
   popularBadge: {
-    backgroundColor: "#ff9150"
+    backgroundColor: "#ff8150"
   },
   bestValueBadge: {
-    backgroundColor: "#b23cff"
+    backgroundColor: "#a943ff"
   },
   coinCardBadgeText: {
     color: "#ffffff",
-    fontSize: 7,
+    fontSize: 8,
     fontWeight: "900",
-    textAlign: "center"
+    letterSpacing: 0,
+    lineHeight: 9.2,
+    textAlign: "center",
+    textShadowColor: "rgba(0,0,0,0.24)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1
+  },
+  coinCardBadgeTextCompact: {
+    fontSize: 7.3,
+    lineHeight: 8.5
   },
   coinCardBadgeTextMedium: {},
   boostersToggle: {
