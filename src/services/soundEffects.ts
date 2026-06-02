@@ -1,4 +1,6 @@
+import { Asset } from "expo-asset";
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
+import { Platform } from "react-native";
 
 import type { GuessFeedback } from "../types/game.types";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
@@ -70,21 +72,26 @@ const soundSources: Record<SoundEffect, number> = {
   victory: require("../../assets/sounds/victory.wav")
 };
 
+const menuMusicSource = require("../../assets/sounds/menu_loop.mp3");
+
 const volumes: Partial<Record<SoundEffect, number>> = {
   achievement: 0.8,
-  countdownGo: 0.42,
-  countdownTick: 0.32,
+  countdownGo: 0.48,
+  countdownTick: 0.42,
   error: 0.7,
-  guessLock: 0.38,
-  higher: 0.34,
-  lower: 0.34,
-  numberKey: 0.28,
+  guessLock: 0.44,
+  higher: 0.44,
+  lower: 0.44,
+  numberKey: 0.38,
   timerLow: 0.55,
-  uiTap: 0.42
+  uiTap: 0.52
 };
 
 const players: Partial<Record<SoundEffect, AudioPlayer>> = {};
+let menuMusicPlayer: AudioPlayer | null = null;
+let webMenuMusicPlayer: any | null = null;
 let modeConfigured = false;
+let menuMusicRequested = false;
 
 const isAudioEnabled = () => usePlayerProgressStore.getState().profile.soundPlaceholdersEnabled;
 
@@ -116,8 +123,37 @@ const getPlayer = (effect: SoundEffect) => {
   return players[effect]!;
 };
 
+const getMenuMusicPlayer = () => {
+  if (!menuMusicPlayer) {
+    menuMusicPlayer = createAudioPlayer(menuMusicSource, {
+      keepAudioSessionActive: true,
+      updateInterval: 1000
+    });
+    menuMusicPlayer.loop = true;
+    menuMusicPlayer.volume = 0.38;
+  }
+
+  return menuMusicPlayer;
+};
+
+const getWebMenuMusicPlayer = () => {
+  if (Platform.OS !== "web" || typeof globalThis.Audio === "undefined") {
+    return null;
+  }
+
+  if (!webMenuMusicPlayer) {
+    const asset = Asset.fromModule(menuMusicSource);
+    webMenuMusicPlayer = new globalThis.Audio(asset.uri);
+    webMenuMusicPlayer.loop = true;
+    webMenuMusicPlayer.preload = "auto";
+    webMenuMusicPlayer.volume = 0.38;
+  }
+
+  return webMenuMusicPlayer;
+};
+
 export const initSoundEffects = () => {
-  configureAudioMode().catch(() => {});
+  configureAudioMode().catch(() => { });
 };
 
 const playSoundInternal = (effect: SoundEffect, ignorePreference = false) => {
@@ -128,8 +164,12 @@ const playSoundInternal = (effect: SoundEffect, ignorePreference = false) => {
   configureAudioMode()
     .then(async () => {
       const player = getPlayer(effect);
-      await player.seekTo(0).catch(() => {});
+      await player.seekTo(0).catch(() => { });
       player.play();
+
+      if (menuMusicRequested) {
+        startMenuMusic();
+      }
     })
     .catch(() => {
       // Sound effects should never block gameplay.
@@ -145,6 +185,52 @@ export const playSoundAlways = (effect: SoundEffect) => {
 };
 
 export const playButtonSound = () => playSound("uiTap");
+
+export const startMenuMusic = () => {
+  menuMusicRequested = true;
+
+  if (!isAudioEnabled()) {
+    stopMenuMusic();
+    return;
+  }
+
+  const webPlayer = getWebMenuMusicPlayer();
+
+  if (webPlayer) {
+    if (webPlayer.paused) {
+      const playPromise = webPlayer.play();
+
+      if (playPromise?.catch) {
+        playPromise.catch(() => { });
+      }
+    }
+    return;
+  }
+
+  configureAudioMode()
+    .then(() => {
+      const player = getMenuMusicPlayer();
+
+      if (!player.playing) {
+        player.play();
+      }
+    })
+    .catch(() => { });
+};
+
+export const stopMenuMusic = () => {
+  menuMusicRequested = false;
+
+  if (webMenuMusicPlayer && !webMenuMusicPlayer.paused) {
+    webMenuMusicPlayer.pause();
+  }
+
+  if (!menuMusicPlayer?.playing) {
+    return;
+  }
+
+  menuMusicPlayer.pause();
+};
 
 export const playResultSound = (result: GuessFeedback | null | undefined) => {
   if (result === "correct") {
