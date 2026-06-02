@@ -247,12 +247,21 @@ export default function HomeScreen() {
     profileAvatarOptions.find((option) => option.id === selectedAvatarId) ??
     profileAvatarOptions.find((option) => option.id === DEFAULT_AVATAR_ID) ??
     profileAvatarOptions[0];
-  const profileHeroAvatarSize = Math.max(72, Math.min(82, screenWidth * 0.2));
-  const profileHeroShellMinHeight = Math.max(232, Math.min(270, screenHeight * 0.36));
-  const profileHeroCardMinHeight = Math.max(128, Math.min(148, screenHeight * 0.19));
-  const profileHeroCardPaddingTop = Math.max(48, profileHeroAvatarSize * 0.62);
-  const profileHeroLevelBadgeSize = Math.max(44, Math.min(52, screenWidth * 0.125));
-  const profileContentWidth = Math.max(320, Math.min(360, screenWidth - spacing.md * 2));
+  const profileBaseInset = Math.max(12, Math.min(16, screenWidth * 0.04));
+  const profileMaxContentWidth = screenWidth >= 560 ? 420 : 380;
+  const profileContentWidth = Math.min(profileMaxContentWidth, screenWidth - profileBaseInset * 2);
+  const profileContentInset = Math.max(profileBaseInset, (screenWidth - profileContentWidth) / 2);
+  const isProfileCompact = screenWidth < 360;
+  const profileHeroAvatarSize = Math.max(64, Math.min(82, screenWidth * 0.2));
+  const profileHeroShellMinHeight = Math.max(214, Math.min(270, screenHeight * 0.34));
+  const profileHeroCardMinHeight = Math.max(120, Math.min(148, screenHeight * 0.18));
+  const profileHeroCardPaddingTop = Math.max(44, profileHeroAvatarSize * 0.62);
+  const profileHeroLevelBadgeSize = Math.max(40, Math.min(52, screenWidth * 0.125));
+  const profileHeroNameFontSize = Math.max(18, Math.min(22, profileContentWidth * 0.06));
+  const profileHeroProgressPadding = Math.max(10, Math.min(18, profileContentWidth * 0.05));
+  const profileAvatarOptionSize = Math.max(46, Math.min(52, profileContentWidth * 0.15));
+  const profileAvatarOptionIconSize = Math.max(17, Math.min(20, profileAvatarOptionSize * 0.37));
+  const profileInnerMargin = isProfileCompact ? 4 : 8;
 
   const handleTabChange = (tab: HomeTab) => {
     if (tab === "profile") {
@@ -489,7 +498,10 @@ export default function HomeScreen() {
 
           {activeTab === "profile" ? (
             <ScrollView
-              contentContainerStyle={styles.profileScrollContent}
+              contentContainerStyle={[
+                styles.profileScrollContent,
+                { paddingHorizontal: profileContentInset }
+              ]}
               showsVerticalScrollIndicator={false}
               style={styles.profileScroll}
             >
@@ -508,6 +520,7 @@ export default function HomeScreen() {
                     styles.profileHeroCard,
                     {
                       minHeight: profileHeroCardMinHeight,
+                      paddingHorizontal: isProfileCompact ? spacing.sm : spacing.md,
                       paddingTop: profileHeroCardPaddingTop
                     }
                   ]}
@@ -539,9 +552,20 @@ export default function HomeScreen() {
                     </View>
                   </View>
 
-                  <Text numberOfLines={1} style={styles.profileHeroName}>{displayName}</Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.profileHeroName,
+                      {
+                        fontSize: profileHeroNameFontSize,
+                        lineHeight: profileHeroNameFontSize + 4
+                      }
+                    ]}
+                  >
+                    {displayName}
+                  </Text>
 
-                  <View style={styles.profileHeroProgressCluster}>
+                  <View style={[styles.profileHeroProgressCluster, { paddingHorizontal: profileHeroProgressPadding }]}>
                     <View
                       style={[
                         styles.profileHeroLevelBurst,
@@ -580,8 +604,8 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              <View style={[styles.profileSectionBar, { marginLeft: -spacing.md, width: screenWidth }]}>
-                <View style={[styles.profileSectionTabs, { marginLeft: spacing.md, width: profileContentWidth }]}>
+              <View style={[styles.profileSectionBar, { marginLeft: -profileContentInset, width: screenWidth }]}>
+                <View style={[styles.profileSectionTabs, { marginLeft: profileContentInset, width: profileContentWidth }]}>
                   {(["stats", "profile"] as const).map((section) => {
                     const isActive = profileSection === section;
 
@@ -677,7 +701,7 @@ export default function HomeScreen() {
                       </View>
                     </View>
 
-                    <View style={styles.profileStatsMiniRow}>
+                    <View style={[styles.profileStatsMiniRow, isProfileCompact && styles.profileStatsMiniRowCompact]}>
                       <View style={[styles.profileStatsMiniCard, styles.profileStatsMiniCardWarm]}>
                         <View style={styles.profileStatsMiniTopRow}>
                           <View style={[styles.profileStatsMiniBadge, styles.profileStatsMiniBadgeWarm]}>
@@ -703,7 +727,7 @@ export default function HomeScreen() {
                   </View>
 
                   <View style={styles.profileStatsFeatureCard}>
-                    <View style={styles.profileStatsSectionHeader}>
+                    <View style={[styles.profileStatsSectionHeader, isProfileCompact && styles.profileStatsSectionHeaderCompact]}>
                       <View>
                         <Text style={styles.profileStatsSectionEyebrow}>Single Player</Text>
                         <Text style={styles.profileStatsSectionTitle}>Difficulty Mastery</Text>
@@ -749,7 +773,7 @@ export default function HomeScreen() {
                   </View>
 
                   <View style={styles.profileStatsFeatureCard}>
-                    <View style={styles.profileStatsSectionHeader}>
+                    <View style={[styles.profileStatsSectionHeader, isProfileCompact && styles.profileStatsSectionHeaderCompact]}>
                       <View>
                         <Text style={styles.profileStatsSectionEyebrow}>Overview</Text>
                         <Text style={styles.profileStatsSectionTitle}>Mode Performance</Text>
@@ -807,7 +831,7 @@ export default function HomeScreen() {
                   </View>
 
                   <View style={styles.profileStatsFeatureCard}>
-                    <View style={styles.profileStatsSectionHeader}>
+                    <View style={[styles.profileStatsSectionHeader, isProfileCompact && styles.profileStatsSectionHeaderCompact]}>
                       <View>
                         <Text style={styles.profileStatsSectionEyebrow}>Recent Form</Text>
                         <Text style={styles.profileStatsSectionTitle}>Latest Matches</Text>
@@ -847,7 +871,7 @@ export default function HomeScreen() {
                 </View>
               ) : (
                 <View style={[styles.profilePanel, { width: profileContentWidth }]}>
-                  <View style={styles.profileNameRow}>
+                  <View style={[styles.profileNameRow, { marginHorizontal: profileInnerMargin }]}>
                     <TextInput
                       autoCapitalize="none"
                       maxLength={20}
@@ -875,9 +899,9 @@ export default function HomeScreen() {
                   </View>
                   {usernameError ? <Text style={styles.inlineError}>{usernameError}</Text> : null}
 
-                  <View style={styles.profileDivider} />
+                  <View style={[styles.profileDivider, { marginHorizontal: profileInnerMargin }]} />
 
-                  <View style={styles.profilePanelHeader}>
+                  <View style={[styles.profilePanelHeader, { marginHorizontal: profileInnerMargin }]}>
                     <View style={styles.profilePanelHeaderCopy}>
                       <Text style={styles.profilePanelTitle}>Choose Avatar</Text>
                       <Text style={styles.profilePanelCaption}>Pick a style for this first version.</Text>
@@ -887,7 +911,7 @@ export default function HomeScreen() {
                     </View>
                   </View>
 
-                  <View style={styles.avatarGrid}>
+                  <View style={[styles.avatarGrid, isProfileCompact && styles.avatarGridCompact]}>
                     {profileAvatarOptions.map((option) => {
                       const isSelected = option.id === selectedAvatarId;
 
@@ -904,14 +928,16 @@ export default function HomeScreen() {
                         >
                           <View
                             style={[
-                              styles.avatarOptionInner,
-                              {
-                                backgroundColor: option.background,
-                                borderColor: option.ring
-                              }
-                            ]}
-                          >
-                            <Ionicons color={option.foreground} name={option.icon} size={19} />
+                            styles.avatarOptionInner,
+                            {
+                              backgroundColor: option.background,
+                              borderColor: option.ring,
+                              height: profileAvatarOptionSize,
+                              width: profileAvatarOptionSize
+                            }
+                          ]}
+                        >
+                          <Ionicons color={option.foreground} name={option.icon} size={profileAvatarOptionIconSize} />
                           </View>
                           {isSelected ? (
                             <View style={styles.avatarOptionCheck}>
@@ -1811,6 +1837,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8
   },
+  profileStatsMiniRowCompact: {
+    flexDirection: "column"
+  },
   profileStatsMiniCard: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
@@ -1889,6 +1918,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     justifyContent: "space-between"
+  },
+  profileStatsSectionHeaderCompact: {
+    flexDirection: "column"
   },
   profileStatsSectionEyebrow: {
     color: colors.textMuted,
@@ -2182,6 +2214,9 @@ const styles = StyleSheet.create({
     gap: 6,
     justifyContent: "space-between",
     marginTop: 2
+  },
+  avatarGridCompact: {
+    gap: 4
   },
   avatarOption: {
     alignItems: "center",
