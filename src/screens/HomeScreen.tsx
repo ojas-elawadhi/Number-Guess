@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams, usePathname } from "expo-router";
-import { useEffect, useRef, useState, type ComponentProps } from "react";
-import { Alert, Animated, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Animated, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions, type ImageSourcePropType } from "react-native";
 import Svg, { Circle, Polygon } from "react-native-svg";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill } from "../components/AppHeader";
@@ -38,7 +38,23 @@ const PROFILE_RING_SIZE = 40;
 const PROFILE_RING_STROKE = 4;
 const PROFILE_RING_RADIUS = (PROFILE_RING_SIZE - PROFILE_RING_STROKE) / 2;
 const PROFILE_RING_CIRCUMFERENCE = 2 * Math.PI * PROFILE_RING_RADIUS;
-const profileAvatarOptions = [
+const avatarImageSources = {
+  scholar: require("../../assets/avatars/scholar.png"),
+  rocket: require("../../assets/avatars/rocket.png"),
+  flash: require("../../assets/avatars/flash.png"),
+  planet: require("../../assets/avatars/planet.png"),
+  music: require("../../assets/avatars/music.png"),
+  gamepad: require("../../assets/avatars/gamepad.png"),
+  paw: require("../../assets/avatars/paw.png"),
+  book: require("../../assets/avatars/book.png"),
+  flame: require("../../assets/avatars/flame.png"),
+  cafe: require("../../assets/avatars/cafe.png"),
+  tennis: require("../../assets/avatars/tennis.png"),
+  bulb: require("../../assets/avatars/bulb.png")
+} as const satisfies Record<AvatarId, ImageSourcePropType>;
+
+/*
+const legacyProfileAvatarOptions = [
   { id: "scholar", icon: "school", background: "#63b4ff", foreground: "#173d64", ring: "#f28f67" },
   { id: "rocket", icon: "rocket", background: "#ffaf80", foreground: "#7a260d", ring: "#5db5f5" },
   { id: "flash", icon: "flash", background: "#ffe174", foreground: "#7f5100", ring: "#9dc95b" },
@@ -51,11 +67,26 @@ const profileAvatarOptions = [
   { id: "cafe", icon: "cafe", background: "#d8c4a8", foreground: "#5f3c15", ring: "#f28f67" },
   { id: "tennis", icon: "tennisball", background: "#d8f58a", foreground: "#3f6b00", ring: "#5db5f5" },
   { id: "bulb", icon: "bulb", background: "#ffe58c", foreground: "#885700", ring: "#d979bc" }
+];
+*/
+
+const profileAvatarOptions = [
+  { id: "scholar", background: "#63b4ff", image: avatarImageSources.scholar, ring: "#f28f67" },
+  { id: "rocket", background: "#ffaf80", image: avatarImageSources.rocket, ring: "#5db5f5" },
+  { id: "flash", background: "#ffe174", image: avatarImageSources.flash, ring: "#9dc95b" },
+  { id: "planet", background: "#c8a8ff", image: avatarImageSources.planet, ring: "#f7b33d" },
+  { id: "music", background: "#8ddfc9", image: avatarImageSources.music, ring: "#d979bc" },
+  { id: "gamepad", background: "#90d2ff", image: avatarImageSources.gamepad, ring: "#ee6b62" },
+  { id: "paw", background: "#ffd2ad", image: avatarImageSources.paw, ring: "#7cc8ff" },
+  { id: "book", background: "#f8a7d8", image: avatarImageSources.book, ring: "#a98ee8" },
+  { id: "flame", background: "#ffb0a6", image: avatarImageSources.flame, ring: "#5cc78f" },
+  { id: "cafe", background: "#d8c4a8", image: avatarImageSources.cafe, ring: "#f28f67" },
+  { id: "tennis", background: "#d8f58a", image: avatarImageSources.tennis, ring: "#5db5f5" },
+  { id: "bulb", background: "#ffe58c", image: avatarImageSources.bulb, ring: "#d979bc" }
 ] as const satisfies ReadonlyArray<{
   id: AvatarId;
-  icon: ComponentProps<typeof Ionicons>["name"];
   background: string;
-  foreground: string;
+  image: ImageSourcePropType;
   ring: string;
 }>;
 
@@ -260,7 +291,6 @@ export default function HomeScreen() {
   const profileHeroNameFontSize = Math.max(18, Math.min(22, profileContentWidth * 0.06));
   const profileHeroProgressPadding = Math.max(10, Math.min(18, profileContentWidth * 0.05));
   const profileAvatarOptionSize = Math.max(46, Math.min(52, profileContentWidth * 0.15));
-  const profileAvatarOptionIconSize = Math.max(17, Math.min(20, profileAvatarOptionSize * 0.37));
   const profileInnerMargin = isProfileCompact ? 4 : 8;
   const shopHeaderStatusWidth = Math.min(320, Math.max(250, screenWidth - 56));
 
@@ -326,7 +356,7 @@ export default function HomeScreen() {
 
                       <View style={[styles.profileRingInner, { backgroundColor: selectedAvatar.ring }]}>
                         <View style={[styles.profileAvatarCore, { backgroundColor: selectedAvatar.background }]}>
-                          <Ionicons color={selectedAvatar.foreground} name={selectedAvatar.icon} size={18} />
+                          <Image accessibilityIgnoresInvertColors source={selectedAvatar.image} style={styles.profileAvatarImage} />
                         </View>
                       </View>
                     </View>
@@ -556,7 +586,7 @@ export default function HomeScreen() {
                         }
                       ]}
                     >
-                      <Ionicons color={selectedAvatar.foreground} name={selectedAvatar.icon} size={Math.max(32, profileHeroAvatarSize * 0.42)} />
+                      <Image accessibilityIgnoresInvertColors source={selectedAvatar.image} style={styles.profileHeroAvatarImage} />
                     </View>
                   </View>
 
@@ -945,13 +975,13 @@ export default function HomeScreen() {
                             }
                           ]}
                         >
-                          <Ionicons color={option.foreground} name={option.icon} size={profileAvatarOptionIconSize} />
-                          </View>
+                          <Image accessibilityIgnoresInvertColors source={option.image} style={styles.avatarOptionImage} />
                           {isSelected ? (
                             <View style={styles.avatarOptionCheck}>
                               <Ionicons color="#ffffff" name="checkmark" size={10} />
                             </View>
                           ) : null}
+                          </View>
                         </Pressable>
                       );
                     })}
@@ -1132,6 +1162,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
     width: 30
+  },
+  profileAvatarImage: {
+    height: "100%",
+    width: "100%"
   },
   profileAvatarGlow: {
     backgroundColor: "rgba(255, 255, 255, 0.35)",
@@ -1577,7 +1611,12 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     borderWidth: 4,
     justifyContent: "center",
+    overflow: "hidden",
     ...shadows.tactile
+  },
+  profileHeroAvatarImage: {
+    height: "100%",
+    width: "100%"
   },
   profileHeroName: {
     color: colors.accent,
@@ -1600,7 +1639,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     justifyContent: "center",
     position: "relative",
-    zIndex: 2
+    transform: [{ translateX: 10 }],
+    zIndex: 3
   },
   profileHeroLevelBurstSvg: {
     bottom: 0,
@@ -1626,7 +1666,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 34,
     justifyContent: "center",
-    marginLeft: -8,
+    marginLeft: -22,
     overflow: "hidden",
     position: "relative"
   },
@@ -2261,7 +2301,13 @@ const styles = StyleSheet.create({
     borderWidth: 2.5,
     height: 52,
     justifyContent: "center",
+    position: "relative",
+    overflow: "hidden",
     width: 52
+  },
+  avatarOptionImage: {
+    height: "100%",
+    width: "100%"
   },
   avatarOptionCheck: {
     alignItems: "center",
@@ -2269,11 +2315,11 @@ const styles = StyleSheet.create({
     borderColor: "#ffffff",
     borderRadius: radii.pill,
     borderWidth: 1.5,
-    bottom: 1,
+    bottom: -1,
     height: 18,
     justifyContent: "center",
     position: "absolute",
-    right: 2,
+    right: -1,
     width: 18
   },
   settingsActionRow: {
