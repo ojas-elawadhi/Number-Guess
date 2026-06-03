@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderScorePill } from "../components/AppHeader";
+import { BoosterIcon } from "../components/BoosterIcon";
 import { CoinIcon } from "../components/CoinIcon";
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { GameStartCountdown } from "../components/GameStartCountdown";
@@ -634,7 +635,7 @@ function PracticeGame() {
         </View>
 
         <View style={styles.chancesTextWrap}>
-          <Ionicons color="#fff6c8" name="flash" size={12} />
+          <BoosterIcon kind="extra-guess" size={30} />
           <Text style={styles.chancesText}>
             {remainingChances} left
           </Text>
@@ -712,7 +713,7 @@ function PracticeGame() {
               !canTriggerExtraGuess && styles.guessButtonDisabled
             ]}
           >
-            <Ionicons color="#fff6c8" name="flash" size={26} />
+            <BoosterIcon kind="extra-guess" size={52} />
             {isUsingExtraGuessPowerUp ? (
               <View style={styles.powerUpCountBadge}>
                 <Text style={styles.powerUpCountBadgeText}>…</Text>
@@ -752,7 +753,7 @@ function PracticeGame() {
               !canTriggerSkipBooster && styles.guessButtonDisabled
             ]}
           >
-            <Ionicons color="#fff6c8" name="play-forward" size={24} />
+            <BoosterIcon kind="skip" size={52} />
             {isUsingSkipBooster ? (
               <View style={styles.powerUpCountBadge}>
                 <Text style={styles.powerUpCountBadgeText}>...</Text>
@@ -1004,21 +1005,24 @@ const styles = StyleSheet.create({
   },
   chancesTextWrap: {
     alignItems: "center",
-    backgroundColor: "#1f6fb9",
-    borderBottomColor: "#134c81",
-    borderBottomWidth: 3,
+    backgroundColor: colors.surface,
+    borderBottomColor: "rgba(0,0,0,0.14)",
+    borderBottomWidth: 2,
+    borderColor: colors.surfaceMuted,
+    borderWidth: 1,
     borderRadius: radii.pill,
     flexDirection: "row",
-    gap: 4,
-    justifyContent: "flex-end",
-    minHeight: 26,
-    minWidth: 68,
-    paddingHorizontal: 9,
+    gap: 1,
+    justifyContent: "center",
+    minHeight: 30,
+    minWidth: 82,
+    paddingLeft: 2,
+    paddingRight: 10,
     position: "absolute",
     right: 0
   },
   chancesText: {
-    color: "#ffffff",
+    color: "#176fb8",
     fontSize: 11,
     fontWeight: "900",
     textTransform: "uppercase"
@@ -1172,40 +1176,41 @@ const styles = StyleSheet.create({
   },
   powerUpButton: {
     alignItems: "center",
-    backgroundColor: "#1f6fb9",
-    borderBottomColor: "#134c81",
-    borderBottomWidth: 6,
-    borderRadius: 22,
-    height: 46,
+    backgroundColor: "transparent",
+    borderRadius: 25,
+    height: 50,
     justifyContent: "center",
     overflow: "visible",
     position: "relative",
     width: 58
   },
-  skipBoosterButton: {
-    backgroundColor: "#8859f2",
-    borderBottomColor: "#5d35b2"
-  },
+  skipBoosterButton: {},
   powerUpCountBadge: {
     alignItems: "center",
-    backgroundColor: "#ffcf4f",
-    borderColor: "#ffffff",
+    backgroundColor: "#ffd86b",
+    borderBottomColor: "#d69b1e",
+    borderBottomWidth: 1,
+    borderColor: "#fff6cf",
     borderRadius: radii.pill,
-    borderWidth: 2,
-    height: 22,
+    borderWidth: 1,
+    height: 20,
     justifyContent: "center",
-    minWidth: 22,
-    paddingHorizontal: 4,
+    minWidth: 24,
+    paddingHorizontal: 5,
     position: "absolute",
-    right: -7,
-    top: -7,
+    right: -1,
+    shadowColor: "#5a3400",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    top: -2,
     zIndex: 2
   },
   powerUpCountBadgeText: {
-    color: "#3a2a00",
-    fontSize: 11,
+    color: "#342300",
+    fontSize: 10,
     fontWeight: "900",
-    letterSpacing: 0.4
+    letterSpacing: 0
   },
   gameOverOverlay: {
     alignItems: "center",

@@ -6,11 +6,11 @@ import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, use
 import { playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import { colors, radii, shadows, spacing } from "../utils/theme";
+import { BoosterIcon, type BoosterIconKind } from "./BoosterIcon";
 import { CoinIcon } from "./CoinIcon";
 import { PrimaryButton } from "./PrimaryButton";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
-type BoosterIconName = "flash" | "play-skip-forward";
 
 type StoreCurrency = "cash" | "coins" | "ad";
 
@@ -35,7 +35,7 @@ interface CoinPackOffer extends PurchaseDraft {
 interface BoosterShopOffer {
   id: string;
   title: string;
-  icon: BoosterIconName;
+  icon: BoosterIconKind;
   accent: string;
   singleCost: number;
   tripleCost: number;
@@ -157,11 +157,6 @@ const coinPackArtSources: Record<CoinPackOffer["art"], ImageSourcePropType> = {
   treasure: require("../../assets/shop/coin-pack-treasure.png")
 };
 
-const boosterIconSources = {
-  flash: require("../../assets/ui/booster-extra-guess.png"),
-  "play-skip-forward": require("../../assets/ui/booster-skip.png")
-} satisfies Record<BoosterIconName, ImageSourcePropType>;
-
 function CoinToken({ size = 30, style }: { size?: number; style?: object }) {
   return <CoinIcon size={size} style={style} />;
 }
@@ -174,10 +169,10 @@ function CoinWatermark({ size = 16 }: { size?: number }) {
   );
 }
 
-function BoosterGlyph({ accent, icon, size = 52 }: { accent: string; icon: BoosterIconName; size?: number }) {
+function BoosterGlyph({ accent, icon, size = 52 }: { accent: string; icon: BoosterIconKind; size?: number }) {
   void accent;
 
-  return <Image resizeMode="contain" source={boosterIconSources[icon]} style={[styles.boosterGlyphImage, { height: size, width: size }]} />;
+  return <BoosterIcon kind={icon} size={size} />;
 }
 
 function CoinArt({ variant }: { variant: CoinPackOffer["art"] }) {
@@ -745,9 +740,6 @@ const styles = StyleSheet.create({
   statusCoinValueMedium: {
     fontSize: 14,
     maxWidth: 68
-  },
-  boosterGlyphImage: {
-    flexShrink: 0
   },
   featuredCard: {
     backgroundColor: "#f4fbff",
