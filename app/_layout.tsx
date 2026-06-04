@@ -1,6 +1,7 @@
 import { Stack, usePathname } from "expo-router";
 import { useEffect } from "react";
 
+import { configureBilling } from "../src/services/billing";
 import { initializeMobileAds } from "../src/services/mobileAds";
 import { initSoundEffects, startMenuMusic, stopMenuMusic } from "../src/services/soundEffects";
 import { connectSocket } from "../src/socket/onlineSocket";
@@ -10,6 +11,7 @@ import { colors } from "../src/utils/theme";
 export default function RootLayout() {
   const pathname = usePathname();
   const hydrateProgress = usePlayerProgressStore((state) => state.hydrate);
+  const playerKey = usePlayerProgressStore((state) => state.playerKey);
   const soundEffectsEnabled = usePlayerProgressStore((state) => state.profile.soundPlaceholdersEnabled);
   const isGameplayRoute =
     pathname === "/single-player-game" ||
@@ -28,6 +30,12 @@ export default function RootLayout() {
       // Keep the app usable even if local progression data fails to load.
     });
   }, [hydrateProgress]);
+
+  useEffect(() => {
+    configureBilling(playerKey).catch(() => {
+      // Billing should fail quietly until RevenueCat keys and store products are fully configured.
+    });
+  }, [playerKey]);
 
   useEffect(() => {
     if (soundEffectsEnabled && !isGameplayRoute) {
