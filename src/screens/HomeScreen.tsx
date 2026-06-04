@@ -966,21 +966,31 @@ export default function HomeScreen() {
                         >
                           <View
                             style={[
-                            styles.avatarOptionInner,
-                            {
-                              backgroundColor: option.background,
-                              borderColor: option.ring,
-                              height: profileAvatarOptionSize,
-                              width: profileAvatarOptionSize
-                            }
-                          ]}
-                        >
-                          <Image accessibilityIgnoresInvertColors source={option.image} style={styles.avatarOptionImage} />
-                          {isSelected ? (
-                            <View style={styles.avatarOptionCheck}>
-                              <Ionicons color="#ffffff" name="checkmark" size={10} />
+                              styles.avatarOptionFrame,
+                              {
+                                height: profileAvatarOptionSize,
+                                width: profileAvatarOptionSize
+                              }
+                            ]}
+                          >
+                            <View
+                              style={[
+                                styles.avatarOptionInner,
+                                {
+                                  backgroundColor: option.background,
+                                  borderColor: option.ring,
+                                  height: profileAvatarOptionSize,
+                                  width: profileAvatarOptionSize
+                                }
+                              ]}
+                            >
+                              <Image accessibilityIgnoresInvertColors source={option.image} style={styles.avatarOptionImage} />
                             </View>
-                          ) : null}
+                            {isSelected ? (
+                              <View style={styles.avatarOptionCheck}>
+                                <Ionicons color="#ffffff" name="checkmark" size={10} />
+                              </View>
+                            ) : null}
                           </View>
                         </Pressable>
                       );
@@ -2295,6 +2305,11 @@ const styles = StyleSheet.create({
   avatarOptionDisabled: {
     opacity: 0.45
   },
+  avatarOptionFrame: {
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative"
+  },
   avatarOptionInner: {
     alignItems: "center",
     borderRadius: radii.pill,
@@ -2314,13 +2329,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     borderColor: "#ffffff",
     borderRadius: radii.pill,
-    borderWidth: 1.5,
-    bottom: -1,
-    height: 18,
+    borderWidth: 2,
+    bottom: -2,
+    elevation: 3,
+    height: 17,
     justifyContent: "center",
     position: "absolute",
-    right: -1,
-    width: 18
+    right: -2,
+    shadowColor: "#063c2d",
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    width: 17,
+    zIndex: 2
   },
   settingsActionRow: {
     alignItems: "center",
