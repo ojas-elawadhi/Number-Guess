@@ -1,9 +1,9 @@
 import { Stack, usePathname } from "expo-router";
 import { useEffect } from "react";
+import { Platform } from "react-native";
 
 import { initializeMobileAds } from "../src/services/mobileAds";
 import { initSoundEffects, startMenuMusic, stopMenuMusic } from "../src/services/soundEffects";
-import { connectSocket } from "../src/socket/onlineSocket";
 import { usePlayerProgressStore } from "../src/store/usePlayerProgressStore";
 import { colors } from "../src/utils/theme";
 
@@ -22,11 +22,6 @@ export default function RootLayout() {
     pathname === "/vs-ai-duel";
 
   useEffect(() => {
-    connectSocket();
-    initSoundEffects();
-    initializeMobileAds().catch(() => {
-      // Rewarded ads should fail quietly so the game can still load.
-    });
     hydrateProgress().catch(() => {
       // Keep the app usable even if local progression data fails to load.
     });
@@ -45,7 +40,8 @@ export default function RootLayout() {
   }, [playerKey]);
 
   useEffect(() => {
-    if (soundEffectsEnabled && !isGameplayRoute) {
+    if (Platform.OS === "web" && soundEffectsEnabled && !isGameplayRoute) {
+      initSoundEffects();
       startMenuMusic();
       return;
     }
