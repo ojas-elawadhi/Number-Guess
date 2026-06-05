@@ -1,12 +1,13 @@
 import { Stack, usePathname } from "expo-router";
 import { useEffect } from "react";
 
-import { configureBilling } from "../src/services/billing";
 import { initializeMobileAds } from "../src/services/mobileAds";
 import { initSoundEffects, startMenuMusic, stopMenuMusic } from "../src/services/soundEffects";
 import { connectSocket } from "../src/socket/onlineSocket";
 import { usePlayerProgressStore } from "../src/store/usePlayerProgressStore";
 import { colors } from "../src/utils/theme";
+
+const shouldInitializeBilling = process.env.EXPO_PUBLIC_ENABLE_BILLING === "true";
 
 export default function RootLayout() {
   const pathname = usePathname();
@@ -32,9 +33,15 @@ export default function RootLayout() {
   }, [hydrateProgress]);
 
   useEffect(() => {
-    configureBilling(playerKey).catch(() => {
-      // Billing should fail quietly until RevenueCat keys and store products are fully configured.
-    });
+    if (!shouldInitializeBilling || !playerKey) {
+      return;
+    }
+
+    import("../src/services/billing")
+      .then(({ configureBilling }) => configureBilling(playerKey))
+      .catch(() => {
+        // Billing should fail quietly until RevenueCat keys and store products are fully configured.
+      });
   }, [playerKey]);
 
   useEffect(() => {
