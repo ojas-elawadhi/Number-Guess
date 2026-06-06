@@ -1,9 +1,5 @@
 import { Stack, usePathname } from "expo-router";
 import { useEffect } from "react";
-import { Platform } from "react-native";
-
-import { initializeMobileAds } from "../src/services/mobileAds";
-import { initSoundEffects, startMenuMusic, stopMenuMusic } from "../src/services/soundEffects";
 import { usePlayerProgressStore } from "../src/store/usePlayerProgressStore";
 import { colors } from "../src/utils/theme";
 
@@ -13,16 +9,10 @@ export default function RootLayout() {
   const pathname = usePathname();
   const hydrateProgress = usePlayerProgressStore((state) => state.hydrate);
   const playerKey = usePlayerProgressStore((state) => state.playerKey);
-  const soundEffectsEnabled = usePlayerProgressStore((state) => state.profile.soundPlaceholdersEnabled);
-  const isGameplayRoute =
-    pathname === "/single-player-game" ||
-    pathname === "/daily-puzzle-game" ||
-    pathname === "/online-game" ||
-    pathname === "/vs-ai-classic" ||
-    pathname === "/vs-ai-duel";
+  void pathname;
 
   useEffect(() => {
-    hydrateProgress().catch(() => {
+    Promise.resolve(hydrateProgress?.()).catch(() => {
       // Keep the app usable even if local progression data fails to load.
     });
   }, [hydrateProgress]);
@@ -38,38 +28,6 @@ export default function RootLayout() {
         // Billing should fail quietly until RevenueCat keys and store products are fully configured.
       });
   }, [playerKey]);
-
-  useEffect(() => {
-    if (Platform.OS === "web" && soundEffectsEnabled && !isGameplayRoute) {
-      initSoundEffects();
-      startMenuMusic();
-      return;
-    }
-
-    stopMenuMusic();
-  }, [isGameplayRoute, soundEffectsEnabled]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !soundEffectsEnabled || isGameplayRoute) {
-      return;
-    }
-
-    const unlockMenuMusic = () => {
-      startMenuMusic();
-    };
-
-    window.addEventListener("click", unlockMenuMusic, { once: true });
-    window.addEventListener("keydown", unlockMenuMusic, { once: true });
-    window.addEventListener("pointerdown", unlockMenuMusic, { once: true });
-    window.addEventListener("touchstart", unlockMenuMusic, { once: true });
-
-    return () => {
-      window.removeEventListener("click", unlockMenuMusic);
-      window.removeEventListener("keydown", unlockMenuMusic);
-      window.removeEventListener("pointerdown", unlockMenuMusic);
-      window.removeEventListener("touchstart", unlockMenuMusic);
-    };
-  }, [isGameplayRoute, soundEffectsEnabled]);
 
   return (
     <Stack
