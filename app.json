@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "scheme": "codeguess",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "plugins": [
       "expo-router"
     ],

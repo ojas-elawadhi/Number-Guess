@@ -1,3 +1,8 @@
+const androidAppId =
+  process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID ?? "ca-app-pub-3940256099942544~3347511713";
+const iosAppId =
+  process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID ?? "ca-app-pub-3940256099942544~1458002511";
+
 module.exports = {
   expo: {
     name: "Code Guess",
@@ -7,14 +12,24 @@ module.exports = {
     icon: "./assets/app-icon-code-guess-v24.png",
     scheme: "codeguess",
     userInterfaceStyle: "light",
-    newArchEnabled: false,
-    plugins: ["expo-router", "expo-audio"],
+    newArchEnabled: true,
+    plugins: [
+      "expo-router",
+      "expo-audio",
+      [
+        "react-native-google-mobile-ads",
+        {
+          androidAppId,
+          iosAppId
+        }
+      ]
+    ],
     ios: {
       supportsTablet: true
     },
     android: {
       package: "com.zenostudios.codewars",
-      versionCode: 7,
+      versionCode: 8,
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false
     },
