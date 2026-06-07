@@ -393,25 +393,20 @@ export function BottomTabs({ activeTab, onChange }: BottomTabsProps) {
 
   return (
     <View style={styles.bottomTabs}>
-      <Pressable onPress={() => handleChange("play")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
-        <Ionicons color={activeTab === "play" ? colors.practice : colors.tab} name="game-controller-outline" size={22} />
-        <Text style={[styles.tabLabel, activeTab === "play" && styles.tabLabelActive]}>Play</Text>
+      <Pressable accessibilityLabel="Play" accessibilityRole="button" onPress={() => handleChange("play")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
+        <Ionicons color={activeTab === "play" ? colors.practice : colors.tab} name="game-controller-outline" size={36} />
       </Pressable>
-      <Pressable onPress={() => handleChange("stats")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
-        <Ionicons color={activeTab === "stats" ? colors.practice : colors.tab} name="stats-chart-outline" size={22} />
-        <Text style={[styles.tabLabel, activeTab === "stats" && styles.tabLabelActive]}>Stats</Text>
+      <Pressable accessibilityLabel="Stats" accessibilityRole="button" onPress={() => handleChange("stats")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
+        <Ionicons color={activeTab === "stats" ? colors.practice : colors.tab} name="stats-chart-outline" size={36} />
       </Pressable>
-      <Pressable onPress={() => handleChange("shop")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
-        <Ionicons color={activeTab === "shop" ? colors.practice : colors.tab} name="cart-outline" size={22} />
-        <Text style={[styles.tabLabel, activeTab === "shop" && styles.tabLabelActive]}>Shop</Text>
+      <Pressable accessibilityLabel="Shop" accessibilityRole="button" onPress={() => handleChange("shop")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
+        <Ionicons color={activeTab === "shop" ? colors.practice : colors.tab} name="cart-outline" size={36} />
       </Pressable>
-      <Pressable onPress={() => handleChange("profile")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
-        <Ionicons color={activeTab === "profile" ? colors.practice : colors.tab} name="person-outline" size={22} />
-        <Text style={[styles.tabLabel, activeTab === "profile" && styles.tabLabelActive]}>Profile</Text>
+      <Pressable accessibilityLabel="Profile" accessibilityRole="button" onPress={() => handleChange("profile")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
+        <Ionicons color={activeTab === "profile" ? colors.practice : colors.tab} name="person-outline" size={36} />
       </Pressable>
-      <Pressable onPress={() => handleChange("settings")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
-        <Ionicons color={activeTab === "settings" ? colors.practice : colors.tab} name="settings-outline" size={22} />
-        <Text style={[styles.tabLabel, activeTab === "settings" && styles.tabLabelActive]}>Settings</Text>
+      <Pressable accessibilityLabel="Settings" accessibilityRole="button" onPress={() => handleChange("settings")} style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}>
+        <Ionicons color={activeTab === "settings" ? colors.practice : colors.tab} name="settings-outline" size={36} />
       </Pressable>
     </View>
   );
@@ -819,17 +814,8 @@ const styles = StyleSheet.create({
   tabItem: {
     alignItems: "center",
     flex: 1,
-    gap: 4
-  },
-  tabLabel: {
-    color: colors.tab,
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.6,
-    textTransform: "uppercase"
-  },
-  tabLabelActive: {
-    color: colors.practice
+    justifyContent: "center",
+    minHeight: 40
   },
   pressed: {
     opacity: 0.88

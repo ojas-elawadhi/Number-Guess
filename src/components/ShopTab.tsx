@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type ImageSourcePropType } from "react-native";
 
+import { getLocalizedBillingPrices, type BillingPriceMap } from "../services/billing";
+import { BILLING_PRODUCT_IDS, type BillingProductId } from "../services/billingCatalog";
 import { playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import { colors, radii, shadows, spacing } from "../utils/theme";
@@ -20,6 +22,7 @@ interface PurchaseDraft {
   description: string;
   priceLabel: string;
   currency: StoreCurrency;
+  billingProductId?: BillingProductId;
   coinsReward?: number;
   extraGuessReward?: number;
   skipReward?: number;
@@ -48,6 +51,7 @@ const featuredOffer: PurchaseDraft = {
   description: "Starter bundle for quick runs and skip saves.",
   priceLabel: "₹480.00",
   currency: "cash",
+  billingProductId: BILLING_PRODUCT_IDS.bundleOffer1,
   coinsReward: 1000,
   extraGuessReward: 3,
   skipReward: 2
@@ -59,6 +63,7 @@ const noAdsOffer: PurchaseDraft = {
   description: "Purchase removes banner and full-screen pop-up ads.",
   priceLabel: "₹990.00",
   currency: "cash",
+  billingProductId: BILLING_PRODUCT_IDS.noAds,
   removesAds: true
 };
 
@@ -80,6 +85,7 @@ const coinPackOffers: CoinPackOffer[] = [
     description: "Quick top-up.",
     priceLabel: "₹290.00",
     currency: "cash",
+    billingProductId: BILLING_PRODUCT_IDS.coins800,
     coinsReward: 800,
     art: "medium-stack"
   },
@@ -90,6 +96,7 @@ const coinPackOffers: CoinPackOffer[] = [
     description: "Solid refill.",
     priceLabel: "₹480.00",
     currency: "cash",
+    billingProductId: BILLING_PRODUCT_IDS.coins1400,
     coinsReward: 1400,
     art: "large-stack"
   },
@@ -100,6 +107,7 @@ const coinPackOffers: CoinPackOffer[] = [
     description: "Steady stash.",
     priceLabel: "₹950.00",
     currency: "cash",
+    billingProductId: BILLING_PRODUCT_IDS.coins3200,
     coinsReward: 3200,
     badge: "Most\nPopular!",
     art: "bag"
@@ -111,6 +119,7 @@ const coinPackOffers: CoinPackOffer[] = [
     description: "Long session chest.",
     priceLabel: "₹1,950.00",
     currency: "cash",
+    billingProductId: BILLING_PRODUCT_IDS.coins8600,
     coinsReward: 8600,
     art: "chest"
   },
@@ -121,6 +130,7 @@ const coinPackOffers: CoinPackOffer[] = [
     description: "Big vault drop.",
     priceLabel: "₹4,850.00",
     currency: "cash",
+    billingProductId: BILLING_PRODUCT_IDS.coins26000,
     coinsReward: 26000,
     badge: "Best\nValue!",
     art: "treasure"
@@ -186,6 +196,19 @@ function CoinPricePill({ label, style, textStyle }: { label: string; style?: obj
     </View>
   );
 }
+
+const getDisplayPriceLabel = (draft: PurchaseDraft, localizedPrices: BillingPriceMap) => {
+  if (draft.currency !== "cash" || !draft.billingProductId) {
+    return draft.priceLabel;
+  }
+
+  return localizedPrices[draft.billingProductId] ?? draft.priceLabel;
+};
+
+const withDisplayPrice = (draft: PurchaseDraft, localizedPrices: BillingPriceMap): PurchaseDraft => ({
+  ...draft,
+  priceLabel: getDisplayPriceLabel(draft, localizedPrices)
+});
 
 function ShopStatusStrip() {
   const { width } = useWindowDimensions();
@@ -287,10 +310,43 @@ export function ShopTab() {
   const [showBoosters, setShowBoosters] = useState(false);
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft | null>(null);
   const [processingPurchase, setProcessingPurchase] = useState(false);
+  const [localizedPrices, setLocalizedPrices] = useState<BillingPriceMap>({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLocalizedPrices = async () => {
+      try {
+        const prices = await getLocalizedBillingPrices([
+          BILLING_PRODUCT_IDS.bundleOffer1,
+          BILLING_PRODUCT_IDS.noAds,
+          BILLING_PRODUCT_IDS.coins800,
+          BILLING_PRODUCT_IDS.coins1400,
+          BILLING_PRODUCT_IDS.coins3200,
+          BILLING_PRODUCT_IDS.coins8600,
+          BILLING_PRODUCT_IDS.coins26000
+        ]);
+
+        if (!cancelled) {
+          setLocalizedPrices(prices);
+        }
+      } catch {
+        if (!cancelled) {
+          setLocalizedPrices({});
+        }
+      }
+    };
+
+    void loadLocalizedPrices();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const openPurchase = (draft: PurchaseDraft) => {
     playSound("modalOpen");
-    setPurchaseDraft(draft);
+    setPurchaseDraft(withDisplayPrice(draft, localizedPrices));
   };
 
   const handleConfirmPurchase = async () => {
@@ -362,6 +418,9 @@ export function ShopTab() {
     });
   };
 
+  const featuredOfferDisplay = withDisplayPrice(featuredOffer, localizedPrices);
+  const noAdsOfferDisplay = withDisplayPrice(noAdsOffer, localizedPrices);
+
   return (
     <View style={styles.shopShell}>
       <View pointerEvents="none" style={styles.shopBackdrop}>
@@ -431,7 +490,7 @@ export function ShopTab() {
           <View style={[styles.featuredPriceButton, isCompact && styles.featuredPriceButtonCompact]}>
             <Text style={[styles.featuredPriceButtonLabel, isCompact && styles.featuredPriceButtonLabelCompact]}>BUY BUNDLE</Text>
             <Text style={[styles.featuredPriceButtonText, isCompact && styles.featuredPriceButtonTextCompact]}>
-              {featuredOffer.priceLabel}
+              {featuredOfferDisplay.priceLabel}
             </Text>
           </View>
         </Pressable>
@@ -445,7 +504,7 @@ export function ShopTab() {
           </View>
           <Text style={[styles.noAdsTitle, isCompact && styles.noAdsTitleCompact, isMediumPhone && styles.noAdsTitleMedium]}>{noAdsOffer.title}</Text>
           <CoinPricePill
-            label={noAdsOffer.priceLabel}
+            label={noAdsOfferDisplay.priceLabel}
             style={[styles.noAdsPricePill, isCompact && styles.noAdsPricePillCompact, isMediumPhone && styles.noAdsPricePillMedium]}
             textStyle={isCompact ? styles.shopPricePillTextCompact : isMediumPhone ? styles.shopPricePillTextMedium : undefined}
           />
@@ -509,7 +568,7 @@ export function ShopTab() {
                   </View>
                 ) : (
                   <CoinPricePill
-                    label={offer.priceLabel}
+                    label={getDisplayPriceLabel(offer, localizedPrices)}
                     textStyle={
                       isCompact
                         ? styles.coinCardPriceTextCompact

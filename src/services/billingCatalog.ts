@@ -1,7 +1,7 @@
-export const BILLING_OFFERING_ID = "shop";
+export const BILLING_OFFERING_ID = "Shop";
 
 export const BILLING_PRODUCT_IDS = {
-  bundleWordyOffer: "bundle_wordy_offer",
+  bundleOffer1: "bundle_offer_1",
   coins1400: "coins_1400",
   coins26000: "coins_26000",
   coins3200: "coins_3200",

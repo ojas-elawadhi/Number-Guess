@@ -1,12 +1,14 @@
 import { Platform } from "react-native";
 import Purchases, { LOG_LEVEL, type CustomerInfo, type PurchasesOffering } from "react-native-purchases";
 
-import { BILLING_OFFERING_ID } from "./billingCatalog";
+import { BILLING_OFFERING_ID, type BillingProductId } from "./billingCatalog";
 
 export interface BillingOfferingSummary {
   availablePackages: string[];
   identifier: string;
 }
+
+export type BillingPriceMap = Partial<Record<BillingProductId, string>>;
 
 let configuredAppUserId: string | null = null;
 let configuredOnce = false;
@@ -62,6 +64,26 @@ export const getShopOffering = async (): Promise<BillingOfferingSummary | null> 
   const offering = offerings.all[BILLING_OFFERING_ID] ?? offerings.current ?? null;
 
   return offering ? summarizeOffering(offering) : null;
+};
+
+export const getLocalizedBillingPrices = async (
+  productIds: BillingProductId[]
+): Promise<BillingPriceMap> => {
+  const uniqueIds = Array.from(new Set(productIds));
+
+  if (uniqueIds.length === 0) {
+    return {};
+  }
+
+  const products = await Purchases.getProducts(
+    uniqueIds,
+    Purchases.PRODUCT_CATEGORY.NON_SUBSCRIPTION
+  );
+
+  return products.reduce<BillingPriceMap>((map, product) => {
+    map[product.identifier as BillingProductId] = product.priceString;
+    return map;
+  }, {});
 };
 
 export const restoreBillingPurchases = async (): Promise<CustomerInfo> => Purchases.restorePurchases();
