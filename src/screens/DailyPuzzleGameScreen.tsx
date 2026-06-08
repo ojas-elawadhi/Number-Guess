@@ -9,8 +9,10 @@ import { ConfettiBurst } from "../components/ConfettiBurst";
 import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
+import { maybeShowPendingInterstitialAd, recordInterstitialOpportunity } from "../services/interstitialAd";
 import { isRewardedReviveSupported } from "../services/rewardedReviveAd";
 import { playResultSound, playSound } from "../services/soundEffects";
+import { useMonetizationStore } from "../store/useMonetizationStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { GuessFeedback } from "../types/game.types";
 import type { MatchRecord } from "../types/progression.types";
@@ -47,6 +49,7 @@ export default function DailyPuzzleGameScreen() {
   const profile = usePlayerProgressStore((state) => state.profile);
   const extraGuessPowerUps = usePlayerProgressStore((state) => state.profile.extraGuessPowerUps);
   const skipBoosters = usePlayerProgressStore((state) => state.profile.skipBoosters);
+  const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
   const countdown = useGameStartCountdown();
   const { countdownActive, startCountdown } = countdown;
   const canShowRewardedRevive = isRewardedReviveSupported();
@@ -239,6 +242,10 @@ export default function DailyPuzzleGameScreen() {
         setMatchSummary(response.record);
         playSound("victory");
         playSound("coinReward");
+        if (!hasNoAdsEntitlement) {
+          recordInterstitialOpportunity();
+          await maybeShowPendingInterstitialAd();
+        }
       }
     } catch (error) {
       const offlineSecret = getDeterministicDailyPuzzleNumber(puzzleDateKey, maxNumber);
@@ -275,6 +282,10 @@ export default function DailyPuzzleGameScreen() {
           setMatchSummary(offlineRecord);
           playSound("victory");
           playSound("coinReward");
+          if (!hasNoAdsEntitlement) {
+            recordInterstitialOpportunity();
+            await maybeShowPendingInterstitialAd();
+          }
         } catch (fallbackError) {
           playSound("error");
           setErrorMessage(

@@ -9,7 +9,9 @@ import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { VsAiWinModal } from "../components/VsAiWinModal";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
+import { maybeShowPendingInterstitialAd, recordInterstitialOpportunity } from "../services/interstitialAd";
 import { playResultSound, playSound } from "../services/soundEffects";
+import { useMonetizationStore } from "../store/useMonetizationStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
 import type { MatchRecord } from "../types/progression.types";
@@ -42,6 +44,7 @@ export default function VsAiDuelScreen() {
   const difficultyConfig = getDifficultyConfig(difficulty);
   const digitLimit = String(difficultyConfig.maxNumber).length;
   const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
+  const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
   const countdown = useGameStartCountdown();
   const { countdownActive, startCountdown } = countdown;
   const startTimeRef = useRef(Date.now());
@@ -193,7 +196,7 @@ export default function VsAiDuelScreen() {
     startCountdown();
   };
 
-  const handleSubmitGuess = () => {
+  const handleSubmitGuess = async () => {
     if (playerSecretNumber === null || aiSecretNumber === null) {
       return;
     }
@@ -219,6 +222,9 @@ export default function VsAiDuelScreen() {
     setErrorMessage(null);
     playSound("guessLock");
     playResultSound(playerResult);
+    if (!hasNoAdsEntitlement) {
+      recordInterstitialOpportunity();
+    }
 
     if (playerResult === "correct" && aiResult === "correct") {
       setWinner("tie");
@@ -244,11 +250,17 @@ export default function VsAiDuelScreen() {
       setAiMax(aiGuess - 1);
     }
 
+    if (!hasNoAdsEntitlement) {
+      await maybeShowPendingInterstitialAd();
+    }
     setRoundNumber((currentRound) => currentRound + 1);
   };
 
-  const handlePlayAgain = () => {
+  const handlePlayAgain = async () => {
     playSound("uiTap");
+    if (!hasNoAdsEntitlement) {
+      await maybeShowPendingInterstitialAd();
+    }
     startTimeRef.current = Date.now();
     recordedMatchRef.current = false;
     setPlayerSecretInput("");
@@ -263,6 +275,13 @@ export default function VsAiDuelScreen() {
     setWinner(null);
     setErrorMessage(null);
     setMatchSummary(null);
+  };
+
+  const handleMenu = async () => {
+    if (!hasNoAdsEntitlement) {
+      await maybeShowPendingInterstitialAd();
+    }
+    router.replace("/");
   };
 
   const appendDigit = (digit: string) => {
@@ -363,7 +382,7 @@ export default function VsAiDuelScreen() {
         }
         messageColor={winner === "ai" ? "#8b3e49" : undefined}
         onAction={handlePlayAgain}
-        onSecondaryAction={() => router.replace("/")}
+        onSecondaryAction={handleMenu}
         secondaryAccentColor={winner === "ai" ? "#cf5c69" : undefined}
         secondaryActionLabel="MENU"
         showConfetti={winner === "player"}

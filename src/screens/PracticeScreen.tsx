@@ -10,8 +10,10 @@ import { ConfettiBurst } from "../components/ConfettiBurst";
 import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
+import { maybeShowPendingInterstitialAd, recordInterstitialOpportunity } from "../services/interstitialAd";
 import { isRewardedReviveSupported, showRewardedReviveAd } from "../services/rewardedReviveAd";
 import { playResultSound, playSound } from "../services/soundEffects";
+import { useMonetizationStore } from "../store/useMonetizationStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
 import type { ActivePracticeRunSnapshot, MatchRecord } from "../types/progression.types";
@@ -65,6 +67,7 @@ function PracticeGame() {
   const difficultyConfig = getDifficultyConfig(difficulty);
   const digitLimit = String(difficultyConfig.maxNumber).length;
   const startingChances = difficultyConfig.startingChances;
+  const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
   const profile = usePlayerProgressStore((state) => state.profile);
   const coins = usePlayerProgressStore((state) => state.profile.coins);
   const extraGuessPowerUps = usePlayerProgressStore((state) => state.profile.extraGuessPowerUps);
@@ -278,6 +281,9 @@ function PracticeGame() {
       if (coinsEarned > 0) {
         void awardCoins(coinsEarned).catch(() => { });
       }
+      if (!hasNoAdsEntitlement) {
+        recordInterstitialOpportunity();
+      }
       persistHighScoreIfNeeded(roundNumber);
       persistBestScoreIfNeeded(nextScore);
       void recordMatch({
@@ -305,9 +311,13 @@ function PracticeGame() {
     }
   };
 
-  const handleNextRound = () => {
+  const handleNextRound = async () => {
     playSound("uiTap");
     const nextRoundNumber = roundNumber + 1;
+
+    if (!hasNoAdsEntitlement) {
+      await maybeShowPendingInterstitialAd();
+    }
 
     persistHighScoreIfNeeded(nextRoundNumber);
     roundStartTimeRef.current = Date.now();

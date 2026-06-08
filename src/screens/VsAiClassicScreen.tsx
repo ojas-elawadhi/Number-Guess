@@ -9,7 +9,9 @@ import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { VsAiWinModal } from "../components/VsAiWinModal";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
+import { maybeShowPendingInterstitialAd, recordInterstitialOpportunity } from "../services/interstitialAd";
 import { playResultSound, playSound } from "../services/soundEffects";
+import { useMonetizationStore } from "../store/useMonetizationStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { Difficulty, GuessFeedback } from "../types/game.types";
 import type { MatchRecord } from "../types/progression.types";
@@ -41,6 +43,7 @@ export default function VsAiClassicScreen() {
   const difficultyConfig = getDifficultyConfig(difficulty);
   const digitLimit = String(difficultyConfig.maxNumber).length;
   const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
+  const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
   const countdown = useGameStartCountdown();
   const { countdownActive, startCountdown } = countdown;
   const startTimeRef = useRef(Date.now());
@@ -155,7 +158,7 @@ export default function VsAiClassicScreen() {
     });
   };
 
-  const handleSubmitGuess = () => {
+  const handleSubmitGuess = async () => {
     const parsedGuess = Number(guess);
 
     if (!Number.isInteger(parsedGuess) || parsedGuess < 1 || parsedGuess > difficultyConfig.maxNumber) {
@@ -177,6 +180,9 @@ export default function VsAiClassicScreen() {
     setErrorMessage(null);
     playSound("guessLock");
     playResultSound(playerResult);
+    if (!hasNoAdsEntitlement) {
+      recordInterstitialOpportunity();
+    }
 
     if (playerResult === "correct" && aiResult === "correct") {
       setWinner("tie");
@@ -202,11 +208,17 @@ export default function VsAiClassicScreen() {
       setAiMax(aiGuess - 1);
     }
 
+    if (!hasNoAdsEntitlement) {
+      await maybeShowPendingInterstitialAd();
+    }
     setRoundNumber((currentRound) => currentRound + 1);
   };
 
-  const handlePlayAgain = () => {
+  const handlePlayAgain = async () => {
     playSound("uiTap");
+    if (!hasNoAdsEntitlement) {
+      await maybeShowPendingInterstitialAd();
+    }
     recordedMatchRef.current = false;
     startTimeRef.current = Date.now();
     setTargetNumber(randomBetween(1, difficultyConfig.maxNumber));
@@ -220,6 +232,13 @@ export default function VsAiClassicScreen() {
     setErrorMessage(null);
     setMatchSummary(null);
     startCountdown();
+  };
+
+  const handleMenu = async () => {
+    if (!hasNoAdsEntitlement) {
+      await maybeShowPendingInterstitialAd();
+    }
+    router.replace("/");
   };
 
   const appendDigit = (digit: string) => {
@@ -300,7 +319,7 @@ export default function VsAiClassicScreen() {
         message={`The number was ${targetNumber}.`}
         messageColor={winner === "ai" ? "#8b3e49" : undefined}
         onAction={handlePlayAgain}
-        onSecondaryAction={() => router.replace("/")}
+        onSecondaryAction={handleMenu}
         secondaryAccentColor={winner === "ai" ? "#cf5c69" : undefined}
         secondaryActionLabel="MENU"
         showConfetti={winner === "player"}

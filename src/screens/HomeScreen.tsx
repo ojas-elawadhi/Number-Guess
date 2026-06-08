@@ -9,9 +9,7 @@ import { BottomTabs, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { ShopTab, ShopTabHeader } from "../components/ShopTab";
-import { maybeShowInterstitialAd } from "../services/interstitialAd";
 import { playSound, playSoundAlways } from "../services/soundEffects";
-import { useMonetizationStore } from "../store/useMonetizationStore";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { AvatarId } from "../types/progression.types";
@@ -128,8 +126,6 @@ export default function HomeScreen() {
   const toggleSoundPlaceholders = usePlayerProgressStore((state) => state.toggleSoundPlaceholders);
   const updateDisplayName = usePlayerProgressStore((state) => state.updateDisplayName);
   const updateAvatarId = usePlayerProgressStore((state) => state.updateAvatarId);
-  const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
-
   const [activeTab, setActiveTab] = useState<HomeTab>("play");
   const [profileSection, setProfileSection] = useState<ProfileSection>("profile");
   const [isClaimingReward, setIsClaimingReward] = useState(false);
@@ -318,11 +314,7 @@ export default function HomeScreen() {
     router.replace({ pathname: "/", params: { tab } });
   };
 
-  const navigateToGameMode = async (path: "/single-player" | "/vs-ai" | "/online" | "/daily-puzzle") => {
-    if (!hasNoAdsEntitlement) {
-      await maybeShowInterstitialAd();
-    }
-
+  const navigateToGameMode = (path: "/single-player" | "/vs-ai" | "/online" | "/daily-puzzle") => {
     router.push(path);
   };
 

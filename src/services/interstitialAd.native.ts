@@ -23,6 +23,7 @@ let loadResolver: (() => void) | null = null;
 let closePromise: Promise<boolean> | null = null;
 let closeResolver: ((value: boolean) => void) | null = null;
 let opportunityCount = 0;
+let hasPendingOpportunity = false;
 let unsubscribeLoaded: (() => void) | null = null;
 let unsubscribeClosed: (() => void) | null = null;
 let unsubscribeError: (() => void) | null = null;
@@ -90,10 +91,21 @@ export const prepareInterstitialAd = async () => {
   await loadPromise;
 };
 
-export const maybeShowInterstitialAd = async () => {
+export const recordInterstitialOpportunity = () => {
   opportunityCount += 1;
 
   if (opportunityCount % INTERSTITIAL_FREQUENCY !== 0) {
+    void prepareInterstitialAd();
+    return false;
+  }
+
+  hasPendingOpportunity = true;
+  void prepareInterstitialAd();
+  return true;
+};
+
+export const maybeShowPendingInterstitialAd = async () => {
+  if (!hasPendingOpportunity) {
     void prepareInterstitialAd();
     return false;
   }
@@ -105,6 +117,7 @@ export const maybeShowInterstitialAd = async () => {
 
   isShowing = true;
   isLoaded = false;
+  hasPendingOpportunity = false;
   closePromise = new Promise<boolean>((resolve) => {
     closeResolver = resolve;
   });
@@ -119,4 +132,9 @@ export const maybeShowInterstitialAd = async () => {
   }
 
   return closePromise ?? true;
+};
+
+export const maybeShowInterstitialAd = async () => {
+  recordInterstitialOpportunity();
+  return maybeShowPendingInterstitialAd();
 };
