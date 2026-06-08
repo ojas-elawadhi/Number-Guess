@@ -106,7 +106,13 @@ export default function RootLayout() {
   }, [isGameplayRoute, soundEffectsEnabled]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !soundEffectsEnabled || isGameplayRoute) {
+    if (
+      typeof window === "undefined" ||
+      typeof window.addEventListener !== "function" ||
+      typeof window.removeEventListener !== "function" ||
+      !soundEffectsEnabled ||
+      isGameplayRoute
+    ) {
       return;
     }
 
