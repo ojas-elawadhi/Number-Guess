@@ -9,6 +9,7 @@ const shouldInitializeBilling = process.env.EXPO_PUBLIC_ENABLE_BILLING === "true
 export default function RootLayout() {
   const pathname = usePathname();
   const hydrateProgress = usePlayerProgressStore((state) => state.hydrate);
+  const progressReady = usePlayerProgressStore((state) => state.progressReady);
   const playerKey = usePlayerProgressStore((state) => state.playerKey);
   const soundEffectsEnabled = usePlayerProgressStore((state) => state.profile.soundPlaceholdersEnabled);
   const setHasNoAdsEntitlement = useMonetizationStore((state) => state.setHasNoAdsEntitlement);
@@ -83,6 +84,10 @@ export default function RootLayout() {
 
         initSoundEffects();
 
+        if (!progressReady) {
+          return;
+        }
+
         if (soundEffectsEnabled && !isGameplayRoute) {
           startMenuMusic();
           return;
@@ -103,13 +108,14 @@ export default function RootLayout() {
         })
         .catch(() => { });
     };
-  }, [isGameplayRoute, soundEffectsEnabled]);
+  }, [isGameplayRoute, progressReady, soundEffectsEnabled]);
 
   useEffect(() => {
     if (
       typeof window === "undefined" ||
       typeof window.addEventListener !== "function" ||
       typeof window.removeEventListener !== "function" ||
+      !progressReady ||
       !soundEffectsEnabled ||
       isGameplayRoute
     ) {
@@ -139,7 +145,7 @@ export default function RootLayout() {
       window.removeEventListener("pointerdown", unlockMenuMusic);
       window.removeEventListener("touchstart", unlockMenuMusic);
     };
-  }, [isGameplayRoute, soundEffectsEnabled]);
+  }, [isGameplayRoute, progressReady, soundEffectsEnabled]);
 
   return (
     <Stack
