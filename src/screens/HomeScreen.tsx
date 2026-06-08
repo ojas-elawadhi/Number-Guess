@@ -5,7 +5,6 @@ import { Alert, Animated, Image, Pressable, ScrollView, StyleSheet, Switch, Text
 import Svg, { Circle, Polygon } from "react-native-svg";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill } from "../components/AppHeader";
-import { AppBannerAd } from "../components/AppBannerAd";
 import { BottomTabs, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
@@ -108,7 +107,9 @@ const modeChartConfig = [
 function OnlineVsBadge() {
   return (
     <View style={styles.onlineVsBadge}>
-      <Text style={styles.onlineVsBadgeText}>VS!</Text>
+      <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={styles.onlineVsBadgeText}>
+        VS!
+      </Text>
     </View>
   );
 }
@@ -1073,8 +1074,6 @@ export default function HomeScreen() {
           ) : null}
         </View>
 
-        {activeTab === "shop" || activeTab === "profile" ? null : <AppBannerAd style={styles.homeBannerSlot} />}
-
         {activeTab === "shop" || activeTab === "profile" ? null : (
           <View style={styles.bottomDock}>
             <BottomTabs activeTab={activeTab} onChange={handleTabChange} />
@@ -1452,15 +1451,17 @@ const styles = StyleSheet.create({
   },
   onlineVsBadge: {
     alignItems: "center",
-    justifyContent: "center"
+    justifyContent: "center",
+    width: 56
   },
   onlineVsBadgeText: {
     color: "#ffffff",
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "900",
+    includeFontPadding: false,
     letterSpacing: 0.3,
-    lineHeight: 26,
-    paddingHorizontal: 10,
+    lineHeight: 24,
+    textAlign: "center",
     textShadowColor: "rgba(0, 0, 0, 0.18)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 1
@@ -2386,9 +2387,6 @@ const styles = StyleSheet.create({
   bottomDock: {
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs
-  },
-  homeBannerSlot: {
-    marginBottom: spacing.sm
   },
   modalSwitchRow: {
     alignItems: "center",

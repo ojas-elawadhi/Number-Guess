@@ -11,7 +11,7 @@ export const APP_HEADER_CONTENT_HEIGHT = 72;
 export const APP_HEADER_SEPARATOR_HEIGHT = 4;
 export const APP_HEADER_HEIGHT = APP_HEADER_CONTENT_HEIGHT + APP_HEADER_SEPARATOR_HEIGHT;
 
-const HEADER_SIDE_WIDTH = 84;
+const HEADER_SIDE_WIDTH = 124;
 
 interface AppHeaderProps {
   left?: ReactNode;
@@ -62,7 +62,9 @@ export function HeaderCoinsPill({ coins }: HeaderCoinsPillProps) {
       <CoinIcon size={30} />
 
       <View style={styles.coinValueWrap}>
-        <Text style={styles.coinPillText}>{coins.toLocaleString("en-US")}</Text>
+        <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={styles.coinPillText}>
+          {coins.toLocaleString("en-US")}
+        </Text>
       </View>
 
       <View style={styles.coinPlusBadge}>
@@ -173,7 +175,8 @@ const styles = StyleSheet.create({
     gap: 6,
     justifyContent: "center",
     minHeight: 30,
-    minWidth: 104,
+    minWidth: 116,
+    paddingLeft: 4,
     paddingRight: 4,
     ...shadows.card
   },
@@ -185,8 +188,11 @@ const styles = StyleSheet.create({
   },
   coinPillText: {
     color: "#606367",
+    includeFontPadding: false,
     fontSize: 13,
-    fontWeight: "900"
+    fontWeight: "900",
+    lineHeight: 16,
+    textAlign: "center"
   },
   coinPlusBadge: {
     alignItems: "center",

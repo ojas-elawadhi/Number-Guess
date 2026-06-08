@@ -37,6 +37,19 @@ interface PurchaseDraft {
   removesAds?: boolean;
 }
 
+interface PurchaseSuccessReward {
+  icon: "coins" | "extra-guess" | "skip" | "no-ads";
+  label: string;
+  value: string;
+}
+
+interface PurchaseSuccess {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  rewards: PurchaseSuccessReward[];
+}
+
 interface CoinPackOffer extends PurchaseDraft {
   amountLabel: string;
   badge?: string;
@@ -200,7 +213,9 @@ function CoinArt({ variant }: { variant: CoinPackOffer["art"] }) {
 function CoinPricePill({ label, style, textStyle }: { label: string; style?: object; textStyle?: object }) {
   return (
     <View style={[styles.shopPricePill, style]}>
-      <Text style={[styles.shopPricePillText, textStyle]}>{label}</Text>
+      <Text adjustsFontSizeToFit minimumFontScale={0.68} numberOfLines={1} style={[styles.shopPricePillText, textStyle]}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -217,6 +232,59 @@ const withDisplayPrice = (draft: PurchaseDraft, localizedPrices: BillingPriceMap
   ...draft,
   priceLabel: getDisplayPriceLabel(draft, localizedPrices)
 });
+
+const getPurchaseSuccess = (purchase: PurchaseDraft): PurchaseSuccess => {
+  if (purchase.removesAds) {
+    return {
+      eyebrow: "PAYMENT SECURED",
+      title: "Purchase complete",
+      subtitle: "NO ADS is now active on this account.",
+      rewards: [
+        {
+          icon: "no-ads",
+          label: "ENTITLEMENT",
+          value: "Ads removed"
+        }
+      ]
+    };
+  }
+
+  const rewards: PurchaseSuccessReward[] = [];
+  const isCoinOnlyReward = Boolean(purchase.coinsReward && !purchase.extraGuessReward && !purchase.skipReward);
+
+  if (purchase.coinsReward) {
+    rewards.push({
+      icon: "coins",
+      label: "COINS",
+      value: `+${purchase.coinsReward.toLocaleString("en-US")}`
+    });
+  }
+
+  if (purchase.extraGuessReward) {
+    rewards.push({
+      icon: "extra-guess",
+      label: "EXTRA GUESS",
+      value: `+${purchase.extraGuessReward}`
+    });
+  }
+
+  if (purchase.skipReward) {
+    rewards.push({
+      icon: "skip",
+      label: "SKIPS",
+      value: `+${purchase.skipReward}`
+    });
+  }
+
+  return {
+    eyebrow: purchase.currency === "cash" ? "PAYMENT SECURED" : "REWARD SECURED",
+    title: "Purchase complete",
+    subtitle: isCoinOnlyReward
+      ? `${purchase.coinsReward?.toLocaleString("en-US")} coins were added to your profile.`
+      : `${purchase.title} was added to your profile.`,
+    rewards
+  };
+};
 
 function ShopStatusStrip() {
   const { width } = useWindowDimensions();
@@ -245,6 +313,88 @@ function ShopStatusStrip() {
         <CoinToken size={statusIconSize} />
       </View>
     </View>
+  );
+}
+
+function SuccessRewardIcon({ reward }: { reward: PurchaseSuccessReward }) {
+  if (reward.icon === "coins") {
+    return <CoinToken size={34} />;
+  }
+
+  if (reward.icon === "extra-guess") {
+    return <BoosterGlyph accent="#b55cff" icon="flash" size={36} />;
+  }
+
+  if (reward.icon === "skip") {
+    return <BoosterGlyph accent="#6bbdff" icon="play-skip-forward" size={36} />;
+  }
+
+  return (
+    <View style={styles.successNoAdsIcon}>
+      <Text style={styles.successNoAdsIconText}>AD</Text>
+      <View style={styles.successNoAdsSlash} />
+    </View>
+  );
+}
+
+function PurchaseSuccessModal({
+  onClose,
+  success
+}: {
+  onClose: () => void;
+  success: PurchaseSuccess | null;
+}) {
+  if (!success) {
+    return null;
+  }
+
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} statusBarTranslucent transparent visible>
+      <View style={styles.modalBackdrop}>
+        <View style={[styles.modalCard, styles.successModalCard]}>
+          <View style={styles.successHeader}>
+            <View style={styles.successSealOuter}>
+              <View style={styles.successSealInner}>
+                <Ionicons color="#ffffff" name="checkmark" size={34} />
+              </View>
+            </View>
+            <Text style={styles.successEyebrow}>{success.eyebrow}</Text>
+            <Text style={styles.successTitle}>{success.title}</Text>
+            <Text style={styles.successSubtitle}>{success.subtitle}</Text>
+          </View>
+
+          {success.rewards.length > 0 ? (
+            <View style={styles.successRewardsPanel}>
+              <View style={styles.successRewardsHeader}>
+                <Text style={styles.successRewardsTitle}>Added to profile</Text>
+                <Ionicons color={colors.accent} name="sparkles" size={18} />
+              </View>
+              {success.rewards.map((reward) => (
+                <View key={`${reward.icon}-${reward.label}`} style={styles.successRewardRow}>
+                  <View style={styles.successRewardIcon}>
+                    <SuccessRewardIcon reward={reward} />
+                  </View>
+                  <View style={styles.successRewardCopy}>
+                    <Text style={styles.successRewardLabel}>{reward.label}</Text>
+                    <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={styles.successRewardValue}>
+                      {reward.value}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={onClose}
+            style={({ pressed }) => [styles.successDoneButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.successDoneButtonText}>DONE</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -319,6 +469,7 @@ export function ShopTab() {
 
   const [showBoosters, setShowBoosters] = useState(false);
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft | null>(null);
+  const [purchaseSuccess, setPurchaseSuccess] = useState<PurchaseSuccess | null>(null);
   const [processingPurchase, setProcessingPurchase] = useState(false);
   const [localizedPrices, setLocalizedPrices] = useState<BillingPriceMap>({});
 
@@ -400,9 +551,9 @@ export function ShopTab() {
 
         if (purchaseDraft.removesAds) {
           setHasNoAdsEntitlement(purchase.customer.hasRemoveAds);
+          setPurchaseSuccess(getPurchaseSuccess(purchaseDraft));
           setPurchaseDraft(null);
           playSound("purchaseSuccess");
-          Alert.alert("Purchase complete", "Ads are now removed for this account.");
           return;
         }
       }
@@ -425,11 +576,9 @@ export function ShopTab() {
         throw new Error("The purchase went through, but we couldn't update your profile. Please reopen the app and check again.");
       }
 
-      const purchasedTitle = purchaseDraft.title;
-
+      setPurchaseSuccess(getPurchaseSuccess(purchaseDraft));
       setPurchaseDraft(null);
       playSound("purchaseSuccess");
-      Alert.alert("Purchase complete", `${purchasedTitle} was added to your profile.`);
     } catch (error) {
       const billingError = error as { message?: string; userCancelled?: boolean | null };
 
@@ -721,6 +870,13 @@ export function ShopTab() {
         onCancel={() => setPurchaseDraft(null)}
         onConfirm={() => void handleConfirmPurchase()}
         purchase={purchaseDraft}
+      />
+      <PurchaseSuccessModal
+        onClose={() => {
+          playSound("tabSwitch");
+          setPurchaseSuccess(null);
+        }}
+        success={purchaseSuccess}
       />
     </View>
   );
@@ -1108,19 +1264,22 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     justifyContent: "center",
     minHeight: 38,
-    minWidth: 96,
-    paddingHorizontal: 12
+    minWidth: 100,
+    paddingHorizontal: 8
   },
   shopPricePillText: {
     color: "#ffffff",
+    includeFontPadding: false,
     fontSize: 15,
-    fontWeight: "900"
+    fontWeight: "900",
+    lineHeight: 18,
+    textAlign: "center"
   },
   shopPricePillTextCompact: {
-    fontSize: 14
+    fontSize: 13
   },
   shopPricePillTextMedium: {
-    fontSize: 14
+    fontSize: 13
   },
   coinGrid: {
     flexDirection: "row",
@@ -1765,6 +1924,177 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 26,
     fontWeight: "900"
+  },
+  successModalCard: {
+    borderColor: "rgba(0,109,55,0.12)",
+    borderWidth: 1,
+    gap: 18,
+    maxWidth: 390,
+    overflow: "hidden",
+    padding: 0
+  },
+  successHeader: {
+    alignItems: "center",
+    backgroundColor: "#f5fbf8",
+    borderBottomColor: "#d8ebe0",
+    borderBottomWidth: 1,
+    gap: 7,
+    paddingBottom: 20,
+    paddingHorizontal: 22,
+    paddingTop: 24
+  },
+  successSealOuter: {
+    alignItems: "center",
+    backgroundColor: "#dff5e8",
+    borderColor: "#bfe8cf",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    height: 76,
+    justifyContent: "center",
+    marginBottom: 2,
+    width: 76
+  },
+  successSealInner: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderBottomColor: colors.accentDark,
+    borderBottomWidth: 3,
+    borderRadius: radii.pill,
+    height: 58,
+    justifyContent: "center",
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.16,
+    shadowRadius: 9,
+    width: 58,
+    elevation: 4
+  },
+  successEyebrow: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.9
+  },
+  successTitle: {
+    color: colors.text,
+    fontSize: 27,
+    fontWeight: "900",
+    lineHeight: 32,
+    textAlign: "center"
+  },
+  successSubtitle: {
+    color: colors.textMuted,
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 21,
+    maxWidth: 300,
+    textAlign: "center"
+  },
+  successRewardsPanel: {
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.surfaceMuted,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 9,
+    marginHorizontal: 18,
+    padding: 12
+  },
+  successRewardsHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 24,
+    paddingHorizontal: 2
+  },
+  successRewardsTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "900"
+  },
+  successRewardRow: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: "#dfe8e3",
+    borderRadius: 15,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 11,
+    minHeight: 62,
+    paddingHorizontal: 10
+  },
+  successRewardIcon: {
+    alignItems: "center",
+    height: 42,
+    justifyContent: "center",
+    width: 42
+  },
+  successRewardCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  successRewardLabel: {
+    color: "#607064",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+    lineHeight: 13
+  },
+  successRewardValue: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "900",
+    lineHeight: 24
+  },
+  successNoAdsIcon: {
+    alignItems: "center",
+    backgroundColor: colors.ai,
+    borderColor: "rgba(255,255,255,0.70)",
+    borderRadius: 14,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: "center",
+    overflow: "hidden",
+    position: "relative",
+    width: 34
+  },
+  successNoAdsIconText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "900"
+  },
+  successNoAdsSlash: {
+    backgroundColor: "#ffffff",
+    borderRadius: radii.pill,
+    height: 4,
+    left: 4,
+    opacity: 0.92,
+    position: "absolute",
+    top: 15,
+    transform: [{ rotate: "-38deg" }],
+    width: 28
+  },
+  successDoneButton: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    backgroundColor: colors.accent,
+    borderBottomColor: colors.accentDark,
+    borderBottomWidth: 3,
+    borderRadius: 17,
+    justifyContent: "center",
+    marginBottom: 18,
+    marginHorizontal: 18,
+    minHeight: 54,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3
+  },
+  successDoneButtonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 0.9
   },
   checkoutSummary: {
     backgroundColor: colors.backgroundAlt,
