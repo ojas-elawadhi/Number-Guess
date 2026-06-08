@@ -35,6 +35,9 @@ const keypadRows = [
   ["backspace", "0", "clear"]
 ] as const;
 
+const REVIVE_COIN_COST = 1000;
+const REVIVE_GUESSES = 5;
+
 const canRestorePracticeRun = (
   snapshot: ActivePracticeRunSnapshot | undefined,
   maxNumber: number
@@ -80,6 +83,7 @@ function PracticeGame() {
   const consumeExtraGuessPowerUp = usePlayerProgressStore((state) => state.consumeExtraGuessPowerUp);
   const consumeSkipBooster = usePlayerProgressStore((state) => state.consumeSkipBooster);
   const awardCoins = usePlayerProgressStore((state) => state.awardCoins);
+  const spendCoins = usePlayerProgressStore((state) => state.spendCoins);
   const syncActivePracticeRun = usePlayerProgressStore((state) => state.syncActivePracticeRun);
   const countdown = useGameStartCountdown();
   const { countdownActive, startCountdown } = countdown;
@@ -109,7 +113,7 @@ function PracticeGame() {
   >(null);
   const [powerUpMessage, setPowerUpMessage] = useState<string | null>(null);
   const [reviveUsedThisRun, setReviveUsedThisRun] = useState(() => restoredPracticeRun?.reviveUsedThisRun ?? false);
-  const [reviveAction, setReviveAction] = useState<"ad" | null>(null);
+  const [reviveAction, setReviveAction] = useState<"ad" | "coins" | null>(null);
   const [reviveMessage, setReviveMessage] = useState<string | null>(null);
   const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
   const [coinBonusClaimed, setCoinBonusClaimed] = useState(false);
@@ -119,7 +123,7 @@ function PracticeGame() {
   const canShowRewardedRevive = isRewardedReviveSupported();
   const isUsingRevive = reviveAction !== null;
   const canUseRewardedRevive = isGameOver && canShowRewardedRevive && !reviveUsedThisRun && !isUsingRevive;
-  const canPreviewCoinRevive = isGameOver && !reviveUsedThisRun && !isUsingRevive;
+  const canUseCoinRevive = isGameOver && !reviveUsedThisRun && !isUsingRevive;
   const bannerTone = isRoundCleared
     ? "cleared"
     : isGameOver
@@ -379,7 +383,7 @@ function PracticeGame() {
     setPowerUpMessage(null);
     setLastResult(null);
     setLastScoreGain(0);
-    setRemainingChances(4);
+    setRemainingChances(REVIVE_GUESSES);
     setRunState("playing");
     setReviveUsedThisRun(true);
     playSound("revive");
@@ -407,13 +411,35 @@ function PracticeGame() {
     }
   };
 
-  const handlePreviewCoinRevive = () => {
-    if (!canPreviewCoinRevive) {
+  const handleUseCoinRevive = async () => {
+    if (!canUseCoinRevive) {
       return;
     }
 
-    playSound("modalOpen");
-    setReviveMessage("150-coin revive UI is ready. Coin spending will be wired up next.");
+    if (coins < REVIVE_COIN_COST) {
+      playSound("error");
+      setReviveMessage(`You need ${REVIVE_COIN_COST.toLocaleString("en-US")} coins to revive.`);
+      return;
+    }
+
+    try {
+      setReviveAction("coins");
+      setReviveMessage(null);
+      const spent = await spendCoins(REVIVE_COIN_COST);
+
+      if (!spent) {
+        playSound("error");
+        setReviveMessage("Not enough coins. Play a few more rounds or visit the shop.");
+        return;
+      }
+
+      applyRevive();
+    } catch (error) {
+      playSound("error");
+      setReviveMessage(error instanceof Error ? error.message : "Could not use coins right now. Try again.");
+    } finally {
+      setReviveAction(null);
+    }
   };
 
   const handlePlayAgain = () => {
@@ -436,6 +462,11 @@ function PracticeGame() {
     setCoinBonusClaimed(false);
     setCoinClaimAction(null);
     startCountdown();
+  };
+
+  const handleExitToHome = () => {
+    playSound("uiTap");
+    router.replace("/");
   };
 
   const baseCoinsEarned = lastScoreGain * 5;
@@ -784,11 +815,15 @@ function PracticeGame() {
       <Modal animationType="fade" statusBarTranslucent transparent visible={isGameOver}>
         <View style={styles.gameOverOverlay}>
           <View style={styles.gameOverCard}>
-            <Text style={styles.gameOverTitle}>GAME OVER</Text>
             <View style={styles.gameOverIconWrap}>
-              <Text style={styles.gameOverIcon}>!</Text>
+              <Ionicons color="#ffffff" name="alert" size={34} />
             </View>
-            <Text style={styles.gameOverMessage}>Keep your streak going or your score will be reset.</Text>
+            <Text style={styles.gameOverTitle}>GAME OVER</Text>
+            <Text style={styles.gameOverMessage}>Revive now to keep your score and continue the run.</Text>
+            <View style={styles.gameOverRewardPill}>
+              <Ionicons color={colors.accent} name="flash" size={15} />
+              <Text style={styles.gameOverRewardText}>{REVIVE_GUESSES} guesses on revive</Text>
+            </View>
             {reviveUsedThisRun ? (
               <Text style={styles.gameOverHint}>Revive already used for this game.</Text>
             ) : null}
@@ -812,7 +847,7 @@ function PracticeGame() {
                     {reviveUsedThisRun
                       ? "USED"
                       : reviveAction === "ad"
-                        ? "LOADING..."
+                        ? "LOADING"
                         : canShowRewardedRevive
                           ? "FREE AD"
                           : "AD UNAVAILABLE"}
@@ -821,34 +856,50 @@ function PracticeGame() {
               </Pressable>
 
               <Pressable
-                disabled={!canPreviewCoinRevive}
-                onPress={handlePreviewCoinRevive}
+                disabled={!canUseCoinRevive}
+                onPress={() => void handleUseCoinRevive()}
                 style={({ pressed }) => [
                   styles.gameOverReviveButton,
                   styles.gameOverCoinButton,
-                  pressed && canPreviewCoinRevive && styles.guessButtonPressed,
-                  !canPreviewCoinRevive && styles.guessButtonDisabled
+                  pressed && canUseCoinRevive && styles.guessButtonPressed,
+                  !canUseCoinRevive && styles.guessButtonDisabled
                 ]}
               >
                 <Text style={styles.gameOverReviveButtonTitle}>REVIVE</Text>
                 <View style={styles.gameOverBadge}>
-                  <Ionicons color="#fff7c2" name="cash" size={16} />
-                  <Text style={styles.gameOverBadgeText}>150 COINS</Text>
+                  <CoinIcon size={17} />
+                  <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={styles.gameOverBadgeText}>
+                    {reviveAction === "coins" ? "SPENDING" : `${REVIVE_COIN_COST.toLocaleString("en-US")} COINS`}
+                  </Text>
                 </View>
               </Pressable>
             </View>
-
           </View>
 
-          <Pressable
-            onPress={handlePlayAgain}
-            style={({ pressed }) => [
-              styles.gameOverDismissButton,
-              pressed && styles.guessButtonPressed
-            ]}
-          >
-            <Text style={styles.gameOverDismissText}>NO THANKS</Text>
-          </Pressable>
+          <View style={styles.gameOverSecondaryRow}>
+            <Pressable
+              onPress={handlePlayAgain}
+              style={({ pressed }) => [
+                styles.gameOverSecondaryButton,
+                pressed && styles.guessButtonPressed
+              ]}
+            >
+              <Ionicons color="#ffffff" name="refresh" size={17} />
+              <Text style={styles.gameOverSecondaryText}>RESTART</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleExitToHome}
+              style={({ pressed }) => [
+                styles.gameOverSecondaryButton,
+                styles.gameOverHomeButton,
+                pressed && styles.guessButtonPressed
+              ]}
+            >
+              <Ionicons color="#ffffff" name="home" size={17} />
+              <Text style={styles.gameOverSecondaryText}>NO THANKS</Text>
+            </Pressable>
+          </View>
         </View>
       </Modal>
 
@@ -1224,59 +1275,81 @@ const styles = StyleSheet.create({
   },
   gameOverOverlay: {
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.85)",
+    backgroundColor: "rgba(16, 18, 24, 0.78)",
     flex: 1,
-    gap: spacing.md,
+    gap: spacing.sm,
     justifyContent: "center",
-    padding: spacing.lg
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl
   },
   gameOverCard: {
-    backgroundColor: "#eef0ff",
-    borderColor: "#5b93ff",
-    borderWidth: 6,
-    borderRadius: 30,
-    gap: spacing.sm,
-    padding: spacing.lg,
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: "rgba(74, 167, 255, 0.22)",
+    borderWidth: 1,
+    borderRadius: 28,
+    gap: 12,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
     elevation: 12,
-    width: "100%",
-    maxWidth: 420
+    maxWidth: 420,
+    width: "100%"
   },
   gameOverIconWrap: {
     alignItems: "center",
     alignSelf: "center",
-    backgroundColor: "#ff8f24",
-    borderColor: "#ff541f",
-    borderRadius: 42,
-    borderWidth: 6,
-    height: 84,
+    backgroundColor: colors.danger,
+    borderColor: "#ffd0c9",
+    borderRadius: 34,
+    borderWidth: 5,
+    height: 68,
     justifyContent: "center",
-    width: 84
-  },
-  gameOverIcon: {
-    color: "#fff7cf",
-    fontSize: 42,
-    fontWeight: "900"
+    shadowColor: "#9f2f24",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    width: 68
   },
   gameOverTitle: {
     color: "#15181b",
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: "900",
-    letterSpacing: 1.2,
+    letterSpacing: 0,
     textAlign: "center"
   },
   gameOverMessage: {
-    color: "#31456f",
-    fontSize: 20,
-    fontWeight: "800",
-    lineHeight: 28,
+    color: colors.textMuted,
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 21,
+    maxWidth: 300,
     textAlign: "center"
   },
+  gameOverRewardPill: {
+    alignItems: "center",
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.surfaceMuted,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 34,
+    paddingHorizontal: spacing.md
+  },
+  gameOverRewardText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase"
+  },
   gameOverHint: {
-    color: "#6d757b",
+    color: colors.danger,
     fontSize: 12,
     fontWeight: "800",
     lineHeight: 18,
@@ -1284,63 +1357,88 @@ const styles = StyleSheet.create({
   },
   gameOverActionRow: {
     flexDirection: "row",
-    gap: spacing.sm
+    gap: spacing.sm,
+    width: "100%"
   },
   gameOverReviveButton: {
     alignItems: "center",
-    borderRadius: 28,
-    borderBottomWidth: 7,
+    borderRadius: 18,
+    borderBottomWidth: 5,
     flex: 1,
-    gap: spacing.xs,
+    gap: 8,
     justifyContent: "center",
-    minHeight: 108,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.md
+    minHeight: 98,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 14
   },
   gameOverAdButton: {
-    backgroundColor: "#eb4cae",
-    borderBottomColor: "#af1f72"
+    backgroundColor: colors.ai,
+    borderBottomColor: "#b3297c"
   },
   gameOverCoinButton: {
-    backgroundColor: "#5ce125",
-    borderBottomColor: "#2da10c"
+    backgroundColor: colors.accent,
+    borderBottomColor: "#025a29"
   },
   gameOverReviveButtonTitle: {
     color: "#ffffff",
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "900",
-    letterSpacing: 1
+    letterSpacing: 0,
+    textAlign: "center"
   },
   gameOverBadge: {
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.18)",
+    backgroundColor: "rgba(0, 0, 0, 0.16)",
     borderRadius: radii.pill,
     flexDirection: "row",
     gap: 6,
     justifyContent: "center",
-    minHeight: 34,
-    minWidth: 110,
-    paddingHorizontal: spacing.md
+    maxWidth: "100%",
+    minHeight: 32,
+    minWidth: 108,
+    paddingHorizontal: 10
   },
   gameOverBadgeText: {
     color: "#ffffff",
-    fontSize: 14,
+    flexShrink: 1,
+    fontSize: 13,
     fontWeight: "900",
-    letterSpacing: 0.6
+    includeFontPadding: false,
+    letterSpacing: 0,
+    lineHeight: 16,
+    textAlign: "center"
   },
-  gameOverDismissButton: {
+  gameOverSecondaryRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    maxWidth: 420,
+    width: "100%"
+  },
+  gameOverSecondaryButton: {
     alignItems: "center",
-    backgroundColor: "transparent",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: radii.pill,
-    height: 40,
-    justifyContent: "center"
+    flex: 1,
+    flexDirection: "row",
+    gap: 7,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: spacing.md
   },
-  gameOverDismissText: {
+  gameOverHomeButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.18)"
+  },
+  gameOverSecondaryText: {
     color: "#ffffff",
-    fontSize: 18,
+    flexShrink: 1,
+    fontSize: 13,
     fontWeight: "900",
-    letterSpacing: 0.8,
-    textDecorationLine: "underline"
+    includeFontPadding: false,
+    letterSpacing: 0,
+    lineHeight: 16,
+    textAlign: "center",
+    textTransform: "uppercase"
   },
   winCard: {
     backgroundColor: "#eafff3",

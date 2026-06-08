@@ -7,7 +7,7 @@ module.exports = {
   expo: {
     name: "Code Guess",
     slug: "code-wars-multiplayer",
-    version: "1.0.1",
+    version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/app-icon-code-guess-v24.png",
     scheme: "codeguess",
@@ -29,7 +29,7 @@ module.exports = {
     },
     android: {
       package: "com.zenostudios.codewars",
-      versionCode: 16,
+      versionCode: 17,
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false
     },
