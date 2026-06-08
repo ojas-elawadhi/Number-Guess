@@ -3,16 +3,24 @@ import type { ComponentProps } from "react";
 import { useEffect, useState } from "react";
 import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type ImageSourcePropType } from "react-native";
 
-import { getLocalizedBillingPrices, type BillingPriceMap } from "../services/billing";
+import {
+  getBillingCustomerSnapshot,
+  getLocalizedBillingPrices,
+  purchaseBillingProduct,
+  type BillingPriceMap
+} from "../services/billing";
 import { BILLING_PRODUCT_IDS, type BillingProductId } from "../services/billingCatalog";
+import { useMonetizationStore } from "../store/useMonetizationStore";
 import { playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import { colors, radii, shadows, spacing } from "../utils/theme";
+import { AppBannerAd } from "./AppBannerAd";
 import { BoosterIcon, type BoosterIconKind } from "./BoosterIcon";
 import { CoinIcon } from "./CoinIcon";
 import { PrimaryButton } from "./PrimaryButton";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
+const billingEnabled = process.env.EXPO_PUBLIC_ENABLE_BILLING === "true";
 
 type StoreCurrency = "cash" | "coins" | "ad";
 
@@ -60,7 +68,7 @@ const featuredOffer: PurchaseDraft = {
 const noAdsOffer: PurchaseDraft = {
   id: "no-ads",
   title: "NO ADS",
-  description: "Purchase removes banner and full-screen pop-up ads.",
+  description: "Removes banner and interstitial ads. Rewarded bonus ads stay available.",
   priceLabel: "₹990.00",
   currency: "cash",
   billingProductId: BILLING_PRODUCT_IDS.noAds,
@@ -257,9 +265,9 @@ function CheckoutModal({
 
   const actionLabel =
     purchase.currency === "cash"
-      ? "COMPLETE DEMO PAYMENT"
+      ? "COMPLETE PAYMENT"
       : purchase.currency === "ad"
-        ? "CLAIM DEMO REWARD"
+        ? "CLAIM REWARD"
         : "BUY WITH COINS";
 
   return (
@@ -277,7 +285,7 @@ function CheckoutModal({
             ) : null}
             {purchase.skipReward ? <Text style={styles.checkoutReward}>+{purchase.skipReward} skip boosters</Text> : null}
             {purchase.removesAds ? (
-              <Text style={styles.checkoutReward}>No-ads unlock is shown as a UI demo here.</Text>
+              <Text style={styles.checkoutReward}>Removes ads for this account.</Text>
             ) : null}
           </View>
           <PrimaryButton
@@ -306,6 +314,8 @@ export function ShopTab() {
   const awardExtraGuessPowerUps = usePlayerProgressStore((state) => state.awardExtraGuessPowerUps);
   const awardSkipBoosters = usePlayerProgressStore((state) => state.awardSkipBoosters);
   const spendCoins = usePlayerProgressStore((state) => state.spendCoins);
+  const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
+  const setHasNoAdsEntitlement = useMonetizationStore((state) => state.setHasNoAdsEntitlement);
 
   const [showBoosters, setShowBoosters] = useState(false);
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft | null>(null);
@@ -315,29 +325,34 @@ export function ShopTab() {
   useEffect(() => {
     let cancelled = false;
 
-    const loadLocalizedPrices = async () => {
+    const loadBillingContext = async () => {
       try {
-        const prices = await getLocalizedBillingPrices([
-          BILLING_PRODUCT_IDS.bundleOffer1,
-          BILLING_PRODUCT_IDS.noAds,
-          BILLING_PRODUCT_IDS.coins800,
-          BILLING_PRODUCT_IDS.coins1400,
-          BILLING_PRODUCT_IDS.coins3200,
-          BILLING_PRODUCT_IDS.coins8600,
-          BILLING_PRODUCT_IDS.coins26000
+        const [prices, customer] = await Promise.all([
+          getLocalizedBillingPrices([
+            BILLING_PRODUCT_IDS.bundleOffer1,
+            BILLING_PRODUCT_IDS.noAds,
+            BILLING_PRODUCT_IDS.coins800,
+            BILLING_PRODUCT_IDS.coins1400,
+            BILLING_PRODUCT_IDS.coins3200,
+            BILLING_PRODUCT_IDS.coins8600,
+            BILLING_PRODUCT_IDS.coins26000
+          ]),
+          billingEnabled ? getBillingCustomerSnapshot() : Promise.resolve(null)
         ]);
 
         if (!cancelled) {
           setLocalizedPrices(prices);
+          setHasNoAdsEntitlement(customer?.hasRemoveAds ?? false);
         }
       } catch {
         if (!cancelled) {
           setLocalizedPrices({});
+          setHasNoAdsEntitlement(false);
         }
       }
     };
 
-    void loadLocalizedPrices();
+    void loadBillingContext();
 
     return () => {
       cancelled = true;
@@ -345,6 +360,11 @@ export function ShopTab() {
   }, []);
 
   const openPurchase = (draft: PurchaseDraft) => {
+    if (draft.currency === "cash" && draft.removesAds && hasNoAdsEntitlement) {
+      Alert.alert("Already unlocked", "Ads are already removed for this account.");
+      return;
+    }
+
     playSound("modalOpen");
     setPurchaseDraft(withDisplayPrice(draft, localizedPrices));
   };
@@ -367,30 +387,57 @@ export function ShopTab() {
         }
       }
 
+      if (purchaseDraft.currency === "cash") {
+        if (!billingEnabled) {
+          throw new Error("Billing is not enabled in this build yet.");
+        }
+
+        if (!purchaseDraft.billingProductId) {
+          throw new Error("This shop item is not linked to a store product yet.");
+        }
+
+        const purchase = await purchaseBillingProduct(purchaseDraft.billingProductId);
+
+        if (purchaseDraft.removesAds) {
+          setHasNoAdsEntitlement(purchase.customer.hasRemoveAds);
+          setPurchaseDraft(null);
+          playSound("purchaseSuccess");
+          Alert.alert("Purchase complete", "Ads are now removed for this account.");
+          return;
+        }
+      }
+
+      const grantResults: boolean[] = [];
+
       if (purchaseDraft.coinsReward) {
-        await awardCoins(purchaseDraft.coinsReward);
+        grantResults.push(await awardCoins(purchaseDraft.coinsReward));
       }
 
       if (purchaseDraft.extraGuessReward) {
-        await awardExtraGuessPowerUps(purchaseDraft.extraGuessReward);
+        grantResults.push(await awardExtraGuessPowerUps(purchaseDraft.extraGuessReward));
       }
 
       if (purchaseDraft.skipReward) {
-        await awardSkipBoosters(purchaseDraft.skipReward);
+        grantResults.push(await awardSkipBoosters(purchaseDraft.skipReward));
+      }
+
+      if (grantResults.some((result) => !result)) {
+        throw new Error("The purchase went through, but we couldn't update your profile. Please reopen the app and check again.");
       }
 
       const purchasedTitle = purchaseDraft.title;
-      const wasNoAds = purchaseDraft.removesAds;
 
       setPurchaseDraft(null);
       playSound("purchaseSuccess");
-      Alert.alert(
-        wasNoAds ? "Demo purchase complete" : "Purchase complete",
-        wasNoAds
-          ? "The no-ads unlock is presented as a UI demo. Hook your billing receipt flow here when ready."
-          : `${purchasedTitle} was added to your profile.`
-      );
+      Alert.alert("Purchase complete", `${purchasedTitle} was added to your profile.`);
     } catch (error) {
+      const billingError = error as { message?: string; userCancelled?: boolean | null };
+
+      if (billingError?.userCancelled) {
+        setPurchaseDraft(null);
+        return;
+      }
+
       playSound("purchaseFail");
       Alert.alert(
         "Purchase unavailable",
@@ -666,9 +713,7 @@ export function ShopTab() {
           </View>
         ) : null}
 
-        <View style={styles.adBanner}>
-          <Text style={styles.adBannerText}>Sponsored banner placeholder</Text>
-        </View>
+        <AppBannerAd style={styles.adBanner} />
       </ScrollView>
 
       <CheckoutModal
@@ -1696,18 +1741,9 @@ const styles = StyleSheet.create({
     fontSize: 15
   },
   adBanner: {
-    alignItems: "center",
-    backgroundColor: "#efeff4",
-    borderRadius: 8,
-    height: 74,
-    justifyContent: "center",
+    minHeight: 74,
     marginHorizontal: spacing.xl,
     marginTop: spacing.sm
-  },
-  adBannerText: {
-    color: "#475569",
-    fontSize: 14,
-    fontWeight: "800"
   },
   modalBackdrop: {
     alignItems: "center",

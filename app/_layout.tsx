@@ -1,5 +1,6 @@
 import { Stack, usePathname } from "expo-router";
 import { useEffect } from "react";
+import { useMonetizationStore } from "../src/store/useMonetizationStore";
 import { usePlayerProgressStore } from "../src/store/usePlayerProgressStore";
 import { colors } from "../src/utils/theme";
 
@@ -9,6 +10,7 @@ export default function RootLayout() {
   const pathname = usePathname();
   const hydrateProgress = usePlayerProgressStore((state) => state.hydrate);
   const playerKey = usePlayerProgressStore((state) => state.playerKey);
+  const setHasNoAdsEntitlement = useMonetizationStore((state) => state.setHasNoAdsEntitlement);
   void pathname;
 
   useEffect(() => {
@@ -18,16 +20,33 @@ export default function RootLayout() {
   }, [hydrateProgress]);
 
   useEffect(() => {
+    import("../src/services/mobileAds")
+      .then(async ({ initializeMobileAds }) => {
+        await initializeMobileAds();
+        const { prepareInterstitialAd } = await import("../src/services/interstitialAd");
+        await prepareInterstitialAd();
+      })
+      .catch(() => {
+        // Ads should fail quietly until unit IDs and native setup are ready.
+      });
+  }, []);
+
+  useEffect(() => {
     if (!shouldInitializeBilling || !playerKey) {
+      setHasNoAdsEntitlement(false);
       return;
     }
 
     import("../src/services/billing")
-      .then(({ configureBilling }) => configureBilling(playerKey))
+      .then(async ({ configureBilling, getBillingCustomerSnapshot }) => {
+        configureBilling(playerKey);
+        const customer = await getBillingCustomerSnapshot();
+        setHasNoAdsEntitlement(customer.hasRemoveAds);
+      })
       .catch(() => {
         // Billing should fail quietly until RevenueCat keys and store products are fully configured.
       });
-  }, [playerKey]);
+  }, [playerKey, setHasNoAdsEntitlement]);
 
   return (
     <Stack

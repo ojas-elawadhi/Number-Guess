@@ -5,11 +5,14 @@ import { Alert, Animated, Image, Pressable, ScrollView, StyleSheet, Switch, Text
 import Svg, { Circle, Polygon } from "react-native-svg";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill } from "../components/AppHeader";
+import { AppBannerAd } from "../components/AppBannerAd";
 import { BottomTabs, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { ShopTab, ShopTabHeader } from "../components/ShopTab";
+import { maybeShowInterstitialAd } from "../services/interstitialAd";
 import { playSound, playSoundAlways } from "../services/soundEffects";
+import { useMonetizationStore } from "../store/useMonetizationStore";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { AvatarId } from "../types/progression.types";
@@ -124,6 +127,7 @@ export default function HomeScreen() {
   const toggleSoundPlaceholders = usePlayerProgressStore((state) => state.toggleSoundPlaceholders);
   const updateDisplayName = usePlayerProgressStore((state) => state.updateDisplayName);
   const updateAvatarId = usePlayerProgressStore((state) => state.updateAvatarId);
+  const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
 
   const [activeTab, setActiveTab] = useState<HomeTab>("play");
   const [profileSection, setProfileSection] = useState<ProfileSection>("profile");
@@ -313,6 +317,14 @@ export default function HomeScreen() {
     router.replace({ pathname: "/", params: { tab } });
   };
 
+  const navigateToGameMode = async (path: "/single-player" | "/vs-ai" | "/online" | "/daily-puzzle") => {
+    if (!hasNoAdsEntitlement) {
+      await maybeShowInterstitialAd();
+    }
+
+    router.push(path);
+  };
+
   return (
     <ScreenContainer contentStyle={styles.screen}>
       <Animated.View style={[styles.shell, { opacity: fadeIn }]}>
@@ -409,7 +421,9 @@ export default function HomeScreen() {
                   accent={colors.practice}
                   compact
                   icon="person-outline"
-                  onPress={() => router.push("/single-player")}
+                  onPress={() => {
+                    void navigateToGameMode("/single-player");
+                  }}
                   rightAccessory={
                     <View style={styles.modeBestCard}>
                       <View style={styles.modeBestTop}>
@@ -427,7 +441,9 @@ export default function HomeScreen() {
                   accent={colors.ai}
                   compact
                   icon="hardware-chip-outline"
-                  onPress={() => router.push("/vs-ai")}
+                  onPress={() => {
+                    void navigateToGameMode("/vs-ai");
+                  }}
                   rightAccessory={
                     <View style={styles.modeBestCard}>
                       <View style={styles.modeBestTop}>
@@ -445,14 +461,21 @@ export default function HomeScreen() {
                   accent={colors.online}
                   compact
                   icon="globe-outline"
-                  onPress={() => router.push("/online")}
+                  onPress={() => {
+                    void navigateToGameMode("/online");
+                  }}
                   rightAccessory={<OnlineVsBadge />}
                   subtitle="Ranked Match"
                   title="Online"
                 />
               </View>
 
-              <Pressable onPress={() => router.push("/daily-puzzle")} style={({ pressed }) => [styles.dailyCard, pressed && styles.pressed]}>
+              <Pressable
+                onPress={() => {
+                  void navigateToGameMode("/daily-puzzle");
+                }}
+                style={({ pressed }) => [styles.dailyCard, pressed && styles.pressed]}
+              >
                 <View style={styles.dailyCopy}>
                   <Text style={styles.dailyTitle}>Daily Puzzle</Text>
                 </View>
@@ -1050,7 +1073,9 @@ export default function HomeScreen() {
           ) : null}
         </View>
 
-      {activeTab === "shop" || activeTab === "profile" ? null : (
+        {activeTab === "shop" || activeTab === "profile" ? null : <AppBannerAd style={styles.homeBannerSlot} />}
+
+        {activeTab === "shop" || activeTab === "profile" ? null : (
           <View style={styles.bottomDock}>
             <BottomTabs activeTab={activeTab} onChange={handleTabChange} />
           </View>
@@ -2361,6 +2386,9 @@ const styles = StyleSheet.create({
   bottomDock: {
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs
+  },
+  homeBannerSlot: {
+    marginBottom: spacing.sm
   },
   modalSwitchRow: {
     alignItems: "center",
