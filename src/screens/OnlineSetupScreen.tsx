@@ -22,6 +22,7 @@ export default function OnlineSetupScreen() {
   const setErrorMessage = useOnlineGameStore((state) => state.setErrorMessage);
   const setSession = useOnlineGameStore((state) => state.setSession);
   const displayName = usePlayerProgressStore((state) => state.displayName);
+  const playerName = displayName.trim() || "Player";
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -37,7 +38,7 @@ export default function OnlineSetupScreen() {
       setLoadingAction("join");
       setErrorMessage(null);
 
-      const response = await joinRoom(roomId.trim().toUpperCase(), displayName.trim());
+      const response = await joinRoom(roomId.trim().toUpperCase(), playerName);
       setSession(response.player, response.room);
       playSound("onlineNotify");
       router.push({
@@ -52,8 +53,7 @@ export default function OnlineSetupScreen() {
     }
   };
 
-  const canContinue = isConnected && displayName.trim().length >= 2;
-  const canJoin = canContinue && roomId.trim().length >= 4;
+  const canJoin = roomId.trim().length >= 4;
 
   return (
     <ScreenContainer contentStyle={styles.screen}>
@@ -73,7 +73,7 @@ export default function OnlineSetupScreen() {
 
       <View style={styles.statusRow}>
         <View style={styles.statusPill}>
-          <Text style={styles.statusText}>Playing as {displayName}</Text>
+          <Text style={styles.statusText}>Playing as {playerName}</Text>
         </View>
       </View>
 
@@ -82,10 +82,6 @@ export default function OnlineSetupScreen() {
           accent={colors.online}
           icon="people"
           onPress={() => {
-            if (!canContinue) {
-              return;
-            }
-
             router.push({
               pathname: "/online-difficulty",
               params: { mode: "classic" satisfies RuleMode }
@@ -98,10 +94,6 @@ export default function OnlineSetupScreen() {
           accent={colors.success}
           icon="shield"
           onPress={() => {
-            if (!canContinue) {
-              return;
-            }
-
             router.push({
               pathname: "/online-difficulty",
               params: { mode: "duel" satisfies RuleMode }
@@ -113,7 +105,7 @@ export default function OnlineSetupScreen() {
       </View>
 
       <View style={styles.actionStack}>
-        {!canContinue ? <Text style={styles.infoText}>Connect and keep a valid name to create a room.</Text> : null}
+        {!isConnected ? <Text style={styles.infoText}>We will connect when you create or join a room.</Text> : null}
 
         <View style={styles.joinPanel}>
           <TextField

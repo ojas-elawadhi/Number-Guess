@@ -24,27 +24,21 @@ export default function OnlineDifficultyScreen() {
   const mode = parseMode(params.mode);
   const [loadingDifficulty, setLoadingDifficulty] = useState<Difficulty | null>(null);
 
-  const isConnected = useOnlineGameStore((state) => state.isConnected);
   const errorMessage = useOnlineGameStore((state) => state.errorMessage);
   const setErrorMessage = useOnlineGameStore((state) => state.setErrorMessage);
   const setSession = useOnlineGameStore((state) => state.setSession);
   const displayName = usePlayerProgressStore((state) => state.displayName);
+  const playerName = displayName.trim() || "Player";
 
   const accent = mode === "classic" ? colors.online : colors.success;
   const badgeLabel = mode === "classic" ? "ONLINE CLASSIC" : "ONLINE DUEL";
 
   const handleCreateRoom = async (difficulty: Difficulty) => {
-    if (!isConnected || displayName.trim().length < 2) {
-      playSound("error");
-      setErrorMessage("Connect first and use a valid name.");
-      return;
-    }
-
     try {
       setLoadingDifficulty(difficulty);
       setErrorMessage(null);
 
-      const response = await createRoom(displayName.trim(), mode, difficulty);
+      const response = await createRoom(playerName, mode, difficulty);
       setSession(response.player, response.room, mode);
       playSound("onlineNotify");
       router.push({

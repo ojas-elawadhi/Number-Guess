@@ -30,6 +30,7 @@ export const registerGameSocketHandlers = (
   const revealTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
   const normalizeRoomId = (roomId: string) => roomId.trim().toUpperCase();
+  const normalizePlayerName = (playerName: string) => playerName.trim() || "Player";
 
   const clearRoomTimers = (roomId: string) => {
     const normalizedRoomId = normalizeRoomId(roomId);
@@ -99,7 +100,7 @@ export const registerGameSocketHandlers = (
       try {
         const player = {
           id: socket.id,
-          name: payload.playerName.trim()
+          name: normalizePlayerName(payload.playerName)
         };
         const room = gameService.createRoom(player, payload.mode, payload.difficulty);
 
@@ -115,7 +116,7 @@ export const registerGameSocketHandlers = (
       try {
         const player = {
           id: socket.id,
-          name: payload.playerName.trim()
+          name: normalizePlayerName(payload.playerName)
         };
         const room = gameService.joinRoom(payload.roomId, player);
 

@@ -25,8 +25,6 @@ class GameService {
   private readonly playerRooms = new Map<string, string>();
 
   createRoom(host: Player, mode: OnlineMode, difficulty: Difficulty): PublicRoom {
-    this.validatePlayerName(host.name);
-
     const roomId = this.generateRoomId();
     const difficultyConfig = getDifficultyConfig(difficulty);
     const room: RoomModel = {
@@ -58,8 +56,6 @@ class GameService {
   }
 
   joinRoom(roomId: string, player: Player): PublicRoom {
-    this.validatePlayerName(player.name);
-
     const normalizedRoomId = this.normalizeRoomId(roomId);
     const room = this.requireRoom(normalizedRoomId);
 
@@ -69,10 +65,6 @@ class GameService {
 
     if (room.gameState === "playing") {
       throw new Error("A game is already in progress.");
-    }
-
-    if (room.players.some((currentPlayer) => currentPlayer.name.toLowerCase() === player.name.toLowerCase())) {
-      throw new Error("Choose a different name for this room.");
     }
 
     room.players.push(player);
@@ -463,12 +455,6 @@ class GameService {
 
   private normalizeRoomId(roomId: string) {
     return roomId.trim().toUpperCase();
-  }
-
-  private validatePlayerName(name: string) {
-    if (name.trim().length < 2) {
-      throw new Error("Player name must be at least 2 characters.");
-    }
   }
 
   private validateGuess(guess: number, maxNumber: number) {
