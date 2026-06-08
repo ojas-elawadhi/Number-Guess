@@ -158,7 +158,11 @@ export default function VsAiDuelScreen() {
       .catch(() => {});
   }, [difficulty, history.length, isComplete, recordMatch, winner]);
 
-  const handleBack = () => {
+  const handleBack = async () => {
+    if (!hasNoAdsEntitlement) {
+      await maybeShowPendingInterstitialAd();
+    }
+
     if (router.canGoBack()) {
       router.back();
       return;
@@ -196,7 +200,16 @@ export default function VsAiDuelScreen() {
     startCountdown();
   };
 
-  const handleSubmitGuess = async () => {
+  const completeMatch = (result: Exclude<DuelWinner, null>) => {
+    if (!hasNoAdsEntitlement) {
+      recordInterstitialOpportunity();
+    }
+
+    setWinner(result);
+    playSound(result === "tie" ? "tie" : result === "player" ? "victory" : "defeat");
+  };
+
+  const handleSubmitGuess = () => {
     if (playerSecretNumber === null || aiSecretNumber === null) {
       return;
     }
@@ -222,25 +235,19 @@ export default function VsAiDuelScreen() {
     setErrorMessage(null);
     playSound("guessLock");
     playResultSound(playerResult);
-    if (!hasNoAdsEntitlement) {
-      recordInterstitialOpportunity();
-    }
 
     if (playerResult === "correct" && aiResult === "correct") {
-      setWinner("tie");
-      playSound("tie");
+      completeMatch("tie");
       return;
     }
 
     if (playerResult === "correct") {
-      setWinner("player");
-      playSound("victory");
+      completeMatch("player");
       return;
     }
 
     if (aiResult === "correct") {
-      setWinner("ai");
-      playSound("defeat");
+      completeMatch("ai");
       return;
     }
 
@@ -250,9 +257,6 @@ export default function VsAiDuelScreen() {
       setAiMax(aiGuess - 1);
     }
 
-    if (!hasNoAdsEntitlement) {
-      await maybeShowPendingInterstitialAd();
-    }
     setRoundNumber((currentRound) => currentRound + 1);
   };
 

@@ -27,6 +27,7 @@ interface PracticeGuessEntry {
 }
 
 type PracticeRunState = "playing" | "round-cleared" | "game-over";
+type GameOverView = "revive" | "results";
 
 const keypadRows = [
   ["1", "2", "3"],
@@ -116,6 +117,9 @@ function PracticeGame() {
   const [reviveAction, setReviveAction] = useState<"ad" | "coins" | null>(null);
   const [reviveMessage, setReviveMessage] = useState<string | null>(null);
   const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
+  const [gameOverView, setGameOverView] = useState<GameOverView>("revive");
+  const [runXpEarned, setRunXpEarned] = useState(0);
+  const [runBonusCoinsEarned, setRunBonusCoinsEarned] = useState(0);
   const [coinBonusClaimed, setCoinBonusClaimed] = useState(false);
   const [coinClaimAction, setCoinClaimAction] = useState<"ad" | null>(null);
   const isRoundCleared = runState === "round-cleared";
@@ -300,7 +304,10 @@ function PracticeGame() {
         opponentName: "Practice Board",
         opponentPersona: "Solo training"
       })
-        .then(setMatchSummary)
+        .then((summary) => {
+          setMatchSummary(summary);
+          setRunXpEarned((currentXp) => currentXp + summary.xpEarned);
+        })
         .catch(() => { });
 
       return;
@@ -310,6 +317,7 @@ function PracticeGame() {
       persistHighScoreIfNeeded(roundNumber);
       persistBestScoreIfNeeded(currentScore);
       setLastScoreGain(0);
+      setGameOverView("revive");
       setRunState("game-over");
       playSound("gameOver");
     }
@@ -384,6 +392,7 @@ function PracticeGame() {
     setLastResult(null);
     setLastScoreGain(0);
     setRemainingChances(REVIVE_GUESSES);
+    setGameOverView("revive");
     setRunState("playing");
     setReviveUsedThisRun(true);
     playSound("revive");
@@ -454,6 +463,9 @@ function PracticeGame() {
     setLastScoreGain(0);
     setGuessHistory([]);
     setCurrentScore(0);
+    setGameOverView("revive");
+    setRunXpEarned(0);
+    setRunBonusCoinsEarned(0);
     setRoundNumber(1);
     setRemainingChances(startingChances);
     setRunState("playing");
@@ -469,8 +481,15 @@ function PracticeGame() {
     router.replace("/");
   };
 
+  const handleShowResults = () => {
+    playSound("uiTap");
+    setGameOverView("results");
+  };
+
   const baseCoinsEarned = lastScoreGain * 5;
   const coinsDisplayed = coinBonusClaimed ? baseCoinsEarned * 4 : baseCoinsEarned;
+  const roundsCleared = Math.max(0, roundNumber - 1);
+  const runCoinsEarned = currentScore * 5 + runBonusCoinsEarned;
   const canClaimBonusCoins =
     isRoundCleared &&
     canShowRewardedRevive &&
@@ -493,6 +512,7 @@ function PracticeGame() {
       }
 
       setCoinBonusClaimed(true);
+      setRunBonusCoinsEarned((currentBonus) => currentBonus + baseCoinsEarned * 3);
       playSound("coinReward");
       // Base coins were already granted on the win; top up the remaining 3x to reach 4x total.
       void awardCoins(baseCoinsEarned * 3).catch(() => { });
@@ -812,7 +832,12 @@ function PracticeGame() {
         </View>
       </View>
 
-      <Modal animationType="fade" statusBarTranslucent transparent visible={isGameOver}>
+      <Modal
+        animationType="fade"
+        statusBarTranslucent
+        transparent
+        visible={isGameOver && gameOverView === "revive"}
+      >
         <View style={styles.gameOverOverlay}>
           <View style={styles.gameOverCard}>
             <View style={styles.gameOverIconWrap}>
@@ -876,30 +901,88 @@ function PracticeGame() {
             </View>
           </View>
 
-          <View style={styles.gameOverSecondaryRow}>
+          <Pressable
+            onPress={handleShowResults}
+            style={({ pressed }) => [
+              styles.gameOverNoThanksButton,
+              pressed && styles.guessButtonPressed
+            ]}
+          >
+            <Text style={styles.gameOverNoThanksText}>NO THANKS</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        statusBarTranslucent
+        transparent
+        visible={isGameOver && gameOverView === "results"}
+      >
+        <View style={styles.resultsOverlay}>
+          <View style={styles.resultsCard}>
+            <View style={styles.resultsHeader}>
+              <View style={styles.resultsIcon}>
+                <Ionicons color="#ffffff" name="flag" size={24} />
+              </View>
+              <View style={styles.resultsHeaderCopy}>
+                <Text style={styles.resultsEyebrow}>RUN COMPLETE</Text>
+                <Text style={styles.resultsTitle}>Nice try!</Text>
+              </View>
+            </View>
+
+            <View style={styles.resultsScorePanel}>
+              <Text style={styles.resultsScoreLabel}>FINAL SCORE</Text>
+              <Text adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1} style={styles.resultsScoreValue}>
+                {currentScore.toLocaleString("en-US")}
+              </Text>
+              <Text style={styles.resultsScoreMeta}>
+                {roundsCleared === 1 ? "1 round cleared" : `${roundsCleared} rounds cleared`}
+              </Text>
+            </View>
+
+            <View style={styles.resultsRewardsRow}>
+              <View style={styles.resultsRewardTile}>
+                <CoinIcon size={30} />
+                <View style={styles.resultsRewardCopy}>
+                  <Text style={styles.resultsRewardLabel}>COINS EARNED</Text>
+                  <Text style={styles.resultsRewardValue}>+{runCoinsEarned.toLocaleString("en-US")}</Text>
+                </View>
+              </View>
+
+              <View style={styles.resultsRewardTile}>
+                <View style={styles.resultsXpIcon}>
+                  <Ionicons color="#ffffff" name="sparkles" size={17} />
+                </View>
+                <View style={styles.resultsRewardCopy}>
+                  <Text style={styles.resultsRewardLabel}>XP EARNED</Text>
+                  <Text style={styles.resultsRewardValue}>+{runXpEarned.toLocaleString("en-US")}</Text>
+                </View>
+              </View>
+            </View>
+
             <Pressable
               onPress={handlePlayAgain}
               style={({ pressed }) => [
-                styles.gameOverSecondaryButton,
+                styles.resultsPlayAgainButton,
                 pressed && styles.guessButtonPressed
               ]}
             >
-              <Ionicons color="#ffffff" name="refresh" size={17} />
-              <Text style={styles.gameOverSecondaryText}>RESTART</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={handleExitToHome}
-              style={({ pressed }) => [
-                styles.gameOverSecondaryButton,
-                styles.gameOverHomeButton,
-                pressed && styles.guessButtonPressed
-              ]}
-            >
-              <Ionicons color="#ffffff" name="home" size={17} />
-              <Text style={styles.gameOverSecondaryText}>NO THANKS</Text>
+              <Ionicons color="#ffffff" name="refresh" size={19} />
+              <Text style={styles.resultsPlayAgainText}>PLAY AGAIN</Text>
             </Pressable>
           </View>
+
+          <Pressable
+            accessibilityLabel="Go to home"
+            onPress={handleExitToHome}
+            style={({ pressed }) => [
+              styles.resultsHomeButton,
+              pressed && styles.guessButtonPressed
+            ]}
+          >
+            <Ionicons color="#ffffff" name="home" size={26} />
+          </Pressable>
         </View>
       </Modal>
 
@@ -1409,29 +1492,16 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     textAlign: "center"
   },
-  gameOverSecondaryRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    maxWidth: 420,
-    width: "100%"
-  },
-  gameOverSecondaryButton: {
+  gameOverNoThanksButton: {
     alignItems: "center",
     backgroundColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: radii.pill,
-    flex: 1,
-    flexDirection: "row",
-    gap: 7,
     justifyContent: "center",
-    minHeight: 46,
-    paddingHorizontal: spacing.md
+    minHeight: 44,
+    paddingHorizontal: spacing.xl
   },
-  gameOverHomeButton: {
-    backgroundColor: "rgba(255, 255, 255, 0.18)"
-  },
-  gameOverSecondaryText: {
+  gameOverNoThanksText: {
     color: "#ffffff",
-    flexShrink: 1,
     fontSize: 13,
     fontWeight: "900",
     includeFontPadding: false,
@@ -1439,6 +1509,170 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     textAlign: "center",
     textTransform: "uppercase"
+  },
+  resultsOverlay: {
+    alignItems: "center",
+    backgroundColor: "rgba(16, 18, 24, 0.82)",
+    flex: 1,
+    gap: 14,
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl
+  },
+  resultsCard: {
+    backgroundColor: colors.surface,
+    borderColor: "rgba(31, 196, 109, 0.18)",
+    borderRadius: 26,
+    borderWidth: 1,
+    gap: 14,
+    maxWidth: 420,
+    padding: 18,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.24,
+    shadowRadius: 24,
+    elevation: 14,
+    width: "100%"
+  },
+  resultsHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 11
+  },
+  resultsIcon: {
+    alignItems: "center",
+    backgroundColor: colors.online,
+    borderBottomColor: "#267ebd",
+    borderBottomWidth: 4,
+    borderRadius: 18,
+    height: 48,
+    justifyContent: "center",
+    width: 48
+  },
+  resultsHeaderCopy: {
+    flex: 1,
+    gap: 1
+  },
+  resultsEyebrow: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase"
+  },
+  resultsTitle: {
+    color: colors.text,
+    fontSize: 23,
+    fontWeight: "900",
+    letterSpacing: 0
+  },
+  resultsScorePanel: {
+    alignItems: "center",
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.surfaceMuted,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 2,
+    paddingHorizontal: 16,
+    paddingVertical: 15
+  },
+  resultsScoreLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase"
+  },
+  resultsScoreValue: {
+    color: colors.text,
+    fontSize: 48,
+    fontWeight: "900",
+    includeFontPadding: false,
+    letterSpacing: 0,
+    lineHeight: 54,
+    maxWidth: "100%"
+  },
+  resultsScoreMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  resultsRewardsRow: {
+    flexDirection: "row",
+    gap: 10
+  },
+  resultsRewardTile: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.surfaceMuted,
+    borderRadius: 16,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 68,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 10
+  },
+  resultsXpIcon: {
+    alignItems: "center",
+    backgroundColor: colors.online,
+    borderRadius: 15,
+    height: 30,
+    justifyContent: "center",
+    width: 30
+  },
+  resultsRewardCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0
+  },
+  resultsRewardLabel: {
+    color: colors.textMuted,
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase"
+  },
+  resultsRewardValue: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: "900",
+    includeFontPadding: false,
+    letterSpacing: 0
+  },
+  resultsPlayAgainButton: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderBottomColor: "#025a29",
+    borderBottomWidth: 5,
+    borderRadius: 18,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 54,
+    paddingHorizontal: spacing.lg
+  },
+  resultsPlayAgainText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 0
+  },
+  resultsHomeButton: {
+    alignItems: "center",
+    backgroundColor: colors.online,
+    borderBottomColor: "#267ebd",
+    borderBottomWidth: 5,
+    borderRadius: 28,
+    height: 56,
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    width: 56
   },
   winCard: {
     backgroundColor: "#eafff3",

@@ -245,6 +245,10 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
       typeof profile.coins === "number" && Number.isFinite(profile.coins)
         ? Math.max(0, Math.floor(profile.coins))
         : baseProfile.coins,
+    soundPlaceholdersEnabled:
+      typeof profile.soundPlaceholdersEnabled === "boolean"
+        ? profile.soundPlaceholdersEnabled
+        : baseProfile.soundPlaceholdersEnabled,
     avatarId: normalizeAvatarId(profile.avatarId),
     achievements: Array.isArray(profile.achievements)
       ? [...new Set(profile.achievements as AchievementId[])]

@@ -1,4 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
+import Constants from "expo-constants";
 import { router, useLocalSearchParams, usePathname } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Animated, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions, type ImageSourcePropType } from "react-native";
@@ -9,8 +11,9 @@ import { BottomTabs, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { ShopTab, ShopTabHeader } from "../components/ShopTab";
+import { getBillingCustomerSnapshot, restoreBillingPurchases } from "../services/billing";
 import { playSound, playSoundAlways } from "../services/soundEffects";
-import { useOnlineGameStore } from "../store/useOnlineGameStore";
+import { useMonetizationStore } from "../store/useMonetizationStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { AvatarId } from "../types/progression.types";
 import { DEFAULT_AVATAR_ID, formatDuration, getTodayKey } from "../utils/progression";
@@ -18,6 +21,8 @@ import { colors, radii, shadows, spacing } from "../utils/theme";
 
 type HomeTab = "play" | "stats" | "shop" | "profile" | "settings";
 type ProfileSection = "stats" | "profile";
+
+const billingEnabled = process.env.EXPO_PUBLIC_ENABLE_BILLING === "true";
 
 const isHomeTab = (value: string | undefined): value is HomeTab =>
   value === "play" || value === "stats" || value === "shop" || value === "profile" || value === "settings";
@@ -116,19 +121,22 @@ export default function HomeScreen() {
   const pathname = usePathname();
   const params = useLocalSearchParams<{ tab?: string }>();
   const { height: screenHeight, width: screenWidth } = useWindowDimensions();
-  const isConnected = useOnlineGameStore((state) => state.isConnected);
-  const errorMessage = useOnlineGameStore((state) => state.errorMessage);
   const displayName = usePlayerProgressStore((state) => state.displayName);
   const profile = usePlayerProgressStore((state) => state.profile);
   const leaderboard = usePlayerProgressStore((state) => state.leaderboard);
+  const playerKey = usePlayerProgressStore((state) => state.playerKey);
   const singlePlayerHighScores = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighScores);
   const claimDailyReward = usePlayerProgressStore((state) => state.claimDailyReward);
   const toggleSoundPlaceholders = usePlayerProgressStore((state) => state.toggleSoundPlaceholders);
   const updateDisplayName = usePlayerProgressStore((state) => state.updateDisplayName);
   const updateAvatarId = usePlayerProgressStore((state) => state.updateAvatarId);
+  const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
+  const setHasNoAdsEntitlement = useMonetizationStore((state) => state.setHasNoAdsEntitlement);
   const [activeTab, setActiveTab] = useState<HomeTab>("play");
   const [profileSection, setProfileSection] = useState<ProfileSection>("profile");
   const [isClaimingReward, setIsClaimingReward] = useState(false);
+  const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [savingAvatarId, setSavingAvatarId] = useState<AvatarId | null>(null);
   const [usernameDraft, setUsernameDraft] = useState(displayName);
   const [isSavingUsername, setIsSavingUsername] = useState(false);
@@ -274,6 +282,38 @@ export default function HomeScreen() {
     }
   };
 
+  const handleRestorePurchases = async () => {
+    if (!billingEnabled || isRestoringPurchases) {
+      return;
+    }
+
+    try {
+      setIsRestoringPurchases(true);
+      setSettingsMessage(null);
+      await restoreBillingPurchases();
+      const customer = await getBillingCustomerSnapshot();
+      setHasNoAdsEntitlement(customer.hasRemoveAds);
+      playSound(customer.hasRemoveAds ? "purchaseSuccess" : "uiTap");
+      setSettingsMessage(customer.hasRemoveAds ? "No Ads restored." : "No active purchases found.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not restore purchases right now.";
+      setSettingsMessage(message);
+      playSound("purchaseFail");
+    } finally {
+      setIsRestoringPurchases(false);
+    }
+  };
+
+  const handleCopyPlayerKey = async () => {
+    if (!playerKey) {
+      return;
+    }
+
+    await Clipboard.setStringAsync(playerKey);
+    setSettingsMessage("Player ID copied.");
+    playSound("uiTap");
+  };
+
   const selectedAvatarId = savingAvatarId ?? profile.avatarId ?? DEFAULT_AVATAR_ID;
   const selectedAvatar =
     profileAvatarOptions.find((option) => option.id === selectedAvatarId) ??
@@ -294,6 +334,9 @@ export default function HomeScreen() {
   const profileAvatarOptionSize = Math.max(46, Math.min(52, profileContentWidth * 0.15));
   const profileInnerMargin = isProfileCompact ? 4 : 8;
   const shopHeaderStatusWidth = Math.min(320, Math.max(250, screenWidth - 56));
+  const appVersion = Constants.expoConfig?.version ?? "1.0.0";
+  const appBuildNumber = Constants.expoConfig?.android?.versionCode;
+  const playerKeyPreview = playerKey ? `${playerKey.slice(0, 10)}...${playerKey.slice(-4)}` : "Loading";
 
   const handleTabChange = (tab: HomeTab) => {
     if (tab === "profile") {
@@ -1019,8 +1062,8 @@ export default function HomeScreen() {
           ) : null}
 
           {activeTab === "settings" ? (
-            <View style={styles.tabPane}>
-              <View style={styles.panelCard}>
+            <View style={[styles.tabPane, styles.settingsPane]}>
+              <View style={[styles.panelCard, styles.settingsCard]}>
                 <Text style={styles.panelTitle}>Settings</Text>
                 <View style={styles.settingsActionRow}>
                   <View style={styles.settingsActionCopy}>
@@ -1041,26 +1084,85 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              <View style={styles.panelCard}>
-                <Text style={styles.panelTitle}>Profile Shortcuts</Text>
+              <View style={[styles.panelCard, styles.settingsCard]}>
+                <Text style={styles.panelTitle}>Profile</Text>
                 <View style={styles.settingsActionRow}>
                   <View style={styles.settingsActionCopy}>
-                    <Text style={styles.settingsActionTitle}>Display Name</Text>
-                    <Text style={styles.panelSubtext}>Update how your name appears in matches.</Text>
+                    <Text style={styles.settingsActionTitle}>{displayName}</Text>
+                    <Text style={styles.panelSubtext}>Level {profile.level} profile</Text>
                   </View>
-                  <PrimaryButton label="EDIT" onPress={openProfileEditor} variant="secondary" />
+                  <Pressable
+                    onPress={openProfileEditor}
+                    style={({ pressed }) => [styles.settingsTextButton, pressed && styles.pressed]}
+                  >
+                    <Ionicons color={colors.text} name="create-outline" size={16} />
+                    <Text style={styles.settingsTextButtonLabel}>EDIT</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.settingsDivider} />
+                <View style={styles.settingsActionRow}>
+                  <View style={styles.settingsActionCopy}>
+                    <Text style={styles.settingsActionTitle}>Player ID</Text>
+                    <Text numberOfLines={1} style={styles.panelSubtext}>{playerKeyPreview}</Text>
+                  </View>
+                  <Pressable
+                    disabled={!playerKey}
+                    onPress={() => void handleCopyPlayerKey()}
+                    style={({ pressed }) => [
+                      styles.settingsIconButton,
+                      pressed && playerKey && styles.pressed,
+                      !playerKey && styles.settingsIconButtonDisabled
+                    ]}
+                  >
+                    <Ionicons color="#ffffff" name="copy-outline" size={18} />
+                  </Pressable>
                 </View>
               </View>
 
-              <View style={styles.panelCard}>
-                <Text style={styles.panelTitle}>Connection</Text>
-                <View style={styles.profileStatusRow}>
-                  <StatusPill label={isConnected ? "Server Ready" : "Connecting"} tone={isConnected ? "success" : "neutral"} />
-                  <StatusPill label={profile.soundPlaceholdersEnabled ? "Sound On" : "Sound Off"} tone="neutral" />
+              {billingEnabled ? (
+                <View style={[styles.panelCard, styles.settingsCard]}>
+                  <Text style={styles.panelTitle}>Purchases</Text>
+                  <View style={styles.settingsActionRow}>
+                    <View style={styles.settingsActionCopy}>
+                      <Text style={styles.settingsActionTitle}>No Ads</Text>
+                      <Text style={styles.panelSubtext}>{hasNoAdsEntitlement ? "Active" : "Not active"}</Text>
+                    </View>
+                    <Pressable
+                      disabled={isRestoringPurchases}
+                      onPress={() => void handleRestorePurchases()}
+                      style={({ pressed }) => [
+                        styles.settingsTextButton,
+                        isRestoringPurchases && styles.settingsIconButtonDisabled,
+                        pressed && !isRestoringPurchases && styles.pressed
+                      ]}
+                    >
+                      <Ionicons color={colors.text} name="refresh" size={16} />
+                      <Text adjustsFontSizeToFit minimumFontScale={0.8} numberOfLines={1} style={styles.settingsTextButtonLabel}>
+                        {isRestoringPurchases ? "RESTORING" : "RESTORE"}
+                      </Text>
+                    </Pressable>
+                  </View>
                 </View>
-                <Text style={[styles.panelSubtext, errorMessage && styles.errorText]}>
-                  {errorMessage ?? "Settings are stored locally and sync when the server is available."}
-                </Text>
+              ) : null}
+
+              {settingsMessage ? (
+                <View style={styles.settingsNotice}>
+                  <Ionicons color={colors.accent} name="information-circle" size={16} />
+                  <Text numberOfLines={2} style={styles.settingsMessage}>{settingsMessage}</Text>
+                </View>
+              ) : null}
+
+              <View style={[styles.panelCard, styles.settingsCard, styles.settingsAppCard]}>
+                <Text style={styles.panelTitle}>App</Text>
+                <View style={styles.settingsAppRow}>
+                  <View style={styles.settingsAppIcon}>
+                    <Ionicons color={colors.accent} name="apps" size={17} />
+                  </View>
+                  <Text style={styles.settingsAppName}>Code Guess</Text>
+                  <Text style={styles.settingsAppVersion}>
+                    v{appVersion} | build {appBuildNumber ?? "-"}
+                  </Text>
+                </View>
               </View>
             </View>
           ) : null}
@@ -2364,17 +2466,121 @@ const styles = StyleSheet.create({
   settingsActionRow: {
     alignItems: "center",
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: 10,
     justifyContent: "space-between"
+  },
+  settingsPane: {
+    gap: 10,
+    paddingHorizontal: 2,
+    paddingTop: 2
+  },
+  settingsCard: {
+    borderColor: "rgba(31, 41, 55, 0.05)",
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10
   },
   settingsActionCopy: {
     flex: 1,
-    gap: 4
+    gap: 2,
+    minWidth: 0
   },
   settingsActionTitle: {
     color: colors.text,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "900"
+  },
+  settingsDivider: {
+    backgroundColor: colors.surfaceMuted,
+    height: 1,
+    marginVertical: 4,
+    opacity: 0.8
+  },
+  settingsIconButton: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderBottomColor: "#025a29",
+    borderBottomWidth: 3,
+    borderRadius: radii.pill,
+    height: 40,
+    justifyContent: "center",
+    width: 48
+  },
+  settingsIconButtonDisabled: {
+    opacity: 0.45
+  },
+  settingsTextButton: {
+    alignItems: "center",
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.surfaceMuted,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center",
+    minHeight: 40,
+    minWidth: 94,
+    paddingHorizontal: 13
+  },
+  settingsTextButtonLabel: {
+    color: colors.text,
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: "900",
+    includeFontPadding: false,
+    letterSpacing: 0,
+    lineHeight: 15
+  },
+  settingsNotice: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceCool,
+    borderRadius: 12,
+    flexDirection: "row",
+    gap: 7,
+    minHeight: 36,
+    paddingHorizontal: 12,
+    paddingVertical: 7
+  },
+  settingsMessage: {
+    flex: 1,
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 16
+  },
+  settingsAppCard: {
+    gap: 7
+  },
+  settingsAppRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 9,
+    minHeight: 34
+  },
+  settingsAppIcon: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceCool,
+    borderRadius: 10,
+    height: 32,
+    justifyContent: "center",
+    width: 32
+  },
+  settingsAppName: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "900",
+    minWidth: 0
+  },
+  settingsAppVersion: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "800"
   },
   bottomDock: {
     paddingTop: spacing.sm,

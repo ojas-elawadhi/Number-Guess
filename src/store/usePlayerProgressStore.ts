@@ -84,6 +84,11 @@ interface PlayerProgressStore {
 }
 
 const practiceDifficulties = ["easy", "hard", "impossible"] as const;
+const activePracticeRunSyncVersions: Record<(typeof practiceDifficulties)[number], number> = {
+  easy: 0,
+  hard: 0,
+  impossible: 0
+};
 
 const getSnapshotTimestamp = (snapshot?: ActivePracticeRunSnapshot | null) => {
   if (!snapshot?.updatedAt) {
@@ -465,6 +470,20 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       throw new Error("Your profile is still loading. Try again in a moment.");
     }
 
+    const syncVersion = activePracticeRunSyncVersions[difficulty] + 1;
+    activePracticeRunSyncVersions[difficulty] = syncVersion;
+
+    if (!snapshot) {
+      const activePracticeRuns = { ...get().profile.activePracticeRuns };
+      delete activePracticeRuns[difficulty];
+      set({
+        profile: {
+          ...get().profile,
+          activePracticeRuns
+        }
+      });
+    }
+
     const response = await updateProgressPreferences({
       playerKey: get().playerKey!,
       activePracticeRun: {
@@ -472,7 +491,18 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
         snapshot
       }
     });
+
+    if (activePracticeRunSyncVersions[difficulty] !== syncVersion) {
+      return;
+    }
+
     const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+    if (!snapshot) {
+      const activePracticeRuns = { ...normalizedProfile.activePracticeRuns };
+      delete activePracticeRuns[difficulty];
+      normalizedProfile.activePracticeRuns = activePracticeRuns;
+    }
 
     set({
       displayName: response.displayName,

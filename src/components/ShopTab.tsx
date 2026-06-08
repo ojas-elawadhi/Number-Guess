@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import { useEffect, useState } from "react";
-import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type ImageSourcePropType } from "react-native";
+import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type ImageSourcePropType } from "react-native";
 
 import {
   getBillingCustomerSnapshot,
@@ -17,7 +17,6 @@ import { colors, radii, shadows, spacing } from "../utils/theme";
 import { AppBannerAd } from "./AppBannerAd";
 import { BoosterIcon, type BoosterIconKind } from "./BoosterIcon";
 import { CoinIcon } from "./CoinIcon";
-import { PrimaryButton } from "./PrimaryButton";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 const billingEnabled = process.env.EXPO_PUBLIC_ENABLE_BILLING === "true";
@@ -419,32 +418,130 @@ function CheckoutModal({
       : purchase.currency === "ad"
         ? "CLAIM REWARD"
         : "BUY WITH COINS";
+  const hasMultipleRewards =
+    [purchase.coinsReward, purchase.extraGuessReward, purchase.skipReward, purchase.removesAds].filter(Boolean).length > 1;
+  const checkoutIcon =
+    purchase.removesAds ? (
+      <Ionicons color={colors.accent} name="shield-checkmark" size={24} />
+    ) : hasMultipleRewards ? (
+      <Ionicons color={colors.accent} name="bag-handle" size={24} />
+    ) : purchase.extraGuessReward ? (
+      <BoosterIcon kind="extra-guess" size={36} />
+    ) : purchase.skipReward ? (
+      <BoosterIcon kind="skip" size={36} />
+    ) : purchase.currency === "ad" ? (
+      <Ionicons color={colors.accent} name="play" size={22} />
+    ) : (
+      <CoinIcon size={38} />
+    );
 
   return (
-    <Modal animationType="fade" transparent visible>
+    <Modal animationType="fade" statusBarTranslucent transparent visible>
       <View style={styles.modalBackdrop}>
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Checkout</Text>
-          <View style={styles.checkoutSummary}>
-            <Text style={styles.checkoutName}>{purchase.title}</Text>
-            <CoinPricePill label={purchase.priceLabel} />
-            <Text style={styles.checkoutText}>{purchase.description}</Text>
-            {purchase.coinsReward ? <Text style={styles.checkoutReward}>+{purchase.coinsReward} coins</Text> : null}
-            {purchase.extraGuessReward ? (
-              <Text style={styles.checkoutReward}>+{purchase.extraGuessReward} extra guess boosters</Text>
+        <View style={[styles.modalCard, styles.checkoutModalCard]}>
+          <View style={styles.checkoutHeader}>
+            <View style={styles.checkoutHeaderCopy}>
+              <Text style={styles.checkoutEyebrow}>SECURE CHECKOUT</Text>
+              <Text style={styles.modalTitle}>Confirm purchase</Text>
+            </View>
+            <Pressable
+              accessibilityLabel="Close checkout"
+              disabled={busy}
+              onPress={onCancel}
+              style={({ pressed }) => [
+                styles.checkoutCloseButton,
+                pressed && !busy && styles.pressed,
+                busy && styles.checkoutDisabled
+              ]}
+            >
+              <Ionicons color={colors.textMuted} name="close" size={20} />
+            </Pressable>
+          </View>
+
+          <View style={styles.checkoutProduct}>
+            <View style={styles.checkoutProductIcon}>{checkoutIcon}</View>
+            <View style={styles.checkoutProductCopy}>
+              <Text adjustsFontSizeToFit minimumFontScale={0.8} numberOfLines={1} style={styles.checkoutName}>
+                {purchase.title}
+              </Text>
+              <Text numberOfLines={2} style={styles.checkoutText}>{purchase.description}</Text>
+            </View>
+            <View style={styles.checkoutPriceWrap}>
+              <Text style={styles.checkoutPriceLabel}>TOTAL</Text>
+              <Text adjustsFontSizeToFit minimumFontScale={0.68} numberOfLines={1} style={styles.checkoutPrice}>
+                {purchase.priceLabel}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.checkoutRewards}>
+            <Text style={styles.checkoutRewardsTitle}>YOU RECEIVE</Text>
+            {purchase.coinsReward ? (
+              <View style={styles.checkoutRewardRow}>
+                <CoinIcon size={24} />
+                <Text style={styles.checkoutRewardLabel}>Coins</Text>
+                <Text style={styles.checkoutRewardValue}>+{purchase.coinsReward.toLocaleString("en-US")}</Text>
+              </View>
             ) : null}
-            {purchase.skipReward ? <Text style={styles.checkoutReward}>+{purchase.skipReward} skip boosters</Text> : null}
+            {purchase.extraGuessReward ? (
+              <View style={styles.checkoutRewardRow}>
+                <BoosterIcon kind="extra-guess" size={24} />
+                <Text style={styles.checkoutRewardLabel}>Extra guesses</Text>
+                <Text style={styles.checkoutRewardValue}>+{purchase.extraGuessReward}</Text>
+              </View>
+            ) : null}
+            {purchase.skipReward ? (
+              <View style={styles.checkoutRewardRow}>
+                <BoosterIcon kind="skip" size={24} />
+                <Text style={styles.checkoutRewardLabel}>Skips</Text>
+                <Text style={styles.checkoutRewardValue}>+{purchase.skipReward}</Text>
+              </View>
+            ) : null}
             {purchase.removesAds ? (
-              <Text style={styles.checkoutReward}>Removes ads for this account.</Text>
+              <View style={styles.checkoutRewardRow}>
+                <View style={styles.checkoutRewardIcon}>
+                  <Ionicons color={colors.accent} name="shield-checkmark" size={17} />
+                </View>
+                <Text style={styles.checkoutRewardLabel}>No Ads</Text>
+                <Text style={styles.checkoutRewardValue}>ACTIVE</Text>
+              </View>
             ) : null}
           </View>
-          <PrimaryButton
-            label={actionLabel}
-            loading={busy}
+
+          <Pressable
+            disabled={busy}
             onPress={onConfirm}
-            variant="success"
-          />
-          <PrimaryButton disabled={busy} label="CANCEL" onPress={onCancel} variant="secondary" />
+            style={({ pressed }) => [
+              styles.checkoutConfirmButton,
+              pressed && !busy && styles.pressed,
+              busy && styles.checkoutDisabled
+            ]}
+          >
+            {busy ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <>
+                <Ionicons
+                  color="#ffffff"
+                  name={purchase.currency === "ad" ? "play" : purchase.currency === "coins" ? "wallet" : "lock-closed"}
+                  size={17}
+                />
+                <Text numberOfLines={1} style={styles.checkoutConfirmText}>{actionLabel}</Text>
+              </>
+            )}
+          </Pressable>
+
+          <Pressable
+            disabled={busy}
+            onPress={onCancel}
+            style={({ pressed }) => [
+              styles.checkoutCancelButton,
+              pressed && !busy && styles.pressed,
+              busy && styles.checkoutDisabled
+            ]}
+          >
+            <Text style={styles.checkoutCancelText}>CANCEL</Text>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -1906,7 +2003,7 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     alignItems: "center",
-    backgroundColor: "rgba(22, 23, 31, 0.45)",
+    backgroundColor: "rgba(16, 18, 24, 0.58)",
     flex: 1,
     justifyContent: "center",
     padding: spacing.lg
@@ -1922,8 +2019,180 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     color: colors.text,
-    fontSize: 26,
-    fontWeight: "900"
+    fontSize: 23,
+    fontWeight: "900",
+    letterSpacing: 0
+  },
+  checkoutModalCard: {
+    borderColor: "rgba(31, 41, 55, 0.07)",
+    borderRadius: 26,
+    borderWidth: 1,
+    gap: 14,
+    maxWidth: 390,
+    padding: 18,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.22,
+    shadowRadius: 26
+  },
+  checkoutHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between"
+  },
+  checkoutHeaderCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0
+  },
+  checkoutEyebrow: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase"
+  },
+  checkoutCloseButton: {
+    alignItems: "center",
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.surfaceMuted,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: "center",
+    width: 36
+  },
+  checkoutProduct: {
+    alignItems: "center",
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.surfaceMuted,
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 76,
+    padding: 12
+  },
+  checkoutProductIcon: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceCool,
+    borderRadius: 15,
+    height: 48,
+    justifyContent: "center",
+    overflow: "hidden",
+    width: 48
+  },
+  checkoutProductCopy: {
+    flex: 1,
+    gap: 3,
+    minWidth: 0
+  },
+  checkoutPriceWrap: {
+    alignItems: "flex-end",
+    gap: 2,
+    maxWidth: 94,
+    minWidth: 72
+  },
+  checkoutPriceLabel: {
+    color: colors.textMuted,
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase"
+  },
+  checkoutPrice: {
+    color: colors.accent,
+    fontSize: 16,
+    fontWeight: "900",
+    includeFontPadding: false,
+    letterSpacing: 0,
+    lineHeight: 19,
+    maxWidth: "100%",
+    textAlign: "right"
+  },
+  checkoutRewards: {
+    borderColor: colors.surfaceMuted,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 2,
+    overflow: "hidden",
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  checkoutRewardsTitle: {
+    color: colors.textMuted,
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0,
+    marginBottom: 3,
+    textTransform: "uppercase"
+  },
+  checkoutRewardRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 32
+  },
+  checkoutRewardIcon: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceCool,
+    borderRadius: radii.pill,
+    height: 24,
+    justifyContent: "center",
+    width: 24
+  },
+  checkoutRewardLabel: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  checkoutRewardValue: {
+    color: colors.accent,
+    fontSize: 14,
+    fontWeight: "900",
+    includeFontPadding: false,
+    letterSpacing: 0
+  },
+  checkoutConfirmButton: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderBottomColor: colors.accentDark,
+    borderBottomWidth: 4,
+    borderRadius: 17,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 52,
+    paddingHorizontal: 14,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3
+  },
+  checkoutConfirmText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "900",
+    letterSpacing: 0
+  },
+  checkoutCancelButton: {
+    alignItems: "center",
+    alignSelf: "center",
+    borderRadius: radii.pill,
+    justifyContent: "center",
+    minHeight: 34,
+    paddingHorizontal: spacing.lg
+  },
+  checkoutCancelText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0
+  },
+  checkoutDisabled: {
+    opacity: 0.55
   },
   successModalCard: {
     borderColor: "rgba(0,109,55,0.12)",
@@ -2096,27 +2365,19 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0.9
   },
-  checkoutSummary: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: radii.lg,
-    gap: spacing.xs,
-    padding: spacing.md
-  },
   checkoutName: {
     color: colors.text,
-    fontSize: 21,
-    fontWeight: "900"
+    fontSize: 16,
+    fontWeight: "900",
+    includeFontPadding: false,
+    letterSpacing: 0,
+    lineHeight: 19
   },
   checkoutText: {
     color: colors.textMuted,
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: "700",
-    lineHeight: 20
-  },
-  checkoutReward: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "800"
+    lineHeight: 15
   },
   pressed: {
     opacity: 0.9
