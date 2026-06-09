@@ -76,15 +76,15 @@ const menuMusicSource = require("../../assets/sounds/menu_loop.mp3");
 
 const volumes: Partial<Record<SoundEffect, number>> = {
   achievement: 0.8,
-  countdownGo: 0.5,
-  countdownTick: 0.5,
+  countdownGo: 0.7,
+  countdownTick: 0.7,
   error: 0.7,
-  guessLock: 0.5,
-  higher: 0.5,
-  lower: 0.5,
-  numberKey: 0.58,
-  timerLow: 0.55,
-  uiTap: 0.72
+  guessLock: 0.7,
+  higher: 0.7,
+  lower: 0.7,
+  numberKey: 0.7,
+  timerLow: 0.7,
+  uiTap: 0.75
 };
 
 const players: Partial<Record<SoundEffect, AudioPlayer>> = {};
@@ -130,7 +130,7 @@ const getMenuMusicPlayer = () => {
       updateInterval: 1000
     });
     menuMusicPlayer.loop = true;
-    menuMusicPlayer.volume = 0.25;
+    menuMusicPlayer.volume = 0.2;
   }
 
   return menuMusicPlayer;
