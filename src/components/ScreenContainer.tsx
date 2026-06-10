@@ -48,11 +48,11 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    padding: spacing.md
+    padding: spacing.xxs
   },
   fixedContent: {
     flex: 1,
-    padding: spacing.md
+    padding: spacing.xxs
   },
   inner: {
     flex: 1,

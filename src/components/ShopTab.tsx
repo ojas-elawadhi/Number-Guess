@@ -186,6 +186,18 @@ const coinPackArtSources: Record<CoinPackOffer["art"], ImageSourcePropType> = {
   chest: require("../../assets/shop/coin-pack-chest.png"),
   treasure: require("../../assets/shop/coin-pack-treasure.png")
 };
+const noAdsButtonImage = require("../../assets/ui/no-ads-button.png") as ImageSourcePropType;
+
+function NoAdsIcon({ size }: { size: number }) {
+  return (
+    <Image
+      accessibilityIgnoresInvertColors
+      resizeMode="contain"
+      source={noAdsButtonImage}
+      style={{ height: size, width: size }}
+    />
+  );
+}
 
 function CoinToken({ size = 30, style }: { size?: number; style?: object }) {
   return <CoinIcon size={size} style={style} />;
@@ -328,12 +340,7 @@ function SuccessRewardIcon({ reward }: { reward: PurchaseSuccessReward }) {
     return <BoosterGlyph accent="#6bbdff" icon="play-skip-forward" size={36} />;
   }
 
-  return (
-    <View style={styles.successNoAdsIcon}>
-      <Text style={styles.successNoAdsIconText}>AD</Text>
-      <View style={styles.successNoAdsSlash} />
-    </View>
-  );
+  return <NoAdsIcon size={38} />;
 }
 
 function PurchaseSuccessModal({
@@ -397,6 +404,76 @@ function PurchaseSuccessModal({
   );
 }
 
+function NoAdsCheckoutModal({
+  busy,
+  onCancel,
+  onConfirm,
+  purchase
+}: {
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  purchase: PurchaseDraft;
+}) {
+  return (
+    <Modal animationType="fade" onRequestClose={onCancel} statusBarTranslucent transparent visible>
+      <View style={[styles.modalBackdrop, styles.noAdsModalBackdrop]}>
+        <View style={styles.noAdsPurchaseCardShadow}>
+          <View pointerEvents="none" style={styles.noAdsPurchaseCardDepth} />
+          <View style={styles.noAdsPurchaseCard}>
+            <View pointerEvents="none" style={styles.noAdsPurchaseStripes}>
+              {Array.from({ length: 7 }).map((_, index) => (
+                <View key={`stripe-${index}`} style={[styles.noAdsPurchaseStripe, { left: -40 + index * 70 }]} />
+              ))}
+            </View>
+
+            <Pressable
+              accessibilityLabel="Close No Ads purchase"
+              disabled={busy}
+              onPress={onCancel}
+              style={({ pressed }) => [
+                styles.noAdsPurchaseClose,
+                pressed && !busy && styles.pressed,
+                busy && styles.checkoutDisabled
+              ]}
+            >
+              <Ionicons color="#9a6500" name="close" size={26} />
+            </Pressable>
+
+            <View style={styles.noAdsPurchaseIconStage}>
+              <NoAdsIcon size={176} />
+            </View>
+
+            <Text style={styles.noAdsPurchaseTitle}>REMOVE ADS</Text>
+            <Text style={styles.noAdsPurchaseSubtitle}>PLAY WITHOUT INTERRUPTIONS</Text>
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={onConfirm}
+              style={({ pressed }) => [
+                styles.noAdsPurchaseButton,
+                pressed && !busy && styles.noAdsPurchaseButtonPressed,
+                busy && styles.checkoutDisabled
+              ]}
+            >
+              {busy ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={styles.noAdsPurchasePrice}>
+                  {purchase.priceLabel}
+                </Text>
+              )}
+            </Pressable>
+
+            <Text style={styles.noAdsPurchaseNote}>REMOVES BANNER AND FULL-SCREEN POP-UP ADS</Text>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function CheckoutModal({
   busy,
   onCancel,
@@ -412,6 +489,17 @@ function CheckoutModal({
     return null;
   }
 
+  if (purchase.removesAds) {
+    return (
+      <NoAdsCheckoutModal
+        busy={busy}
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+        purchase={purchase}
+      />
+    );
+  }
+
   const actionLabel =
     purchase.currency === "cash"
       ? "COMPLETE PAYMENT"
@@ -422,7 +510,7 @@ function CheckoutModal({
     [purchase.coinsReward, purchase.extraGuessReward, purchase.skipReward, purchase.removesAds].filter(Boolean).length > 1;
   const checkoutIcon =
     purchase.removesAds ? (
-      <Ionicons color={colors.accent} name="shield-checkmark" size={24} />
+      <NoAdsIcon size={44} />
     ) : hasMultipleRewards ? (
       <Ionicons color={colors.accent} name="bag-handle" size={24} />
     ) : purchase.extraGuessReward ? (
@@ -499,9 +587,7 @@ function CheckoutModal({
             ) : null}
             {purchase.removesAds ? (
               <View style={styles.checkoutRewardRow}>
-                <View style={styles.checkoutRewardIcon}>
-                  <Ionicons color={colors.accent} name="shield-checkmark" size={17} />
-                </View>
+                <NoAdsIcon size={26} />
                 <Text style={styles.checkoutRewardLabel}>No Ads</Text>
                 <Text style={styles.checkoutRewardValue}>ACTIVE</Text>
               </View>
@@ -545,6 +631,102 @@ function CheckoutModal({
         </View>
       </View>
     </Modal>
+  );
+}
+
+interface NoAdsPurchasePromptProps {
+  onClose: () => void;
+  visible: boolean;
+}
+
+export function NoAdsPurchasePrompt({ onClose, visible }: NoAdsPurchasePromptProps) {
+  const setHasNoAdsEntitlement = useMonetizationStore((state) => state.setHasNoAdsEntitlement);
+  const [processingPurchase, setProcessingPurchase] = useState(false);
+  const [priceLabel, setPriceLabel] = useState(noAdsOffer.priceLabel);
+  const [purchaseSuccess, setPurchaseSuccess] = useState<PurchaseSuccess | null>(null);
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadNoAdsPrice = async () => {
+      try {
+        const prices = await getLocalizedBillingPrices([BILLING_PRODUCT_IDS.noAds]);
+
+        if (!cancelled) {
+          setPriceLabel(prices[BILLING_PRODUCT_IDS.noAds] ?? noAdsOffer.priceLabel);
+        }
+      } catch {
+        if (!cancelled) {
+          setPriceLabel(noAdsOffer.priceLabel);
+        }
+      }
+    };
+
+    void loadNoAdsPrice();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
+  const closePrompt = () => {
+    if (processingPurchase) {
+      return;
+    }
+
+    setPurchaseSuccess(null);
+    onClose();
+  };
+
+  const confirmPurchase = async () => {
+    try {
+      setProcessingPurchase(true);
+
+      if (!billingEnabled) {
+        throw new Error("Billing is not enabled in this build yet.");
+      }
+
+      const purchase = await purchaseBillingProduct(BILLING_PRODUCT_IDS.noAds);
+      setHasNoAdsEntitlement(purchase.customer.hasRemoveAds);
+      setPurchaseSuccess(getPurchaseSuccess(noAdsOffer));
+      playSound("purchaseSuccess");
+    } catch (error) {
+      const billingError = error as { userCancelled?: boolean | null };
+
+      if (billingError?.userCancelled) {
+        onClose();
+        return;
+      }
+
+      playSound("purchaseFail");
+      Alert.alert(
+        "Purchase unavailable",
+        error instanceof Error ? error.message : "Please try again."
+      );
+    } finally {
+      setProcessingPurchase(false);
+    }
+  };
+
+  if (purchaseSuccess) {
+    return <PurchaseSuccessModal onClose={closePrompt} success={purchaseSuccess} />;
+  }
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <NoAdsCheckoutModal
+      busy={processingPurchase}
+      onCancel={closePrompt}
+      onConfirm={() => void confirmPurchase()}
+      purchase={{ ...noAdsOffer, priceLabel }}
+    />
   );
 }
 
@@ -731,7 +913,14 @@ export function ShopTab() {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={[styles.shopScrollContent, isMediumPhone && styles.shopScrollContentMedium]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.shopScrollContent,
+          !hasNoAdsEntitlement && styles.shopScrollContentWithBanner,
+          isMediumPhone && styles.shopScrollContentMedium
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         <Pressable
           onPress={() => openPurchase(featuredOffer)}
           style={({ pressed }) => [
@@ -792,9 +981,7 @@ export function ShopTab() {
           onPress={() => openPurchase(noAdsOffer)}
           style={({ pressed }) => [styles.noAdsCard, isCompact && styles.noAdsCardCompact, isMediumPhone && styles.noAdsCardMedium, pressed && styles.pressed]}
         >
-          <View style={[styles.noAdsIcon, isCompact && styles.noAdsIconCompact]}>
-            <Text style={[styles.noAdsIconText, isCompact && styles.noAdsIconTextCompact]}>AD</Text>
-          </View>
+          <NoAdsIcon size={isCompact ? 38 : 42} />
           <Text style={[styles.noAdsTitle, isCompact && styles.noAdsTitleCompact, isMediumPhone && styles.noAdsTitleMedium]}>{noAdsOffer.title}</Text>
           <CoinPricePill
             label={noAdsOfferDisplay.priceLabel}
@@ -958,9 +1145,13 @@ export function ShopTab() {
             ))}
           </View>
         ) : null}
-
-        <AppBannerAd style={styles.adBanner} />
       </ScrollView>
+
+      {hasNoAdsEntitlement ? null : (
+        <View style={styles.adBannerDock}>
+          <AppBannerAd style={styles.adBanner} />
+        </View>
+      )}
 
       <CheckoutModal
         busy={processingPurchase}
@@ -1002,9 +1193,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingTop: 8
   },
+  shopScrollContentWithBanner: {
+    paddingBottom: 92
+  },
   shopScrollContentMedium: {
-    gap: 8,
-    paddingBottom: 12
+    gap: 8
   },
   shopTopActions: {
     alignItems: "center",
@@ -1292,27 +1485,6 @@ const styles = StyleSheet.create({
   },
   noAdsCardMedium: {
     minHeight: 62
-  },
-  noAdsIcon: {
-    alignItems: "center",
-    backgroundColor: colors.ai,
-    borderRadius: 16,
-    height: 32,
-    justifyContent: "center",
-    position: "relative",
-    width: 32
-  },
-  noAdsIconCompact: {
-    height: 30,
-    width: 30
-  },
-  noAdsIconText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "900"
-  },
-  noAdsIconTextCompact: {
-    fontSize: 15
   },
   noAdsTitle: {
     color: colors.text,
@@ -1998,8 +2170,17 @@ const styles = StyleSheet.create({
   },
   adBanner: {
     minHeight: 74,
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.sm
+    width: "100%"
+  },
+  adBannerDock: {
+    alignItems: "center",
+    backgroundColor: colors.background,
+    bottom: 0,
+    left: 0,
+    paddingHorizontal: spacing.xl,
+    position: "absolute",
+    right: 0,
+    zIndex: 5
   },
   modalBackdrop: {
     alignItems: "center",
@@ -2007,6 +2188,155 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     padding: spacing.lg
+  },
+  noAdsModalBackdrop: {
+    backgroundColor: "rgba(16, 18, 24, 0.68)",
+    overflow: "hidden",
+    paddingHorizontal: 18,
+    paddingVertical: 30
+  },
+  noAdsPurchaseCardShadow: {
+    borderRadius: 36,
+    maxWidth: 354,
+    paddingBottom: 11,
+    position: "relative",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.42,
+    shadowRadius: 20,
+    width: "100%",
+    zIndex: 3
+  },
+  noAdsPurchaseCardDepth: {
+    backgroundColor: "#c76b18",
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    bottom: 0,
+    height: 52,
+    left: -1,
+    position: "absolute",
+    right: -1
+  },
+  noAdsPurchaseCard: {
+    alignItems: "center",
+    backgroundColor: "#73c9eb",
+    borderColor: "#ffe077",
+    borderRadius: 36,
+    borderWidth: 10,
+    gap: 8,
+    minHeight: 520,
+    overflow: "hidden",
+    paddingBottom: 22,
+    paddingHorizontal: 20,
+    paddingTop: 46,
+    position: "relative",
+    zIndex: 1
+  },
+  noAdsPurchaseStripes: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.13,
+    overflow: "hidden"
+  },
+  noAdsPurchaseStripe: {
+    backgroundColor: "#ffffff",
+    bottom: -150,
+    position: "absolute",
+    top: -150,
+    transform: [{ rotate: "-32deg" }],
+    width: 28
+  },
+  noAdsPurchaseClose: {
+    alignItems: "center",
+    backgroundColor: "#ffe077",
+    borderBottomColor: "#d48b20",
+    borderBottomWidth: 4,
+    borderRadius: 14,
+    height: 42,
+    justifyContent: "center",
+    position: "absolute",
+    right: 12,
+    top: 12,
+    width: 42,
+    zIndex: 4
+  },
+  noAdsPurchaseIconStage: {
+    alignItems: "center",
+    height: 184,
+    justifyContent: "center",
+    marginTop: -4,
+    width: 184,
+    zIndex: 2
+  },
+  noAdsPurchaseTitle: {
+    color: "#ffe000",
+    fontSize: 38,
+    fontWeight: "900",
+    letterSpacing: -1,
+    lineHeight: 44,
+    marginTop: 3,
+    textAlign: "center",
+    textShadowColor: "#64527e",
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 1,
+    zIndex: 2
+  },
+  noAdsPurchaseSubtitle: {
+    color: "#27637d",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1.1,
+    lineHeight: 15,
+    marginBottom: 14,
+    textAlign: "center",
+    zIndex: 2
+  },
+  noAdsPurchaseButton: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "#54dc18",
+    borderBottomColor: "#279d0d",
+    borderBottomWidth: 8,
+    borderRadius: radii.pill,
+    justifyContent: "center",
+    minHeight: 62,
+    minWidth: 250,
+    paddingHorizontal: spacing.lg,
+    shadowColor: "#216b0d",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    zIndex: 2
+  },
+  noAdsPurchaseButtonPressed: {
+    borderBottomWidth: 3,
+    transform: [{ translateY: 5 }]
+  },
+  noAdsPurchasePrice: {
+    color: "#ffffff",
+    fontSize: 34,
+    fontWeight: "900",
+    includeFontPadding: false,
+    letterSpacing: 0.4,
+    lineHeight: 40,
+    textAlign: "center",
+    textShadowColor: "rgba(0,0,0,0.16)",
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 1
+  },
+  noAdsPurchaseNote: {
+    backgroundColor: "rgba(21, 47, 64, 0.78)",
+    borderRadius: radii.pill,
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+    lineHeight: 14,
+    marginTop: 16,
+    overflow: "hidden",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    textAlign: "center",
+    zIndex: 2
   },
   modalCard: {
     backgroundColor: colors.surface,
@@ -2132,14 +2462,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     minHeight: 32
-  },
-  checkoutRewardIcon: {
-    alignItems: "center",
-    backgroundColor: colors.surfaceCool,
-    borderRadius: radii.pill,
-    height: 24,
-    justifyContent: "center",
-    width: 24
   },
   checkoutRewardLabel: {
     color: colors.text,
@@ -2313,34 +2635,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "900",
     lineHeight: 24
-  },
-  successNoAdsIcon: {
-    alignItems: "center",
-    backgroundColor: colors.ai,
-    borderColor: "rgba(255,255,255,0.70)",
-    borderRadius: 14,
-    borderWidth: 1,
-    height: 34,
-    justifyContent: "center",
-    overflow: "hidden",
-    position: "relative",
-    width: 34
-  },
-  successNoAdsIconText: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "900"
-  },
-  successNoAdsSlash: {
-    backgroundColor: "#ffffff",
-    borderRadius: radii.pill,
-    height: 4,
-    left: 4,
-    opacity: 0.92,
-    position: "absolute",
-    top: 15,
-    transform: [{ rotate: "-38deg" }],
-    width: 28
   },
   successDoneButton: {
     alignItems: "center",

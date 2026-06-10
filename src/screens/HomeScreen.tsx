@@ -4,13 +4,13 @@ import Constants from "expo-constants";
 import { router, useLocalSearchParams, usePathname } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Animated, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions, type ImageSourcePropType } from "react-native";
-import Svg, { Circle, Polygon } from "react-native-svg";
+import Svg, { Circle, Defs, LinearGradient, Polygon, Stop, Text as SvgText } from "react-native-svg";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill } from "../components/AppHeader";
 import { BottomTabs, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
-import { ShopTab, ShopTabHeader } from "../components/ShopTab";
+import { NoAdsPurchasePrompt, ShopTab, ShopTabHeader } from "../components/ShopTab";
 import { getBillingCustomerSnapshot, restoreBillingPurchases } from "../services/billing";
 import { playSound, playSoundAlways } from "../services/soundEffects";
 import { useMonetizationStore } from "../store/useMonetizationStore";
@@ -39,7 +39,7 @@ const titleLetters = [
   { accent: "#5cc78f", letter: "S" }
 ] as const;
 
-const PROFILE_RING_SIZE = 40;
+const PROFILE_RING_SIZE = 44;
 const PROFILE_RING_STROKE = 4;
 const PROFILE_RING_RADIUS = (PROFILE_RING_SIZE - PROFILE_RING_STROKE) / 2;
 const PROFILE_RING_CIRCUMFERENCE = 2 * Math.PI * PROFILE_RING_RADIUS;
@@ -55,8 +55,22 @@ const avatarImageSources = {
   flame: require("../../assets/avatars/flame.png"),
   cafe: require("../../assets/avatars/cafe.png"),
   tennis: require("../../assets/avatars/tennis.png"),
-  bulb: require("../../assets/avatars/bulb.png")
+  bulb: require("../../assets/avatars/bulb.png"),
+  astronaut: require("../../assets/avatars/astronaut.png"),
+  ninja: require("../../assets/avatars/ninja.png"),
+  scientist: require("../../assets/avatars/scientist.png"),
+  knight: require("../../assets/avatars/knight.png"),
+  chef: require("../../assets/avatars/chef.png"),
+  dragon: require("../../assets/avatars/dragon.png"),
+  alien: require("../../assets/avatars/alien.png"),
+  superhero: require("../../assets/avatars/superhero.png"),
+  detective: require("../../assets/avatars/detective.png"),
+  dinosaur: require("../../assets/avatars/dinosaur.png"),
+  unicorn: require("../../assets/avatars/unicorn.png"),
+  panda: require("../../assets/avatars/panda.png"),
+  skater: require("../../assets/avatars/skater.png")
 } as const satisfies Record<AvatarId, ImageSourcePropType>;
+const noAdsButtonImage = require("../../assets/ui/no-ads-button.png") as ImageSourcePropType;
 
 /*
 const legacyProfileAvatarOptions = [
@@ -87,7 +101,20 @@ const profileAvatarOptions = [
   { id: "flame", background: "#ffb0a6", image: avatarImageSources.flame, ring: "#5cc78f" },
   { id: "cafe", background: "#d8c4a8", image: avatarImageSources.cafe, ring: "#f28f67" },
   { id: "tennis", background: "#d8f58a", image: avatarImageSources.tennis, ring: "#5db5f5" },
-  { id: "bulb", background: "#ffe58c", image: avatarImageSources.bulb, ring: "#d979bc" }
+  { id: "bulb", background: "#ffe58c", image: avatarImageSources.bulb, ring: "#d979bc" },
+  { id: "astronaut", background: "#d8ecff", image: avatarImageSources.astronaut, ring: "#ef8a62" },
+  { id: "ninja", background: "#d9c8ff", image: avatarImageSources.ninja, ring: "#51bfa9" },
+  { id: "scientist", background: "#a9e8ff", image: avatarImageSources.scientist, ring: "#f38c77" },
+  { id: "knight", background: "#cbdcff", image: avatarImageSources.knight, ring: "#f4b844" },
+  { id: "chef", background: "#ffe0c5", image: avatarImageSources.chef, ring: "#e56d68" },
+  { id: "dragon", background: "#a9dcff", image: avatarImageSources.dragon, ring: "#f1845f" },
+  { id: "alien", background: "#a8ead4", image: avatarImageSources.alien, ring: "#8e78d7" },
+  { id: "superhero", background: "#ffc3b5", image: avatarImageSources.superhero, ring: "#55b9d1" },
+  { id: "detective", background: "#e4d0b2", image: avatarImageSources.detective, ring: "#4eb8a7" },
+  { id: "dinosaur", background: "#ffe58f", image: avatarImageSources.dinosaur, ring: "#ee765f" },
+  { id: "unicorn", background: "#e2c8ff", image: avatarImageSources.unicorn, ring: "#5bc6c3" },
+  { id: "panda", background: "#ffe09a", image: avatarImageSources.panda, ring: "#579ed6" },
+  { id: "skater", background: "#91e1d5", image: avatarImageSources.skater, ring: "#f37e65" }
 ] as const satisfies ReadonlyArray<{
   id: AvatarId;
   background: string;
@@ -117,6 +144,54 @@ function OnlineVsBadge() {
   );
 }
 
+function HomePlayBackdrop() {
+  return (
+    <View pointerEvents="none" style={styles.homePlayBackdrop}>
+      <Ionicons color="#d9dede" name="game-controller-outline" size={44} style={styles.homeBackdropGamepad} />
+      <Ionicons color="#dfe3e3" name="trophy-outline" size={34} style={styles.homeBackdropTrophy} />
+      <Ionicons color="#d9dede" name="flash-outline" size={31} style={styles.homeBackdropFlash} />
+      <Ionicons color="#dfe3e3" name="star-outline" size={36} style={styles.homeBackdropStar} />
+      <Ionicons color="#d9dede" name="code-slash-outline" size={38} style={styles.homeBackdropCode} />
+      <Ionicons color="#dfe3e3" name="bulb-outline" size={30} style={styles.homeBackdropBulb} />
+      <Ionicons color="#d9dede" name="help-circle-outline" size={42} style={styles.homeBackdropQuestion} />
+      <Ionicons color="#dfe3e3" name="calculator-outline" size={34} style={styles.homeBackdropCalculator} />
+      <Ionicons color="#d9dede" name="locate-outline" size={38} style={styles.homeBackdropTarget} />
+      <View style={styles.homeBackdropHighLow}>
+        <Ionicons color="#d9dede" name="arrow-up" size={22} />
+        <Text style={styles.homeBackdropHighLowText}>?</Text>
+        <Ionicons color="#d9dede" name="arrow-down" size={22} />
+      </View>
+      <View style={[styles.homeBackdropNumberChip, styles.homeBackdropNumberChipOne]}>
+        <Text style={styles.homeBackdropNumberText}>42</Text>
+      </View>
+      <View style={[styles.homeBackdropNumberChip, styles.homeBackdropNumberChipTwo]}>
+        <Text style={styles.homeBackdropNumberText}>7</Text>
+      </View>
+      <View style={[styles.homeBackdropNumberChip, styles.homeBackdropNumberChipThree]}>
+        <Text style={styles.homeBackdropNumberText}>99</Text>
+      </View>
+      <Text style={[styles.homeBackdropCompare, styles.homeBackdropCompareHigh]}>&gt;</Text>
+      <Text style={[styles.homeBackdropCompare, styles.homeBackdropCompareLow]}>&lt;</Text>
+      <Text style={styles.homeBackdropRange}>1 - 100</Text>
+      <View style={[styles.homeBackdropRing, styles.homeBackdropRingTop]} />
+      <View style={[styles.homeBackdropRing, styles.homeBackdropRingBottom]} />
+      <View style={[styles.homeBackdropDiamond, styles.homeBackdropDiamondLeft]} />
+      <View style={[styles.homeBackdropDiamond, styles.homeBackdropDiamondRight]} />
+      <View style={[styles.homeBackdropDot, styles.homeBackdropDotTop]} />
+      <View style={[styles.homeBackdropDot, styles.homeBackdropDotMiddle]} />
+      <View style={[styles.homeBackdropDot, styles.homeBackdropDotBottom]} />
+      <View style={[styles.homeBackdropCross, styles.homeBackdropCrossLeft]}>
+        <View style={styles.homeBackdropCrossVertical} />
+        <View style={styles.homeBackdropCrossHorizontal} />
+      </View>
+      <View style={[styles.homeBackdropCross, styles.homeBackdropCrossRight]}>
+        <View style={styles.homeBackdropCrossVertical} />
+        <View style={styles.homeBackdropCrossHorizontal} />
+      </View>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const pathname = usePathname();
   const params = useLocalSearchParams<{ tab?: string }>();
@@ -142,6 +217,7 @@ export default function HomeScreen() {
   const [isSavingUsername, setIsSavingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [showNoAdsPurchase, setShowNoAdsPurchase] = useState(false);
   const fadeIn = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -314,6 +390,17 @@ export default function HomeScreen() {
     playSound("uiTap");
   };
 
+  const handleOpenNoAdsPurchase = () => {
+    if (hasNoAdsEntitlement) {
+      playSound("uiTap");
+      Alert.alert("No Ads active", "Ads are already removed for this account.");
+      return;
+    }
+
+    playSound("modalOpen");
+    setShowNoAdsPurchase(true);
+  };
+
   const selectedAvatarId = savingAvatarId ?? profile.avatarId ?? DEFAULT_AVATAR_ID;
   const selectedAvatar =
     profileAvatarOptions.find((option) => option.id === selectedAvatarId) ??
@@ -328,10 +415,10 @@ export default function HomeScreen() {
   const profileHeroShellMinHeight = Math.max(214, Math.min(270, screenHeight * 0.34));
   const profileHeroCardMinHeight = Math.max(120, Math.min(148, screenHeight * 0.18));
   const profileHeroCardPaddingTop = Math.max(44, profileHeroAvatarSize * 0.62);
-  const profileHeroLevelBadgeSize = Math.max(40, Math.min(52, screenWidth * 0.125));
+  const profileHeroLevelBadgeSize = Math.max(30, Math.min(38, screenWidth * 0.09));
   const profileHeroNameFontSize = Math.max(18, Math.min(22, profileContentWidth * 0.06));
   const profileHeroProgressPadding = Math.max(10, Math.min(18, profileContentWidth * 0.05));
-  const profileAvatarOptionSize = Math.max(46, Math.min(52, profileContentWidth * 0.15));
+  const profileAvatarOptionSize = Math.max(48, Math.min(68, (profileContentWidth - 16) / 5));
   const profileInnerMargin = isProfileCompact ? 4 : 8;
   const shopHeaderStatusWidth = Math.min(320, Math.max(250, screenWidth - 56));
   const appVersion = Constants.expoConfig?.version ?? "1.0.0";
@@ -370,10 +457,33 @@ export default function HomeScreen() {
               activeTab === "shop" ? undefined : (
                 <View style={styles.homeHeaderCenter}>
                   <Pressable onPress={openProfileEditor} style={({ pressed }) => [styles.profileCrest, pressed && styles.pressed]}>
-                    <View style={styles.levelBurstShadow} />
                     <View style={styles.levelBurst}>
-                      <View style={[styles.levelBurstLayer, styles.levelBurstLayerA]} />
-                      <Text style={styles.levelBurstText}>{profile.level}</Text>
+                      <Svg height="100%" style={styles.levelBurstSvg} viewBox="0 0 100 100" width="100%">
+                        <Defs>
+                          <LinearGradient id="homeLevelStarGradient" x1="0" x2="1" y1="0" y2="1">
+                            <Stop offset="0" stopColor="#8de7ff" />
+                            <Stop offset="0.5" stopColor="#4dbcf4" />
+                            <Stop offset="1" stopColor="#2384d1" />
+                          </LinearGradient>
+                        </Defs>
+                        <Polygon
+                          fill="url(#homeLevelStarGradient)"
+                          points="50,4 61,23 83,17 77,39 96,50 77,61 83,83 61,77 50,96 39,77 17,83 23,61 4,50 23,39 17,17 39,23"
+                          stroke="#287fc2"
+                          strokeLinejoin="round"
+                          strokeWidth={7}
+                        />
+                        <SvgText
+                          fill={colors.surface}
+                          fontSize={36}
+                          fontWeight="700"
+                          textAnchor="middle"
+                          x={50}
+                          y={63}
+                        >
+                          {profile.level}
+                        </SvgText>
+                      </Svg>
                     </View>
 
                     <View style={styles.profileMedallion}>
@@ -417,7 +527,23 @@ export default function HomeScreen() {
               <View style={styles.shopHeaderBackSlot}>
                 <HeaderBackButton onPress={() => router.replace("/")} />
               </View>
-            ) : undefined}
+            ) : (
+              <View style={styles.homeHeaderNoAdsSlot}>
+                <Pressable
+                  accessibilityLabel="Open No Ads offer"
+                  accessibilityRole="button"
+                  onPress={handleOpenNoAdsPurchase}
+                  style={({ pressed }) => [styles.homeHeaderNoAdsButton, pressed && styles.pressed]}
+                >
+                  <Image
+                    accessibilityIgnoresInvertColors
+                    resizeMode="contain"
+                    source={noAdsButtonImage}
+                    style={styles.homeHeaderNoAdsImage}
+                  />
+                </Pressable>
+              </View>
+            )}
             right={activeTab === "shop" ? (
               <View style={[styles.shopHeaderStatusSlot, { width: shopHeaderStatusWidth }]}>
                 <ShopTabHeader />
@@ -430,20 +556,33 @@ export default function HomeScreen() {
           />
         )}
 
+        <NoAdsPurchasePrompt
+          onClose={() => setShowNoAdsPurchase(false)}
+          visible={showNoAdsPurchase}
+        />
+
         <View style={[styles.mainPane, activeTab === "shop" && styles.shopMainPane, activeTab === "profile" && styles.profileMainPane]}>
           {activeTab === "play" ? (
             <View style={[styles.tabPane, styles.playPane]}>
+              <HomePlayBackdrop />
+
               <View style={styles.wordmarkWrap}>
                 <View style={styles.wordmark}>
                   <View style={styles.wordRow}>
-                    {titleLetters.map((item, index) => (
+                    {titleLetters.slice(0, 4).map((item, index) => (
                       <View
                         key={`${item.letter}-${index}`}
-                        style={[
-                          styles.wordBubble,
-                          index === 3 && styles.wordBubbleWordEnd,
-                          { backgroundColor: item.accent }
-                        ]}
+                        style={[styles.wordBubble, { backgroundColor: item.accent }]}
+                      >
+                        <Text style={styles.wordBubbleText}>{item.letter}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={styles.wordRow}>
+                    {titleLetters.slice(4).map((item, index) => (
+                      <View
+                        key={`${item.letter}-${index + 4}`}
+                        style={[styles.wordBubble, { backgroundColor: item.accent }]}
                       >
                         <Text style={styles.wordBubbleText}>{item.letter}</Text>
                       </View>
@@ -470,6 +609,7 @@ export default function HomeScreen() {
                       </View>
                     </View>
                   }
+                  style={styles.homeModeTile}
                   subtitle="Endless Mode"
                   title="Single Player"
                 />
@@ -490,6 +630,7 @@ export default function HomeScreen() {
                       </View>
                     </View>
                   }
+                  style={styles.homeModeTile}
                   subtitle="Battle Mode"
                   title="VS AI"
                 />
@@ -501,6 +642,7 @@ export default function HomeScreen() {
                     void navigateToGameMode("/online");
                   }}
                   rightAccessory={<OnlineVsBadge />}
+                  style={styles.homeModeTile}
                   subtitle="Ranked Match"
                   title="Online"
                 />
@@ -673,16 +815,31 @@ export default function HomeScreen() {
                       ]}
                     >
                       <Svg height="100%" style={styles.profileHeroLevelBurstSvg} viewBox="0 0 100 100" width="100%">
+                        <Defs>
+                          <LinearGradient id="profileLevelStarGradient" x1="0" x2="1" y1="0" y2="1">
+                            <Stop offset="0" stopColor="#8de7ff" />
+                            <Stop offset="0.5" stopColor="#4dbcf4" />
+                            <Stop offset="1" stopColor="#2384d1" />
+                          </LinearGradient>
+                        </Defs>
                         <Polygon
-                          fill={colors.online}
+                          fill="url(#profileLevelStarGradient)"
                           points="50,4 61,23 83,17 77,39 96,50 77,61 83,83 61,77 50,96 39,77 17,83 23,61 4,50 23,39 17,17 39,23"
-                          stroke={colors.surfaceCool}
+                          stroke="#287fc2"
                           strokeLinejoin="round"
                           strokeWidth={7}
                         />
-                        <Circle cx={50} cy={50} fill={colors.online} r={27} stroke={colors.surface} strokeWidth={4} />
+                        <SvgText
+                          fill={colors.surface}
+                          fontSize={23}
+                          fontWeight="600"
+                          textAnchor="middle"
+                          x={50}
+                          y={58}
+                        >
+                          {profile.level}
+                        </SvgText>
                       </Svg>
-                      <Text style={styles.profileHeroLevelBurstText}>{profile.level}</Text>
                     </View>
 
                     <View style={styles.profileHeroProgressTrack}>
@@ -1191,6 +1348,22 @@ const styles = StyleSheet.create({
   homeHeaderRight: {
     justifyContent: "center"
   },
+  homeHeaderNoAdsSlot: {
+    alignItems: "flex-start",
+    justifyContent: "center",
+    transform: [{ translateX: -42 }],
+    width: 52
+  },
+  homeHeaderNoAdsButton: {
+    alignItems: "center",
+    height: 52,
+    justifyContent: "center",
+    width: 52
+  },
+  homeHeaderNoAdsImage: {
+    height: 40,
+    width: 40
+  },
   shopHeaderBackSlot: {
     alignItems: "flex-start",
     justifyContent: "center",
@@ -1206,70 +1379,45 @@ const styles = StyleSheet.create({
   },
   profileCrest: {
     alignItems: "center",
-    height: 56,
+    height: 62,
     justifyContent: "flex-start",
-    width: 60,
+    width: 64,
     zIndex: 3
-  },
-  levelBurstShadow: {
-    backgroundColor: "rgba(24, 79, 124, 0.18)",
-    borderRadius: 10,
-    height: 24,
-    position: "absolute",
-    top: 2,
-    transform: [{ rotate: "14deg" }],
-    width: 24
   },
   levelBurst: {
     alignItems: "center",
-    height: 20,
+    height: 19,
     justifyContent: "center",
     position: "absolute",
-    top: 0,
-    width: 20,
+    top: 2,
+    width: 19,
     zIndex: 4
   },
-  levelBurstLayer: {
-    backgroundColor: "#66d8ff",
-    borderColor: "#287fc2",
-    borderRadius: 6,
-    borderWidth: 2.5,
-    height: 18,
+  levelBurstSvg: {
+    bottom: 0,
+    left: 0,
     position: "absolute",
-    width: 18
-  },
-  levelBurstLayerA: {
-    transform: [{ rotate: "45deg" }]
-  },
-  levelBurstLayerB: {
-    transform: [{ rotate: "0deg" }]
-  },
-  levelBurstText: {
-    color: "#ffffff",
-    fontSize: 9,
-    fontWeight: "900",
-    textShadowColor: "rgba(25, 35, 66, 0.55)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 2
+    right: 0,
+    top: 0
   },
   profileMedallion: {
     alignItems: "center",
-    backgroundColor: "#f7c8ba",
+    backgroundColor: "transparent",
     borderRadius: 999,
-    height: 44,
+    height: 48,
     justifyContent: "center",
-    marginTop: 8,
+    marginTop: 9,
     padding: 4,
-    width: 44
+    width: 48
   },
   profileRingBase: {
     alignItems: "center",
     backgroundColor: "#c96744",
     borderRadius: 999,
-    height: 40,
+    height: PROFILE_RING_SIZE,
     justifyContent: "center",
     position: "absolute",
-    width: 40
+    width: PROFILE_RING_SIZE
   },
   profileRingSvg: {
     position: "absolute"
@@ -1278,18 +1426,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#f7c8ba",
     borderRadius: 999,
-    height: 34,
+    height: 38,
     justifyContent: "center",
-    width: 34
+    width: 38
   },
   profileAvatarCore: {
     alignItems: "center",
     backgroundColor: "#5aa6ff",
     borderRadius: 999,
-    height: 30,
+    height: 34,
     justifyContent: "center",
     overflow: "hidden",
-    width: 30
+    width: 34
   },
   profileAvatarImage: {
     height: "100%",
@@ -1322,32 +1470,33 @@ const styles = StyleSheet.create({
   },
   wordmarkWrap: {
     alignItems: "center",
-    marginBottom: spacing.xs
+    marginBottom: spacing.sm,
+    width: "100%"
   },
   wordmark: {
     alignItems: "center",
-    gap: spacing.xs
+    gap: 6
   },
   wordRow: {
+    alignItems: "center",
     flexDirection: "row",
-    gap: spacing.xxs
+    gap: 7,
+    justifyContent: "center"
   },
   wordBubble: {
     alignItems: "center",
     borderRadius: radii.pill,
-    height: 34,
+    height: 43,
     justifyContent: "center",
-    width: 34,
+    width: 43,
     ...shadows.tactile
-  },
-  wordBubbleWordEnd: {
-    marginRight: spacing.sm
   },
   wordBubbleText: {
     color: "#ffffff",
-    fontSize: 17,
+    fontSize: 22,
     fontWeight: "900",
-    letterSpacing: 0.5
+    letterSpacing: 0.4,
+    lineHeight: 25
   },
   heroCaption: {
     color: colors.textMuted,
@@ -1372,10 +1521,254 @@ const styles = StyleSheet.create({
     gap: spacing.sm
   },
   playPane: {
-    justifyContent: "center"
+    justifyContent: "center",
+    position: "relative"
+  },
+  homePlayBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: "hidden"
+  },
+  homeBackdropGamepad: {
+    left: 18,
+    opacity: 0.62,
+    position: "absolute",
+    top: "10%",
+    transform: [{ rotate: "-16deg" }]
+  },
+  homeBackdropTrophy: {
+    opacity: 0.58,
+    position: "absolute",
+    right: 24,
+    top: "18%",
+    transform: [{ rotate: "13deg" }]
+  },
+  homeBackdropFlash: {
+    left: 34,
+    opacity: 0.55,
+    position: "absolute",
+    top: "43%",
+    transform: [{ rotate: "18deg" }]
+  },
+  homeBackdropStar: {
+    opacity: 0.58,
+    position: "absolute",
+    right: 18,
+    top: "50%",
+    transform: [{ rotate: "-14deg" }]
+  },
+  homeBackdropCode: {
+    bottom: "15%",
+    left: 26,
+    opacity: 0.58,
+    position: "absolute",
+    transform: [{ rotate: "8deg" }]
+  },
+  homeBackdropBulb: {
+    bottom: "8%",
+    opacity: 0.55,
+    position: "absolute",
+    right: 35,
+    transform: [{ rotate: "-12deg" }]
+  },
+  homeBackdropQuestion: {
+    left: "43%",
+    opacity: 0.48,
+    position: "absolute",
+    top: "18%",
+    transform: [{ rotate: "9deg" }]
+  },
+  homeBackdropCalculator: {
+    bottom: "22%",
+    opacity: 0.5,
+    position: "absolute",
+    right: "30%",
+    transform: [{ rotate: "13deg" }]
+  },
+  homeBackdropTarget: {
+    bottom: "6%",
+    left: "47%",
+    opacity: 0.5,
+    position: "absolute",
+    transform: [{ rotate: "-8deg" }]
+  },
+  homeBackdropHighLow: {
+    alignItems: "center",
+    gap: 0,
+    opacity: 0.5,
+    position: "absolute",
+    right: 10,
+    top: "27%",
+    transform: [{ rotate: "8deg" }]
+  },
+  homeBackdropHighLowText: {
+    color: "#d9dede",
+    fontSize: 18,
+    fontWeight: "900",
+    lineHeight: 18
+  },
+  homeBackdropNumberChip: {
+    alignItems: "center",
+    borderColor: "#dce1e1",
+    borderRadius: 11,
+    borderWidth: 3,
+    justifyContent: "center",
+    opacity: 0.54,
+    position: "absolute"
+  },
+  homeBackdropNumberChipOne: {
+    height: 34,
+    left: "23%",
+    top: "15%",
+    transform: [{ rotate: "-11deg" }],
+    width: 42
+  },
+  homeBackdropNumberChipTwo: {
+    bottom: "25%",
+    height: 30,
+    left: "47%",
+    transform: [{ rotate: "8deg" }],
+    width: 30
+  },
+  homeBackdropNumberChipThree: {
+    bottom: "13%",
+    height: 32,
+    right: "21%",
+    transform: [{ rotate: "-7deg" }],
+    width: 40
+  },
+  homeBackdropNumberText: {
+    color: "#d4dada",
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 16
+  },
+  homeBackdropCompare: {
+    color: "#d9dede",
+    fontSize: 38,
+    fontWeight: "900",
+    opacity: 0.52,
+    position: "absolute"
+  },
+  homeBackdropCompareHigh: {
+    left: "5%",
+    top: "23%",
+    transform: [{ rotate: "-8deg" }]
+  },
+  homeBackdropCompareLow: {
+    bottom: "17%",
+    right: "6%",
+    transform: [{ rotate: "12deg" }]
+  },
+  homeBackdropRange: {
+    bottom: "5%",
+    color: "#d6dcdc",
+    fontSize: 13,
+    fontWeight: "900",
+    left: "29%",
+    letterSpacing: 1.2,
+    opacity: 0.52,
+    position: "absolute",
+    transform: [{ rotate: "-4deg" }]
+  },
+  homeBackdropRing: {
+    borderColor: "#dde2e2",
+    borderRadius: radii.pill,
+    borderWidth: 5,
+    opacity: 0.6,
+    position: "absolute"
+  },
+  homeBackdropRingTop: {
+    height: 24,
+    right: "28%",
+    top: "8%",
+    width: 24
+  },
+  homeBackdropRingBottom: {
+    bottom: "20%",
+    height: 19,
+    left: "39%",
+    width: 19
+  },
+  homeBackdropDiamond: {
+    backgroundColor: "#e0e4e4",
+    borderRadius: 4,
+    opacity: 0.68,
+    position: "absolute",
+    transform: [{ rotate: "45deg" }]
+  },
+  homeBackdropDiamondLeft: {
+    height: 16,
+    left: "12%",
+    top: "31%",
+    width: 16
+  },
+  homeBackdropDiamondRight: {
+    bottom: "29%",
+    height: 13,
+    right: "12%",
+    width: 13
+  },
+  homeBackdropDot: {
+    backgroundColor: "#d9dede",
+    borderRadius: radii.pill,
+    opacity: 0.7,
+    position: "absolute"
+  },
+  homeBackdropDotTop: {
+    height: 10,
+    left: "67%",
+    top: "14%",
+    width: 10
+  },
+  homeBackdropDotMiddle: {
+    height: 7,
+    right: "8%",
+    top: "39%",
+    width: 7
+  },
+  homeBackdropDotBottom: {
+    bottom: "10%",
+    height: 9,
+    left: "22%",
+    width: 9
+  },
+  homeBackdropCross: {
+    height: 24,
+    opacity: 0.62,
+    position: "absolute",
+    width: 24
+  },
+  homeBackdropCrossLeft: {
+    bottom: "32%",
+    left: "7%",
+    transform: [{ rotate: "-9deg" }]
+  },
+  homeBackdropCrossRight: {
+    right: "20%",
+    top: "34%",
+    transform: [{ rotate: "16deg" }]
+  },
+  homeBackdropCrossVertical: {
+    backgroundColor: "#dce1e1",
+    borderRadius: radii.pill,
+    bottom: 0,
+    left: 10,
+    position: "absolute",
+    top: 0,
+    width: 4
+  },
+  homeBackdropCrossHorizontal: {
+    backgroundColor: "#dce1e1",
+    borderRadius: radii.pill,
+    height: 4,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 10
   },
   dailyCard: {
     alignItems: "center",
+    alignSelf: "center",
     backgroundColor: "#ffe28c",
     borderBottomColor: "rgba(140, 90, 0, 0.08)",
     borderBottomWidth: 6,
@@ -1383,7 +1776,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     flexDirection: "row",
     gap: spacing.sm,
-    minHeight: 64,
+    maxWidth: 360,
+    minHeight: 76,
     overflow: "hidden",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
@@ -1392,6 +1786,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.2,
     shadowRadius: 10,
+    width: "100%",
     elevation: 7
   },
   dailyCardGhost: {
@@ -1504,7 +1899,14 @@ const styles = StyleSheet.create({
     lineHeight: 28
   },
   modeStack: {
-    gap: spacing.sm
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm
+  },
+  homeModeTile: {
+    maxWidth: 360,
+    minHeight: 76,
+    width: "100%"
   },
   modeBestCard: {
     alignItems: "center",
@@ -1677,7 +2079,7 @@ const styles = StyleSheet.create({
     textAlign: "center"
   },
   profileScroll: {
-    marginHorizontal: -spacing.md
+    marginHorizontal: -spacing.xxs
   },
   profileScrollContent: {
     gap: 0,
@@ -1778,15 +2180,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 0,
     top: 0
-  },
-  profileHeroLevelBurstText: {
-    color: colors.surface,
-    fontSize: 15,
-    fontWeight: "900",
-    lineHeight: 18,
-    textShadowColor: colors.darkSurface,
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1
   },
   profileHeroProgressTrack: {
     backgroundColor: colors.darkSurface,
@@ -2405,19 +2798,18 @@ const styles = StyleSheet.create({
   avatarGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
-    justifyContent: "space-between",
-    marginTop: 2
+    marginTop: 2,
+    rowGap: 8
   },
   avatarGridCompact: {
-    gap: 4
+    rowGap: 6
   },
   avatarOption: {
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 2,
     position: "relative",
-    width: "22%"
+    width: "20%"
   },
   avatarOptionSelected: {
     transform: [{ scale: 1.02 }]

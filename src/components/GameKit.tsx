@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ComponentProps, ReactNode } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { AppHeader, HeaderBackButton } from "./AppHeader";
 import { colors, radii, shadows, spacing } from "../utils/theme";
@@ -136,9 +136,10 @@ interface ModeTileProps {
   compact?: boolean;
   onPress: () => void;
   rightAccessory?: ReactNode;
+  style?: StyleProp<ViewStyle>;
 }
 
-export function ModeTile({ accent, active = false, compact = false, onPress, rightAccessory, subtitle, title }: ModeTileProps) {
+export function ModeTile({ accent, active = false, compact = false, onPress, rightAccessory, style, subtitle, title }: ModeTileProps) {
   const backgroundColor = pastelFor(accent);
   const foregroundColor = darkFor(accent);
   const handlePress = () => {
@@ -159,6 +160,7 @@ export function ModeTile({ accent, active = false, compact = false, onPress, rig
           borderColor: active ? foregroundColor : "transparent",
           borderWidth: active ? 2 : 0
         },
+        style,
         pressed && styles.pressed
       ]}
     >
@@ -558,7 +560,7 @@ const styles = StyleSheet.create({
     zIndex: 1
   },
   modeCopyWithAccessory: {
-    paddingRight: 74
+    paddingRight: 40
   },
   modeAccessoryWrap: {
     alignItems: "center",

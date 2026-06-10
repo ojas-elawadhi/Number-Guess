@@ -12,7 +12,8 @@
     "server:build": "npm --prefix server run build",
     "typecheck": "tsc --noEmit",
     "typecheck:server": "npm --prefix server run typecheck",
-    "dev": "concurrently \"npm run server\" \"npm run start\""
+    "dev": "concurrently \"npm run server\" \"npm run start\"",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@prisma/client": "^7.8.0",
@@ -41,6 +42,7 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "concurrently": "^9.2.1",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   }
 }

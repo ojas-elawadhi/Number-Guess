@@ -15,7 +15,20 @@ export const AVATAR_IDS = [
   "flame",
   "cafe",
   "tennis",
-  "bulb"
+  "bulb",
+  "astronaut",
+  "ninja",
+  "scientist",
+  "knight",
+  "chef",
+  "dragon",
+  "alien",
+  "superhero",
+  "detective",
+  "dinosaur",
+  "unicorn",
+  "panda",
+  "skater"
 ] as const;
 export type AvatarId = (typeof AVATAR_IDS)[number];
 export type AchievementId =

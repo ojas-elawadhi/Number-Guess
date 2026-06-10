@@ -1,0 +1,41 @@
+diff --git a/node_modules/react-native-web/dist/cjs/exports/StyleSheet/compiler/index.js b/node_modules/react-native-web/dist/cjs/exports/StyleSheet/compiler/index.js
+index fbdf038..b20a8c4 100644
+--- a/node_modules/react-native-web/dist/cjs/exports/StyleSheet/compiler/index.js
++++ b/node_modules/react-native-web/dist/cjs/exports/StyleSheet/compiler/index.js
+@@ -437,7 +437,7 @@ function createDeclarationBlock(style) {
+  */
+ function createIdentifier(prefix, name, key) {
+   var hashedString = (0, _hash.default)(name + key);
+-  return process.env.NODE_ENV !== 'production' ? prefix + "-" + name + "-" + hashedString : prefix + "-" + hashedString;
++  return prefix + "-" + name + "-" + hashedString;
+ }
+ 
+ /**
+diff --git a/node_modules/react-native-web/dist/exports/StyleSheet/compiler/index.js b/node_modules/react-native-web/dist/exports/StyleSheet/compiler/index.js
+index b1b01e6..042ebde 100644
+--- a/node_modules/react-native-web/dist/exports/StyleSheet/compiler/index.js
++++ b/node_modules/react-native-web/dist/exports/StyleSheet/compiler/index.js
+@@ -430,7 +430,7 @@ function createDeclarationBlock(style) {
+  */
+ function createIdentifier(prefix, name, key) {
+   var hashedString = hash(name + key);
+-  return process.env.NODE_ENV !== 'production' ? prefix + "-" + name + "-" + hashedString : prefix + "-" + hashedString;
++  return prefix + "-" + name + "-" + hashedString;
+ }
+ 
+ /**
+diff --git a/node_modules/react-native-web/src/exports/StyleSheet/compiler/index.js b/node_modules/react-native-web/src/exports/StyleSheet/compiler/index.js
+index 61f9f5c..b52952b 100644
+--- a/node_modules/react-native-web/src/exports/StyleSheet/compiler/index.js
++++ b/node_modules/react-native-web/src/exports/StyleSheet/compiler/index.js
+@@ -455,9 +455,7 @@ function createDeclarationBlock(style: Style): string {
+  */
+ function createIdentifier(prefix: string, name: string, key: string): string {
+   const hashedString = hash(name + key);
+-  return process.env.NODE_ENV !== 'production'
+-    ? `${prefix}-${name}-${hashedString}`
+-    : `${prefix}-${hashedString}`;
++  return `${prefix}-${name}-${hashedString}`;
+ }
+ 
+ /**

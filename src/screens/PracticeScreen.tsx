@@ -33,7 +33,7 @@ const keypadRows = [
   ["1", "2", "3"],
   ["4", "5", "6"],
   ["7", "8", "9"],
-  ["backspace", "0", "clear"]
+  ["clear", "0", "backspace"]
 ] as const;
 
 const REVIVE_COIN_COST = 1000;
@@ -667,6 +667,7 @@ function PracticeGame() {
 
     return (
       <Pressable
+        accessibilityLabel={key === "backspace" ? "Backspace" : key === "clear" ? "Clear" : `Number ${key}`}
         disabled={disabled}
         key={key}
         onPress={onPress}
@@ -766,12 +767,13 @@ function PracticeGame() {
 
         <View style={styles.actionRow}>
           <Pressable
+            accessibilityLabel="Use extra guess power-up"
             disabled={!canTriggerExtraGuess}
             onPress={() => void handleUseExtraGuessPowerUp()}
             style={({ pressed }) => [
               styles.powerUpButton,
-              pressed && canTriggerExtraGuess && styles.guessButtonPressed,
-              !canTriggerExtraGuess && styles.guessButtonDisabled
+              pressed && canTriggerExtraGuess && styles.actionButtonPressed,
+              !canTriggerExtraGuess && styles.powerUpButtonDisabled
             ]}
           >
             <BoosterIcon kind="extra-guess" size={52} />
@@ -795,8 +797,8 @@ function PracticeGame() {
             onPress={isRoundCleared ? handleNextRound : isGameOver ? handlePlayAgain : handleSubmitGuess}
             style={({ pressed }) => [
               styles.guessButton,
-              pressed && !ctaDisabled && styles.guessButtonPressed,
-              ctaDisabled && styles.guessButtonDisabled
+              pressed && !ctaDisabled && styles.actionButtonPressed,
+              ctaDisabled && styles.actionGuessButtonDisabled
             ]}
           >
             <Text style={styles.guessButtonText}>
@@ -805,13 +807,14 @@ function PracticeGame() {
           </Pressable>
 
           <Pressable
+            accessibilityLabel="Use skip power-up"
             disabled={!canTriggerSkipBooster}
             onPress={() => void handleUseSkipBooster()}
             style={({ pressed }) => [
               styles.powerUpButton,
               styles.skipBoosterButton,
-              pressed && canTriggerSkipBooster && styles.guessButtonPressed,
-              !canTriggerSkipBooster && styles.guessButtonDisabled
+              pressed && canTriggerSkipBooster && styles.actionButtonPressed,
+              !canTriggerSkipBooster && styles.powerUpButtonDisabled
             ]}
           >
             <BoosterIcon kind="skip" size={52} />
@@ -1276,29 +1279,42 @@ const styles = StyleSheet.create({
     gap: spacing.xs
   },
   actionRow: {
+    alignItems: "center",
     flexDirection: "row",
-    gap: spacing.sm
+    gap: 10,
+    marginHorizontal: 6,
+    marginTop: 4
   },
   keypadWrap: {
-    backgroundColor: "#ffffff",
-    borderRadius: 26,
-    gap: spacing.xs,
-    padding: spacing.sm
+    backgroundColor: "transparent",
+    borderColor: "transparent",
+    borderRadius: 18,
+    borderWidth: 0,
+    gap: 6,
+    marginHorizontal: 6,
+    paddingHorizontal: 0,
+    paddingVertical: 0
   },
   keyRow: {
     flexDirection: "row",
-    gap: spacing.sm
+    gap: 6
   },
   keyButton: {
     alignItems: "center",
-    backgroundColor: "#e6e7e8",
-    borderRadius: radii.pill,
+    backgroundColor: "#eef0f1",
+    borderBottomColor: "#d2d7d9",
+    borderBottomWidth: 3,
+    borderColor: "#e0e4e5",
+    borderRadius: 9,
+    borderWidth: 1,
     flex: 1,
-    height: 40,
+    height: 44,
     justifyContent: "center"
   },
   keyButtonPressed: {
-    transform: [{ scale: 0.98 }]
+    backgroundColor: "#e2e6e7",
+    borderBottomWidth: 1,
+    transform: [{ translateY: 2 }]
   },
   keyButtonDisabled: {
     opacity: 0.55
@@ -1306,27 +1322,54 @@ const styles = StyleSheet.create({
   keyText: {
     color: "#2d2f31",
     fontSize: 18,
-    fontWeight: "800"
+    fontWeight: "900"
   },
   guessButton: {
     alignItems: "center",
     backgroundColor: "#047a37",
     borderBottomColor: "#025a29",
     borderBottomWidth: 6,
-    borderRadius: radii.pill,
+    borderColor: "#068f42",
+    borderRadius: 20,
+    borderWidth: 1,
     flex: 1,
-    height: 46,
-    justifyContent: "center"
+    height: 58,
+    justifyContent: "center",
+    shadowColor: "#014e23",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4
   },
   powerUpButton: {
     alignItems: "center",
     backgroundColor: "transparent",
-    borderRadius: 25,
-    height: 50,
+    borderBottomColor: "transparent",
+    borderBottomWidth: 0,
+    borderColor: "transparent",
+    borderRadius: 20,
+    borderWidth: 0,
+    height: 58,
     justifyContent: "center",
     overflow: "visible",
     position: "relative",
-    width: 58
+    width: 64
+  },
+  actionButtonPressed: {
+    borderBottomWidth: 2,
+    transform: [{ translateY: 3 }, { scale: 0.99 }]
+  },
+  actionGuessButtonDisabled: {
+    backgroundColor: "#b9c9bf",
+    borderBottomColor: "#9cadA2",
+    borderColor: "#c7d3cc",
+    shadowOpacity: 0
+  },
+  powerUpButtonDisabled: {
+    backgroundColor: "transparent",
+    borderBottomColor: "transparent",
+    opacity: 0.42,
+    shadowOpacity: 0
   },
   skipBoosterButton: {},
   powerUpCountBadge: {
