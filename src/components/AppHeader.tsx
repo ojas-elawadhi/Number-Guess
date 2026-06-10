@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { getDayFromDateKey, getShortMonthLabel } from "../utils/dailyPuzzle";
+import { useHardwareBackHandler } from "../hooks/useHardwareBackHandler";
 import { colors, radii, shadows, spacing } from "../utils/theme";
 import { playSound } from "../services/soundEffects";
 import { CoinIcon } from "./CoinIcon";
@@ -40,13 +41,23 @@ interface HeaderBackButtonProps {
 }
 
 export function HeaderBackButton({ onPress }: HeaderBackButtonProps) {
+  useHardwareBackHandler(() => {
+    onPress?.();
+  }, Boolean(onPress));
+
   const handlePress = () => {
     playSound("back");
     onPress?.();
   };
 
   return (
-    <Pressable hitSlop={10} onPress={handlePress} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+    <Pressable
+      accessibilityLabel="Back"
+      accessibilityRole="button"
+      hitSlop={10}
+      onPress={handlePress}
+      style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+    >
       <Ionicons color={colors.text} name="arrow-back" size={22} />
     </Pressable>
   );
@@ -163,6 +174,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     height: 40,
     justifyContent: "center",
+    left: spacing.xs,
+    position: "absolute",
     width: 40
   },
   coinPill: {

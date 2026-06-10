@@ -3,9 +3,12 @@ import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AppHeader, HeaderBackButton } from "../components/AppHeader";
 import { ScreenContainer } from "../components/ScreenContainer";
+import { showInterstitialAd } from "../services/interstitialAd";
 import { playResultSound, playSound } from "../services/soundEffects";
-import { makeGuess, setSecretNumber } from "../socket/onlineSocket";
+import { leaveRoom, makeGuess, setSecretNumber } from "../socket/onlineSocket";
+import { useMonetizationStore } from "../store/useMonetizationStore";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { colors, radii, spacing } from "../utils/theme";
 import { DIFFICULTY_CONFIG, getDifficultyRangeLabel } from "../../shared/difficulty";
@@ -26,6 +29,7 @@ export default function OnlineGameScreen() {
   const [showRoundSummary, setShowRoundSummary] = useState(false);
   const [canNavigateToResult, setCanNavigateToResult] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isLeaving, setIsLeaving] = useState(false);
 
   const player = useOnlineGameStore((state) => state.player);
   const room = useOnlineGameStore((state) => state.room);
@@ -35,6 +39,8 @@ export default function OnlineGameScreen() {
   const errorMessage = useOnlineGameStore((state) => state.errorMessage);
   const setErrorMessage = useOnlineGameStore((state) => state.setErrorMessage);
   const setPersonalSecretNumber = useOnlineGameStore((state) => state.setPersonalSecretNumber);
+  const resetAll = useOnlineGameStore((state) => state.resetAll);
+  const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
   const previousOpponentReadyRef = useRef(false);
   const previousRoundStatusRef = useRef<string | null>(null);
   const previousSummaryRoundRef = useRef<number | null>(null);
@@ -62,9 +68,35 @@ export default function OnlineGameScreen() {
     ? Math.max(0, Math.ceil((room.roundEndsAt - currentTime) / 1000))
     : 0;
 
+  const handleLeaveGame = async () => {
+    if (!room || isLeaving) {
+      return;
+    }
+
+    try {
+      setIsLeaving(true);
+      setErrorMessage(null);
+      await leaveRoom(room.roomId);
+
+      if (!hasNoAdsEntitlement) {
+        await showInterstitialAd();
+      }
+    } catch (error) {
+      setIsLeaving(false);
+      playSound("error");
+      setErrorMessage(error instanceof Error ? error.message : "Could not leave.");
+      return;
+    }
+
+    resetAll();
+    router.replace("/online");
+  };
+
   useEffect(() => {
     if (!player || !room) {
-      router.replace("/");
+      if (!isLeaving) {
+        router.replace("/");
+      }
       return;
     }
 
@@ -75,7 +107,7 @@ export default function OnlineGameScreen() {
 
       router.replace("/online-result");
     }
-  }, [canNavigateToResult, player, room]);
+  }, [canNavigateToResult, isLeaving, player, room]);
 
   useEffect(() => {
     if (room?.roundStatus !== "collecting" || !room.roundEndsAt) {
@@ -482,6 +514,8 @@ export default function OnlineGameScreen() {
 
   return (
     <ScreenContainer contentStyle={styles.screen}>
+      <AppHeader left={<HeaderBackButton onPress={handleLeaveGame} />} />
+
       {toastMessage ? <Text style={styles.toastText}>{toastMessage}</Text> : null}
 
       <View style={styles.topRow}>

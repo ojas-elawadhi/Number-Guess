@@ -1,5 +1,7 @@
-import { Stack, usePathname } from "expo-router";
+import { router, Stack, usePathname } from "expo-router";
 import { useEffect } from "react";
+import { BackHandler, Platform } from "react-native";
+import { invokeHardwareBackHandler } from "../src/hooks/useHardwareBackHandler";
 import { useMonetizationStore } from "../src/store/useMonetizationStore";
 import { usePlayerProgressStore } from "../src/store/usePlayerProgressStore";
 import { colors } from "../src/utils/theme";
@@ -25,6 +27,35 @@ export default function RootLayout() {
       // Keep the app usable even if local progression data fails to load.
     });
   }, [hydrateProgress]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") {
+      return;
+    }
+
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (invokeHardwareBackHandler()) {
+        return true;
+      }
+
+      if (pathname === "/") {
+        BackHandler.exitApp();
+        return true;
+      }
+
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/");
+      }
+
+      return true;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [pathname]);
 
   useEffect(() => {
     import("../src/services/mobileAds")

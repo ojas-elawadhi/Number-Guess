@@ -524,9 +524,7 @@ export default function HomeScreen() {
             }
             hideSeparator={activeTab === "shop"}
             left={activeTab === "shop" ? (
-              <View style={styles.shopHeaderBackSlot}>
-                <HeaderBackButton onPress={() => router.replace("/")} />
-              </View>
+              <HeaderBackButton onPress={() => router.replace("/")} />
             ) : (
               <View style={styles.homeHeaderNoAdsSlot}>
                 <Pressable
@@ -1363,11 +1361,6 @@ const styles = StyleSheet.create({
   homeHeaderNoAdsImage: {
     height: 40,
     width: 40
-  },
-  shopHeaderBackSlot: {
-    alignItems: "flex-start",
-    justifyContent: "center",
-    width: 84
   },
   shopHeaderStatusSlot: {
     alignItems: "stretch",

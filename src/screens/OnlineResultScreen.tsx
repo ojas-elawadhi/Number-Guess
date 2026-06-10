@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { AppHeader, HeaderBackButton } from "../components/AppHeader";
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
@@ -133,6 +134,7 @@ export default function OnlineResultScreen() {
   return (
     <ScreenContainer contentStyle={styles.screen}>
       <ConfettiBurst visible={didPlayerWin || isTie} />
+      <AppHeader left={<HeaderBackButton onPress={handleHome} />} />
 
       <View style={styles.header}>
         <Text style={[styles.victory, !didPlayerWin && !isTie && styles.lossText]}>
