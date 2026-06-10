@@ -6,8 +6,10 @@ import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
 import { ScreenContainer } from "../components/ScreenContainer";
 import { TopBar } from "../components/GameKit";
+import { showInterstitialAd } from "../services/interstitialAd";
 import { playSound } from "../services/soundEffects";
 import { leaveRoom, startGame } from "../socket/onlineSocket";
+import { useMonetizationStore } from "../store/useMonetizationStore";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { colors, radii, spacing } from "../utils/theme";
 import { DIFFICULTY_CONFIG } from "../../shared/difficulty";
@@ -24,6 +26,7 @@ export default function OnlineLobbyScreen() {
   const errorMessage = useOnlineGameStore((state) => state.errorMessage);
   const setErrorMessage = useOnlineGameStore((state) => state.setErrorMessage);
   const resetAll = useOnlineGameStore((state) => state.resetAll);
+  const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
 
   const isHost = useMemo(() => {
     if (!player || !room) {
@@ -96,11 +99,19 @@ export default function OnlineLobbyScreen() {
   };
 
   const handleLeaveRoom = async () => {
+    if (isLeaving) {
+      return;
+    }
+
     try {
       playSound("back");
       setIsLeaving(true);
       setErrorMessage(null);
       await leaveRoom(room.roomId);
+
+      if (!hasNoAdsEntitlement) {
+        await showInterstitialAd();
+      }
     } catch (error) {
       setIsLeaving(false);
       playSound("error");
@@ -204,12 +215,12 @@ export default function OnlineLobbyScreen() {
       <View style={styles.actionRow}>
         {isHost ? (
           <Pressable
-            disabled={!canStart || isStarting}
+            disabled={!canStart || isStarting || isLeaving}
             onPress={handleStartGame}
             style={({ pressed }) => [
               styles.primaryAction,
-              (!canStart || isStarting) && styles.actionDisabled,
-              pressed && canStart && !isStarting && styles.pressed
+              (!canStart || isStarting || isLeaving) && styles.actionDisabled,
+              pressed && canStart && !isStarting && !isLeaving && styles.pressed
             ]}
           >
             <Text style={styles.primaryActionText}>{isStarting ? "STARTING..." : "START"}</Text>
@@ -220,9 +231,17 @@ export default function OnlineLobbyScreen() {
           </View>
         )}
 
-        <Pressable onPress={handleLeaveRoom} style={({ pressed }) => [styles.exitAction, pressed && styles.pressed]}>
+        <Pressable
+          disabled={isLeaving}
+          onPress={handleLeaveRoom}
+          style={({ pressed }) => [
+            styles.exitAction,
+            isLeaving && styles.actionDisabled,
+            pressed && !isLeaving && styles.pressed
+          ]}
+        >
           <Ionicons color="#20242b" name="exit-outline" size={24} />
-          <Text style={styles.exitText}>Exit</Text>
+          <Text style={styles.exitText}>{isLeaving ? "Leaving..." : "Exit"}</Text>
         </Pressable>
       </View>
     </ScreenContainer>

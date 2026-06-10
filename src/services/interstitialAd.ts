@@ -5,3 +5,5 @@ export const recordInterstitialOpportunity = () => false;
 export const maybeShowPendingInterstitialAd = async () => false;
 
 export const maybeShowInterstitialAd = async () => false;
+
+export const showInterstitialAd = async () => false;

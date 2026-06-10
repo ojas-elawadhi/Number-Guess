@@ -138,3 +138,9 @@ export const maybeShowInterstitialAd = async () => {
   recordInterstitialOpportunity();
   return maybeShowPendingInterstitialAd();
 };
+
+export const showInterstitialAd = async () => {
+  hasPendingOpportunity = true;
+  await prepareInterstitialAd();
+  return maybeShowPendingInterstitialAd();
+};

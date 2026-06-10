@@ -5,7 +5,10 @@ import { StyleSheet, Text, View } from "react-native";
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
+import { showInterstitialAd } from "../services/interstitialAd";
 import { playSound } from "../services/soundEffects";
+import { leaveRoom } from "../socket/onlineSocket";
+import { useMonetizationStore } from "../store/useMonetizationStore";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { MatchRecord } from "../types/progression.types";
@@ -17,9 +20,14 @@ export default function OnlineResultScreen() {
   const guessHistory = useOnlineGameStore((state) => state.guessHistory);
   const matchStartedAt = useOnlineGameStore((state) => state.matchStartedAt);
   const resetRoundState = useOnlineGameStore((state) => state.resetRoundState);
+  const resetAll = useOnlineGameStore((state) => state.resetAll);
+  const errorMessage = useOnlineGameStore((state) => state.errorMessage);
+  const setErrorMessage = useOnlineGameStore((state) => state.setErrorMessage);
+  const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
   const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
   const recordedMatchRef = useRef(false);
   const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
+  const [isLeaving, setIsLeaving] = useState(false);
 
   const winnerIds = room?.winnerIds ?? [];
   const winners = room?.players.filter((currentPlayer) => winnerIds.includes(currentPlayer.id)) ?? [];
@@ -98,6 +106,30 @@ export default function OnlineResultScreen() {
     router.replace("/online-lobby");
   };
 
+  const handleHome = async () => {
+    if (isLeaving) {
+      return;
+    }
+
+    try {
+      setIsLeaving(true);
+      setErrorMessage(null);
+      await leaveRoom(room.roomId);
+
+      if (!hasNoAdsEntitlement) {
+        await showInterstitialAd();
+      }
+    } catch (error) {
+      setIsLeaving(false);
+      playSound("error");
+      setErrorMessage(error instanceof Error ? error.message : "Could not leave.");
+      return;
+    }
+
+    resetAll();
+    router.replace("/");
+  };
+
   return (
     <ScreenContainer contentStyle={styles.screen}>
       <ConfettiBurst visible={didPlayerWin || isTie} />
@@ -152,8 +184,9 @@ export default function OnlineResultScreen() {
 
       <View style={styles.spacer} />
 
-      <PrimaryButton label="REMATCH" onPress={handleRematch} variant="success" />
-      <PrimaryButton label="HOME" onPress={() => router.replace("/")} variant="secondary" />
+      {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+      <PrimaryButton disabled={isLeaving} label="REMATCH" onPress={handleRematch} variant="success" />
+      <PrimaryButton label="HOME" loading={isLeaving} onPress={handleHome} variant="secondary" />
     </ScreenContainer>
   );
 }
@@ -278,5 +311,11 @@ const styles = StyleSheet.create({
   },
   spacer: {
     flex: 1
+  },
+  error: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center"
   }
 });
