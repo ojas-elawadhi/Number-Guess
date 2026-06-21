@@ -237,6 +237,7 @@ export interface DailyPuzzleGuessPayload {
   guess: number;
   attempts: number;
   durationMs: number;
+  rewardedSkip?: boolean;
 }
 
 export interface ProgressSyncResponse {

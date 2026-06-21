@@ -10,6 +10,7 @@ import {
   type BillingPriceMap
 } from "../services/billing";
 import { BILLING_PRODUCT_IDS, type BillingProductId } from "../services/billingCatalog";
+import { isRewardedReviveSupported, showRewardedReviveAd } from "../services/rewardedReviveAd";
 import { useMonetizationStore } from "../store/useMonetizationStore";
 import { playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
@@ -92,7 +93,7 @@ const coinPackOffers: CoinPackOffer[] = [
     id: "coins-50",
     title: "50",
     amountLabel: "50",
-    description: "Free reward pack.",
+    description: "Watch a rewarded ad to claim.",
     priceLabel: "FREE",
     currency: "ad",
     coinsReward: 50,
@@ -504,7 +505,7 @@ function CheckoutModal({
     purchase.currency === "cash"
       ? "COMPLETE PAYMENT"
       : purchase.currency === "ad"
-        ? "CLAIM REWARD"
+        ? "WATCH AD"
         : "BUY WITH COINS";
   const hasMultipleRewards =
     [purchase.coinsReward, purchase.extraGuessReward, purchase.skipReward, purchase.removesAds].filter(Boolean).length > 1;
@@ -745,6 +746,7 @@ export function ShopTab() {
   const spendCoins = usePlayerProgressStore((state) => state.spendCoins);
   const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
   const setHasNoAdsEntitlement = useMonetizationStore((state) => state.setHasNoAdsEntitlement);
+  const canShowRewardedAds = isRewardedReviveSupported();
 
   const [showBoosters, setShowBoosters] = useState(false);
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft | null>(null);
@@ -795,6 +797,12 @@ export function ShopTab() {
       return;
     }
 
+    if (draft.currency === "ad" && !canShowRewardedAds) {
+      playSound("purchaseFail");
+      Alert.alert("Rewarded ad unavailable", "Rewarded ads are not available in this build yet.");
+      return;
+    }
+
     playSound("modalOpen");
     setPurchaseDraft(withDisplayPrice(draft, localizedPrices));
   };
@@ -833,6 +841,16 @@ export function ShopTab() {
           setPurchaseSuccess(getPurchaseSuccess(purchaseDraft));
           setPurchaseDraft(null);
           playSound("purchaseSuccess");
+          return;
+        }
+      }
+
+      if (purchaseDraft.currency === "ad") {
+        const rewarded = await showRewardedReviveAd();
+
+        if (!rewarded) {
+          playSound("purchaseFail");
+          Alert.alert("Reward unavailable", "Ad was skipped or unavailable. Try again.");
           return;
         }
       }

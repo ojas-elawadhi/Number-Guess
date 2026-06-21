@@ -6,19 +6,25 @@ import {
   TestIds
 } from "react-native-google-mobile-ads";
 
+const REWARDED_LOAD_TIMEOUT_MS = 15000;
+
 const rewardedUnitId =
   __DEV__
     ? TestIds.REWARDED
     : Platform.select({
         android: process.env.EXPO_PUBLIC_ADMOB_REWARDED_REVIVE_UNIT_ID_ANDROID,
         ios: process.env.EXPO_PUBLIC_ADMOB_REWARDED_REVIVE_UNIT_ID_IOS
-      }) ?? TestIds.REWARDED;
+      })?.trim() || null;
 
 let activeRequest: Promise<boolean> | null = null;
 
-export const isRewardedReviveSupported = () => Platform.OS !== "web";
+export const isRewardedReviveSupported = () => Platform.OS !== "web" && Boolean(rewardedUnitId);
 
 export const showRewardedReviveAd = async () => {
+  if (!rewardedUnitId) {
+    return false;
+  }
+
   if (activeRequest) {
     return activeRequest;
   }
@@ -30,6 +36,9 @@ export const showRewardedReviveAd = async () => {
 
     let rewardEarned = false;
     let settled = false;
+    const loadTimeout = setTimeout(() => {
+      resolveOnce(false);
+    }, REWARDED_LOAD_TIMEOUT_MS);
 
     const unsubscribeLoaded = rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
       void rewardedAd.show().catch(() => {
@@ -50,6 +59,7 @@ export const showRewardedReviveAd = async () => {
     });
 
     const cleanup = () => {
+      clearTimeout(loadTimeout);
       unsubscribeLoaded();
       unsubscribeReward();
       unsubscribeClosed();

@@ -72,7 +72,7 @@ class DailyPuzzleService {
       throw new Error(`Guess must be between 1 and ${puzzle.maxNumber}.`);
     }
 
-    if (guess !== puzzle.secretNumber) {
+    if (!payload.rewardedSkip && guess !== puzzle.secretNumber) {
       return {
         playerKey: current.playerKey,
         displayName: current.displayName,
