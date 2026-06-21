@@ -1,6 +1,9 @@
 import type { Difficulty } from "./game.types";
 import {
   AVATAR_IDS,
+  PREMIUM_AVATAR_IDS,
+  PREMIUM_AVATAR_PRICES,
+  PREMIUM_AVATAR_REQUIRED_LEVELS,
   type AvatarId,
   type AchievementDefinition,
   type AchievementId,
@@ -12,12 +15,14 @@ import {
   type MatchRecord,
   type PlayerProfile,
   type PlayerStats,
+  type PremiumAvatarId,
   type ScoreBreakdown
 } from "./progression.types";
 
 export const DEFAULT_AVATAR_ID: AvatarId = "scholar";
 
 const validAvatarIds = new Set<string>(AVATAR_IDS);
+const premiumAvatarIds = new Set<string>(PREMIUM_AVATAR_IDS);
 
 export const validateAvatarId = (value: string): AvatarId => {
   if (validAvatarIds.has(value)) {
@@ -33,6 +38,40 @@ export const normalizeAvatarId = (value?: string | null): AvatarId => {
   }
 
   return DEFAULT_AVATAR_ID;
+};
+
+export const isPremiumAvatarId = (value: string): value is PremiumAvatarId => premiumAvatarIds.has(value);
+
+export const getPremiumAvatarPrice = (avatarId: AvatarId | PremiumAvatarId) => {
+  if (!isPremiumAvatarId(avatarId)) {
+    throw new Error("Choose a premium avatar.");
+  }
+
+  return PREMIUM_AVATAR_PRICES[avatarId];
+};
+
+export const getPremiumAvatarRequiredLevel = (avatarId: AvatarId | PremiumAvatarId) => {
+  if (!isPremiumAvatarId(avatarId)) {
+    throw new Error("Choose a premium avatar.");
+  }
+
+  return PREMIUM_AVATAR_REQUIRED_LEVELS[avatarId];
+};
+
+const normalizePremiumAvatarIds = (values?: AvatarId[] | PremiumAvatarId[] | null): PremiumAvatarId[] => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const normalized = new Set<PremiumAvatarId>();
+
+  values.forEach((value) => {
+    if (isPremiumAvatarId(value)) {
+      normalized.add(value);
+    }
+  });
+
+  return [...normalized];
 };
 
 export const MAX_HISTORY_ITEMS = 20;
@@ -170,6 +209,7 @@ export const createInitialProfile = (updatedAt = new Date().toISOString()): Play
   skipBoosters: 0,
   coins: 0,
   avatarId: DEFAULT_AVATAR_ID,
+  premiumAvatarIds: [],
   achievements: [],
   history: [],
   stats: createInitialStats(),
@@ -227,6 +267,9 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
     return baseProfile;
   }
 
+  const normalizedPremiumAvatarIds = normalizePremiumAvatarIds(profile.premiumAvatarIds);
+  const normalizedAvatarId = normalizeAvatarId(profile.avatarId);
+
   return {
     ...baseProfile,
     ...profile,
@@ -249,7 +292,12 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
       typeof profile.soundPlaceholdersEnabled === "boolean"
         ? profile.soundPlaceholdersEnabled
         : baseProfile.soundPlaceholdersEnabled,
-    avatarId: normalizeAvatarId(profile.avatarId),
+    premiumAvatarIds: normalizedPremiumAvatarIds,
+    avatarId:
+      isPremiumAvatarId(normalizedAvatarId) &&
+      !normalizedPremiumAvatarIds.includes(normalizedAvatarId)
+        ? DEFAULT_AVATAR_ID
+        : normalizedAvatarId,
     achievements: Array.isArray(profile.achievements)
       ? [...new Set(profile.achievements as AchievementId[])]
       : baseProfile.achievements,
@@ -580,11 +628,52 @@ export const applySoundPlaceholdersEnabled = (profile: PlayerProfile, enabled: b
   updatedAt: new Date().toISOString()
 });
 
-export const applyAvatarId = (profile: PlayerProfile, avatarId: string) => ({
-  ...normalizeProfile(profile),
-  avatarId: validateAvatarId(avatarId),
-  updatedAt: new Date().toISOString()
-});
+export const applyAvatarId = (profile: PlayerProfile, avatarId: string) => {
+  const currentProfile = normalizeProfile(profile);
+  const nextAvatarId = validateAvatarId(avatarId);
+
+  if (isPremiumAvatarId(nextAvatarId) && !currentProfile.premiumAvatarIds.includes(nextAvatarId)) {
+    throw new Error("Unlock this premium avatar first.");
+  }
+
+  return {
+    ...currentProfile,
+    avatarId: nextAvatarId,
+    updatedAt: new Date().toISOString()
+  };
+};
+
+export const applyPremiumAvatarPurchase = (profile: PlayerProfile, avatarId: string) => {
+  const currentProfile = normalizeProfile(profile);
+  const nextAvatarId = validateAvatarId(avatarId);
+
+  if (!isPremiumAvatarId(nextAvatarId)) {
+    throw new Error("Choose a premium avatar.");
+  }
+
+  const spendAmount = getPremiumAvatarPrice(nextAvatarId);
+  const requiredLevel = getPremiumAvatarRequiredLevel(nextAvatarId);
+
+  if (currentProfile.premiumAvatarIds.includes(nextAvatarId)) {
+    return applyAvatarId(currentProfile, nextAvatarId);
+  }
+
+  if (currentProfile.level < requiredLevel) {
+    throw new Error(`Reach level ${requiredLevel} to unlock this premium avatar.`);
+  }
+
+  if (currentProfile.coins < spendAmount) {
+    throw new Error("Not enough coins. Play a few more rounds or visit the shop.");
+  }
+
+  return {
+    ...currentProfile,
+    coins: currentProfile.coins - spendAmount,
+    avatarId: nextAvatarId,
+    premiumAvatarIds: [...currentProfile.premiumAvatarIds, nextAvatarId],
+    updatedAt: new Date().toISOString()
+  };
+};
 
 export const applySinglePlayerHighRounds = (
   profile: PlayerProfile,

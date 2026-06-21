@@ -3,7 +3,7 @@ import type { Difficulty, GuessFeedback } from "./game.types";
 export type MatchCategory = "single-player" | "vs-ai" | "online";
 export type MatchMode = "practice" | "classic" | "duel" | "daily";
 export type MatchOutcome = "win" | "loss" | "tie";
-export const AVATAR_IDS = [
+export const DEFAULT_AVATAR_IDS = [
   "scholar",
   "rocket",
   "flash",
@@ -30,7 +30,90 @@ export const AVATAR_IDS = [
   "panda",
   "skater"
 ] as const;
+export const PREMIUM_AVATAR_IDS = [
+  "crystal-crown",
+  "cyber-samurai",
+  "neon-oracle",
+  "cosmic-royal",
+  "solar-monarch",
+  "emerald-hacker",
+  "ruby-rogue",
+  "sapphire-pilot",
+  "golden-tactician",
+  "frost-archer",
+  "plasma-queen",
+  "storm-captain",
+  "obsidian-mage",
+  "aurora-knight",
+  "turbo-racer",
+  "lunar-guardian",
+  "royal-dj",
+  "chrome-detective",
+  "velvet-alchemist",
+  "jade-dragon-rider",
+  "star-chef",
+  "phoenix-striker",
+  "prism-scholar",
+  "cyber-boxer",
+  "galaxy-botanist"
+] as const;
+export const PREMIUM_AVATAR_PRICES = {
+  "crystal-crown": 50,
+  "cyber-samurai": 75,
+  "neon-oracle": 100,
+  "cosmic-royal": 125,
+  "solar-monarch": 150,
+  "emerald-hacker": 200,
+  "ruby-rogue": 300,
+  "sapphire-pilot": 500,
+  "golden-tactician": 750,
+  "frost-archer": 1000,
+  "plasma-queen": 1250,
+  "storm-captain": 1500,
+  "obsidian-mage": 1750,
+  "aurora-knight": 2000,
+  "turbo-racer": 2500,
+  "lunar-guardian": 3000,
+  "royal-dj": 3500,
+  "chrome-detective": 4000,
+  "velvet-alchemist": 5000,
+  "jade-dragon-rider": 7500,
+  "star-chef": 10000,
+  "phoenix-striker": 10000,
+  "prism-scholar": 10000,
+  "cyber-boxer": 10000,
+  "galaxy-botanist": 10000
+} as const satisfies Record<(typeof PREMIUM_AVATAR_IDS)[number], number>;
+export const PREMIUM_AVATAR_REQUIRED_LEVELS = {
+  "crystal-crown": 1,
+  "cyber-samurai": 2,
+  "neon-oracle": 3,
+  "cosmic-royal": 4,
+  "solar-monarch": 5,
+  "emerald-hacker": 6,
+  "ruby-rogue": 7,
+  "sapphire-pilot": 8,
+  "golden-tactician": 9,
+  "frost-archer": 10,
+  "plasma-queen": 11,
+  "storm-captain": 12,
+  "obsidian-mage": 13,
+  "aurora-knight": 14,
+  "turbo-racer": 15,
+  "lunar-guardian": 16,
+  "royal-dj": 17,
+  "chrome-detective": 18,
+  "velvet-alchemist": 19,
+  "jade-dragon-rider": 20,
+  "star-chef": 21,
+  "phoenix-striker": 22,
+  "prism-scholar": 23,
+  "cyber-boxer": 24,
+  "galaxy-botanist": 25
+} as const satisfies Record<(typeof PREMIUM_AVATAR_IDS)[number], number>;
+export const AVATAR_IDS = [...DEFAULT_AVATAR_IDS, ...PREMIUM_AVATAR_IDS] as const;
 export type AvatarId = (typeof AVATAR_IDS)[number];
+export type PremiumAvatarId = (typeof PREMIUM_AVATAR_IDS)[number];
 export type AchievementId =
   | "first-win"
   | "streak-3"
@@ -160,6 +243,7 @@ export interface PlayerProfile {
   skipBoosters: number;
   coins: number;
   avatarId: AvatarId;
+  premiumAvatarIds: PremiumAvatarId[];
   achievements: AchievementId[];
   history: MatchRecord[];
   stats: PlayerStats;
@@ -206,6 +290,7 @@ export interface ProgressPreferencesPayload {
   skipBoostersDelta?: number;
   coinsDelta?: number;
   avatarId?: AvatarId;
+  premiumAvatarId?: AvatarId;
   activePracticeRun?: {
     difficulty: Difficulty;
     snapshot: ActivePracticeRunSnapshot | null;

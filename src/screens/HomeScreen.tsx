@@ -3,15 +3,21 @@ import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
 import { router, useLocalSearchParams, usePathname } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Animated, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions, type ImageSourcePropType } from "react-native";
+import { Alert, Animated, Image, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions, type ImageSourcePropType } from "react-native";
 import Svg, { Circle, Defs, LinearGradient, Polygon, Stop, Text as SvgText } from "react-native-svg";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderRewardAdButton } from "../components/AppHeader";
+import { CoinIcon } from "../components/CoinIcon";
 import { BottomTabs, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { NoAdsPurchasePrompt, ShopTab, ShopTabHeader } from "../components/ShopTab";
-import { profileAvatarImageUrls, profileAvatarOptions } from "../config/avatarCatalog";
+import {
+  defaultProfileAvatarOptions,
+  premiumProfileAvatarOptions,
+  profileAvatarImageUrls,
+  profileAvatarOptions
+} from "../config/avatarCatalog";
 import { getBillingCustomerSnapshot, restoreBillingPurchases } from "../services/billing";
 import { isRewardedReviveSupported, showRewardedReviveAd } from "../services/rewardedReviveAd";
 import { playSound, playSoundAlways } from "../services/soundEffects";
@@ -23,6 +29,8 @@ import { colors, radii, shadows, spacing } from "../utils/theme";
 
 type HomeTab = "play" | "stats" | "shop" | "profile" | "settings";
 type ProfileSection = "stats" | "profile";
+type ProfileAvatarTab = "default" | "premium";
+type PremiumProfileAvatarOption = (typeof premiumProfileAvatarOptions)[number];
 
 const billingEnabled = process.env.EXPO_PUBLIC_ENABLE_BILLING === "true";
 const HEADER_REWARDED_COIN_AMOUNT = 50;
@@ -132,15 +140,18 @@ export default function HomeScreen() {
   const toggleSoundPlaceholders = usePlayerProgressStore((state) => state.toggleSoundPlaceholders);
   const updateDisplayName = usePlayerProgressStore((state) => state.updateDisplayName);
   const updateAvatarId = usePlayerProgressStore((state) => state.updateAvatarId);
+  const purchasePremiumAvatar = usePlayerProgressStore((state) => state.purchasePremiumAvatar);
   const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
   const setHasNoAdsEntitlement = useMonetizationStore((state) => state.setHasNoAdsEntitlement);
   const [activeTab, setActiveTab] = useState<HomeTab>("play");
   const [profileSection, setProfileSection] = useState<ProfileSection>("profile");
+  const [avatarPickerTab, setAvatarPickerTab] = useState<ProfileAvatarTab>("default");
   const [isClaimingReward, setIsClaimingReward] = useState(false);
   const [isClaimingHeaderAdReward, setIsClaimingHeaderAdReward] = useState(false);
   const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [savingAvatarId, setSavingAvatarId] = useState<AvatarId | null>(null);
+  const [premiumAvatarPurchaseDraft, setPremiumAvatarPurchaseDraft] = useState<PremiumProfileAvatarOption | null>(null);
   const [usernameDraft, setUsernameDraft] = useState(displayName);
   const [isSavingUsername, setIsSavingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState<string | null>(null);
@@ -322,6 +333,91 @@ export default function HomeScreen() {
     }
   };
 
+  const handleUnlockPremiumAvatar = async (option: PremiumProfileAvatarOption) => {
+    if (savingAvatarId) {
+      return;
+    }
+
+    if (profile.level < option.requiredLevel) {
+      const message = `Reach level ${option.requiredLevel} to unlock ${option.label}.`;
+
+      setAvatarError(message);
+      setPremiumAvatarPurchaseDraft(null);
+      playSound("purchaseFail");
+      Alert.alert("Level locked", message);
+      return;
+    }
+
+    if (profile.coins < option.price) {
+      const shortfall = option.price - profile.coins;
+      const message = `Not enough coins for ${option.label}. You need ${shortfall.toLocaleString("en-US")} more.`;
+
+      setAvatarError(message);
+      setPremiumAvatarPurchaseDraft(null);
+      playSound("purchaseFail");
+      Alert.alert(
+        "Not enough coins",
+        message
+      );
+      return;
+    }
+
+    try {
+      setAvatarError(null);
+      setSavingAvatarId(option.id);
+      await purchasePremiumAvatar(option.id);
+      setPremiumAvatarPurchaseDraft(null);
+      playSound("purchaseSuccess");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Try again.";
+      setAvatarError(message);
+      setPremiumAvatarPurchaseDraft(null);
+      playSound("purchaseFail");
+      Alert.alert("Avatar not unlocked", message);
+    } finally {
+      setSavingAvatarId(null);
+    }
+  };
+
+  const handlePressPremiumAvatar = async (option: PremiumProfileAvatarOption) => {
+    const isOwned = profile.premiumAvatarIds.includes(option.id);
+
+    if (isOwned) {
+      await handleSelectAvatar(option.id);
+      return;
+    }
+
+    if (savingAvatarId) {
+      return;
+    }
+
+    if (profile.level < option.requiredLevel) {
+      const message = `Reach level ${option.requiredLevel} to unlock ${option.label}.`;
+
+      setAvatarError(message);
+      playSound("purchaseFail");
+      Alert.alert("Level locked", message);
+      return;
+    }
+
+    if (profile.coins < option.price) {
+      const shortfall = option.price - profile.coins;
+      const message = `Not enough coins for ${option.label}. You need ${shortfall.toLocaleString("en-US")} more.`;
+
+      setAvatarError(message);
+      playSound("purchaseFail");
+      Alert.alert(
+        "Not enough coins",
+        message
+      );
+      return;
+    }
+
+    setAvatarError(null);
+    setPremiumAvatarPurchaseDraft(option);
+    playSound("modalOpen");
+  };
+
   const handleRestorePurchases = async () => {
     if (!billingEnabled || isRestoringPurchases) {
       return;
@@ -370,6 +466,11 @@ export default function HomeScreen() {
     profileAvatarOptions.find((option) => option.id === selectedAvatarId) ??
     profileAvatarOptions.find((option) => option.id === DEFAULT_AVATAR_ID) ??
     profileAvatarOptions[0];
+  const activeAvatarOptions =
+    avatarPickerTab === "premium" ? premiumProfileAvatarOptions : defaultProfileAvatarOptions;
+  const premiumAvatarPurchaseBalanceAfter = premiumAvatarPurchaseDraft
+    ? profile.coins - premiumAvatarPurchaseDraft.price
+    : 0;
 
   useEffect(() => {
     void Image.prefetch(selectedAvatar.imageUrl);
@@ -542,6 +643,97 @@ export default function HomeScreen() {
           onClose={() => setShowNoAdsPurchase(false)}
           visible={showNoAdsPurchase}
         />
+
+        <Modal
+          animationType="fade"
+          onRequestClose={() => {
+            if (!savingAvatarId) {
+              setPremiumAvatarPurchaseDraft(null);
+            }
+          }}
+          statusBarTranslucent
+          transparent
+          visible={premiumAvatarPurchaseDraft !== null}
+        >
+          <View style={styles.avatarConfirmBackdrop}>
+            {premiumAvatarPurchaseDraft ? (
+              <View style={styles.avatarConfirmCard}>
+                <View style={styles.avatarConfirmHeader}>
+                  <View
+                    style={[
+                      styles.avatarConfirmPreview,
+                      {
+                        backgroundColor: premiumAvatarPurchaseDraft.background,
+                        borderColor: premiumAvatarPurchaseDraft.ring
+                      }
+                    ]}
+                  >
+                    <Image
+                      accessibilityIgnoresInvertColors
+                      resizeMode="cover"
+                      source={{ cache: "force-cache", uri: premiumAvatarPurchaseDraft.imageUrl }}
+                      style={styles.avatarConfirmImage}
+                    />
+                  </View>
+                  <View style={styles.avatarConfirmCopy}>
+                    <Text style={styles.avatarConfirmEyebrow}>Premium Avatar</Text>
+                    <Text numberOfLines={1} style={styles.avatarConfirmTitle}>{premiumAvatarPurchaseDraft.label}</Text>
+                    <Text style={styles.avatarConfirmText}>Unlock this avatar with coins?</Text>
+                  </View>
+                </View>
+
+                <View style={styles.avatarConfirmCostPanel}>
+                  <View style={styles.avatarConfirmCostRow}>
+                    <Text style={styles.avatarConfirmCostLabel}>Cost</Text>
+                    <View style={styles.avatarConfirmCoinValue}>
+                      <CoinIcon size={18} />
+                      <Text style={styles.avatarConfirmCostValue}>
+                        {premiumAvatarPurchaseDraft.price.toLocaleString("en-US")}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.avatarConfirmCostRow}>
+                    <Text style={styles.avatarConfirmCostLabel}>After purchase</Text>
+                    <Text style={styles.avatarConfirmBalanceValue}>
+                      {Math.max(0, premiumAvatarPurchaseBalanceAfter).toLocaleString("en-US")} coins
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.avatarConfirmActions}>
+                  <Pressable
+                    disabled={savingAvatarId !== null}
+                    onPress={() => {
+                      setPremiumAvatarPurchaseDraft(null);
+                      playSound("uiTap");
+                    }}
+                    style={({ pressed }) => [
+                      styles.avatarConfirmCancelButton,
+                      savingAvatarId !== null && styles.avatarConfirmButtonDisabled,
+                      pressed && savingAvatarId === null && styles.pressed
+                    ]}
+                  >
+                    <Text style={styles.avatarConfirmCancelText}>CANCEL</Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={savingAvatarId !== null}
+                    onPress={() => void handleUnlockPremiumAvatar(premiumAvatarPurchaseDraft)}
+                    style={({ pressed }) => [
+                      styles.avatarConfirmUnlockButton,
+                      savingAvatarId !== null && styles.avatarConfirmButtonDisabled,
+                      pressed && savingAvatarId === null && styles.pressed
+                    ]}
+                  >
+                    <Ionicons color="#ffffff" name="lock-open" size={15} />
+                    <Text style={styles.avatarConfirmUnlockText}>
+                      {savingAvatarId === premiumAvatarPurchaseDraft.id ? "UNLOCKING" : "UNLOCK"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        </Modal>
 
         <View style={[styles.mainPane, activeTab === "shop" && styles.shopMainPane, activeTab === "profile" && styles.profileMainPane]}>
           {activeTab === "play" ? (
@@ -1146,23 +1338,82 @@ export default function HomeScreen() {
                   <View style={[styles.profilePanelHeader, { marginHorizontal: profileInnerMargin }]}>
                     <View style={styles.profilePanelHeaderCopy}>
                       <Text style={styles.profilePanelTitle}>Choose Avatar</Text>
-                      <Text style={styles.profilePanelCaption}>Pick a style for this first version.</Text>
+                      <Text style={styles.profilePanelCaption}>Free favorites and premium shine.</Text>
                     </View>
                     <View style={styles.profileCurrentBadge}>
                       <Text style={styles.profileCurrentBadgeText}>Selected</Text>
                     </View>
                   </View>
 
+                  <View style={styles.avatarTabs}>
+                    {(["default", "premium"] as const).map((tab) => {
+                      const isActive = avatarPickerTab === tab;
+
+                      return (
+                        <Pressable
+                          accessibilityRole="tab"
+                          accessibilityState={{ selected: isActive }}
+                          key={tab}
+                          onPress={() => {
+                            setAvatarPickerTab(tab);
+                            setAvatarError(null);
+                            playSound("tabSwitch");
+                          }}
+                          style={({ pressed }) => [
+                            styles.avatarTab,
+                            isActive && styles.avatarTabActive,
+                            tab === "premium" && styles.avatarTabPremium,
+                            pressed && styles.pressed
+                          ]}
+                        >
+                          <Ionicons
+                            color={isActive ? "#1f2933" : tab === "premium" ? "#8a5f00" : colors.textMuted}
+                            name={tab === "premium" ? "diamond" : "happy-outline"}
+                            size={15}
+                          />
+                          <Text style={[styles.avatarTabText, isActive && styles.avatarTabTextActive]}>
+                            {tab === "premium" ? "Premium" : "Default"}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
                   <View style={[styles.avatarGrid, isProfileCompact && styles.avatarGridCompact]}>
-                    {profileAvatarOptions.map((option) => {
+                    {activeAvatarOptions.map((option) => {
                       const isSelected = option.id === selectedAvatarId;
+                      const premiumOption = avatarPickerTab === "premium" ? option as (typeof premiumProfileAvatarOptions)[number] : null;
+                      const isPremiumAvatar = premiumOption !== null;
+                      const isPremiumOwned = premiumOption ? profile.premiumAvatarIds.includes(premiumOption.id) : false;
+                      const canAffordPremium = premiumOption ? profile.coins >= premiumOption.price : false;
+                      const isLevelLocked = Boolean(premiumOption && !isPremiumOwned && profile.level < premiumOption.requiredLevel);
+                      const shouldShowPremiumPrice = Boolean(premiumOption && !isPremiumOwned && !isLevelLocked);
 
                       return (
                         <Pressable
                           key={option.id}
-                          onPress={() => void handleSelectAvatar(option.id)}
+                          accessibilityLabel={
+                            premiumOption
+                              ? `${premiumOption.label}, ${
+                                isPremiumOwned
+                                  ? "owned"
+                                  : isLevelLocked
+                                    ? `requires level ${premiumOption.requiredLevel}`
+                                    : `${premiumOption.price.toLocaleString("en-US")} coins`
+                              }`
+                              : "Avatar option"
+                          }
+                          onPress={() => {
+                            if (premiumOption) {
+                              void handlePressPremiumAvatar(premiumOption);
+                              return;
+                            }
+
+                            void handleSelectAvatar(option.id);
+                          }}
                           style={({ pressed }) => [
                             styles.avatarOption,
+                            isPremiumAvatar && styles.avatarOptionPremium,
                             isSelected && styles.avatarOptionSelected,
                             savingAvatarId !== null && savingAvatarId !== option.id && styles.avatarOptionDisabled,
                             pressed && styles.pressed
@@ -1180,6 +1431,8 @@ export default function HomeScreen() {
                             <View
                               style={[
                                 styles.avatarOptionInner,
+                                isPremiumAvatar && styles.avatarOptionInnerPremium,
+                                isLevelLocked && styles.avatarOptionInnerLocked,
                                 {
                                   backgroundColor: option.background,
                                   borderColor: option.ring,
@@ -1195,10 +1448,42 @@ export default function HomeScreen() {
                                 source={{ cache: "force-cache", uri: option.imageUrl }}
                                 style={styles.avatarOptionImage}
                               />
+                              {isLevelLocked ? <View style={styles.avatarOptionLockedScrim} /> : null}
                             </View>
                             {isSelected ? (
                               <View style={styles.avatarOptionCheck}>
                                 <Ionicons color="#ffffff" name="checkmark" size={10} />
+                              </View>
+                            ) : null}
+                            {isLevelLocked ? (
+                              <View style={styles.avatarOptionLock}>
+                                <Ionicons color="#ffffff" name="lock-closed" size={9} />
+                              </View>
+                            ) : null}
+                            {shouldShowPremiumPrice && premiumOption ? (
+                              <View
+                                style={[
+                                  styles.avatarPricePill,
+                                  canAffordPremium && styles.avatarPricePillAffordable,
+                                  !canAffordPremium && styles.avatarPricePillInsufficient
+                                ]}
+                              >
+                                <View style={styles.avatarPriceShine} />
+                                <View style={styles.avatarPriceCoinWell}>
+                                  <CoinIcon size={12} />
+                                </View>
+                                <Text adjustsFontSizeToFit minimumFontScale={0.78} numberOfLines={1} style={styles.avatarPriceText}>
+                                  {premiumOption.price.toLocaleString("en-US")}
+                                </Text>
+                              </View>
+                            ) : null}
+                            {isLevelLocked && premiumOption ? (
+                              <View style={styles.avatarLevelPill}>
+                                <View style={styles.avatarLevelShine} />
+                                <Ionicons color="#f8fafc" name="lock-closed" size={10} />
+                                <Text numberOfLines={1} style={styles.avatarLevelText}>
+                                  LVL {premiumOption.requiredLevel}
+                                </Text>
                               </View>
                             ) : null}
                           </View>
@@ -2789,20 +3074,67 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: "uppercase"
   },
+  avatarTabs: {
+    alignItems: "center",
+    backgroundColor: "#f6f4ee",
+    borderColor: "#ede6d5",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    marginHorizontal: 8,
+    padding: 4
+  },
+  avatarTab: {
+    alignItems: "center",
+    borderRadius: radii.pill,
+    flex: 1,
+    flexDirection: "row",
+    gap: 6,
+    height: 34,
+    justifyContent: "center",
+    paddingHorizontal: 8
+  },
+  avatarTabActive: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ead8a3",
+    borderWidth: 1,
+    elevation: 2,
+    shadowColor: "#8f6b14",
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.14,
+    shadowRadius: 5
+  },
+  avatarTabPremium: {
+    backgroundColor: "#fff7dc"
+  },
+  avatarTabText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "900"
+  },
+  avatarTabTextActive: {
+    color: "#1f2933"
+  },
   avatarGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     marginTop: 2,
-    rowGap: 8
+    rowGap: 10
   },
   avatarGridCompact: {
-    rowGap: 6
+    rowGap: 8
   },
   avatarOption: {
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     marginBottom: 2,
+    minHeight: 82,
     position: "relative",
+    width: "20%"
+  },
+  avatarOptionPremium: {
+    minHeight: 82,
     width: "20%"
   },
   avatarOptionSelected: {
@@ -2826,9 +3158,43 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     width: 52
   },
+  avatarOptionInnerPremium: {
+    borderWidth: 3,
+    elevation: 4,
+    shadowColor: "#8f6b14",
+    shadowOffset: { height: 3, width: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 6
+  },
+  avatarOptionInnerLocked: {
+    opacity: 0.78
+  },
   avatarOptionImage: {
     height: "100%",
     width: "100%"
+  },
+  avatarOptionLockedScrim: {
+    backgroundColor: "rgba(12, 10, 24, 0.42)",
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0
+  },
+  avatarOptionLock: {
+    alignItems: "center",
+    backgroundColor: "#1f2933",
+    borderColor: "#ffd66b",
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    elevation: 3,
+    height: 17,
+    justifyContent: "center",
+    position: "absolute",
+    right: -2,
+    top: -2,
+    width: 17,
+    zIndex: 2
   },
   avatarOptionCheck: {
     alignItems: "center",
@@ -2848,6 +3214,241 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     width: 17,
     zIndex: 2
+  },
+  avatarPricePill: {
+    alignItems: "center",
+    backgroundColor: "#24180b",
+    borderColor: "#e9c356",
+    borderRadius: radii.pill,
+    borderWidth: 1.4,
+    elevation: 4,
+    flexDirection: "row",
+    gap: 3,
+    height: 21,
+    justifyContent: "center",
+    maxWidth: "94%",
+    minWidth: 58,
+    overflow: "hidden",
+    paddingLeft: 4,
+    paddingRight: 7,
+    position: "absolute",
+    bottom: -8,
+    shadowColor: "#4b3006",
+    shadowOffset: { height: 3, width: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    zIndex: 3
+  },
+  avatarPricePillAffordable: {
+    backgroundColor: "#2c210d",
+    borderColor: "#f4d67a"
+  },
+  avatarPricePillInsufficient: {
+    backgroundColor: "#291918",
+    borderColor: "#d58b7c"
+  },
+  avatarPriceShine: {
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+    borderRadius: radii.pill,
+    height: 1,
+    left: 8,
+    position: "absolute",
+    right: 8,
+    top: 2
+  },
+  avatarPriceCoinWell: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 232, 154, 0.22)",
+    borderColor: "rgba(255, 232, 154, 0.38)",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    height: 16,
+    justifyContent: "center",
+    width: 16
+  },
+  avatarPriceText: {
+    color: "#fff8df",
+    fontSize: 9,
+    fontWeight: "900",
+    maxWidth: 42,
+    textAlign: "center"
+  },
+  avatarLevelPill: {
+    alignItems: "center",
+    backgroundColor: "#243043",
+    borderColor: "#9fb0c7",
+    borderRadius: radii.pill,
+    borderWidth: 1.4,
+    bottom: -8,
+    elevation: 4,
+    flexDirection: "row",
+    gap: 3,
+    height: 21,
+    justifyContent: "center",
+    minWidth: 58,
+    overflow: "hidden",
+    paddingHorizontal: 7,
+    position: "absolute",
+    shadowColor: "#0f172a",
+    shadowOffset: { height: 3, width: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 5,
+    zIndex: 3
+  },
+  avatarLevelShine: {
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: radii.pill,
+    height: 1,
+    left: 8,
+    position: "absolute",
+    right: 8,
+    top: 2
+  },
+  avatarLevelText: {
+    color: "#f8fafc",
+    fontSize: 9,
+    fontWeight: "900"
+  },
+  avatarConfirmBackdrop: {
+    alignItems: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.46)",
+    flex: 1,
+    justifyContent: "center",
+    padding: 24
+  },
+  avatarConfirmCard: {
+    backgroundColor: "#ffffff",
+    borderColor: "#f0e2bd",
+    borderRadius: 18,
+    borderWidth: 1,
+    elevation: 8,
+    gap: 14,
+    maxWidth: 360,
+    padding: 18,
+    shadowColor: "#1f2933",
+    shadowOffset: { height: 10, width: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    width: "100%"
+  },
+  avatarConfirmHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12
+  },
+  avatarConfirmPreview: {
+    borderRadius: radii.pill,
+    borderWidth: 3,
+    elevation: 4,
+    height: 70,
+    overflow: "hidden",
+    shadowColor: "#8f6b14",
+    shadowOffset: { height: 3, width: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 7,
+    width: 70
+  },
+  avatarConfirmImage: {
+    height: "100%",
+    width: "100%"
+  },
+  avatarConfirmCopy: {
+    flex: 1,
+    gap: 3,
+    minWidth: 0
+  },
+  avatarConfirmEyebrow: {
+    color: "#9a6b08",
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  avatarConfirmTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "900"
+  },
+  avatarConfirmText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  avatarConfirmCostPanel: {
+    backgroundColor: "#fff9e9",
+    borderColor: "#f1dfaa",
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  avatarConfirmCostRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  avatarConfirmCostLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  avatarConfirmCoinValue: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 5
+  },
+  avatarConfirmCostValue: {
+    color: "#2a2110",
+    fontSize: 15,
+    fontWeight: "900"
+  },
+  avatarConfirmBalanceValue: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "900"
+  },
+  avatarConfirmActions: {
+    flexDirection: "row",
+    gap: 10
+  },
+  avatarConfirmCancelButton: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceCool,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    height: 42,
+    justifyContent: "center"
+  },
+  avatarConfirmUnlockButton: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+    elevation: 3,
+    flex: 1.2,
+    flexDirection: "row",
+    gap: 6,
+    height: 42,
+    justifyContent: "center",
+    shadowColor: "#063c2d",
+    shadowOffset: { height: 3, width: 0 },
+    shadowOpacity: 0.16,
+    shadowRadius: 6
+  },
+  avatarConfirmButtonDisabled: {
+    opacity: 0.62
+  },
+  avatarConfirmCancelText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "900"
+  },
+  avatarConfirmUnlockText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "900"
   },
   settingsActionRow: {
     alignItems: "center",

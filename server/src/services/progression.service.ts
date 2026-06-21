@@ -16,6 +16,7 @@ import {
   applyAvatarId,
   applyCoins,
   applyExtraGuessPowerUps,
+  applyPremiumAvatarPurchase,
   applySkipBoosters,
   applyRecordedMatch,
   applySinglePlayerHighScores,
@@ -122,6 +123,10 @@ class ProgressionService {
 
   async updateAvatarId(playerKey: string, avatarId: string) {
     return this.updateProfile(playerKey, (profile) => applyAvatarId(profile, avatarId));
+  }
+
+  async purchasePremiumAvatar(playerKey: string, avatarId: string) {
+    return this.updateProfile(playerKey, (profile) => applyPremiumAvatarPurchase(profile, avatarId));
   }
 
   async updateSinglePlayerHighRounds(
@@ -285,6 +290,7 @@ class ProgressionService {
     const existingProfile = existing ? parseProfile(existing.profile) : createInitialProfile();
     const mergedProfile = normalizeProfile({
       ...profile,
+      premiumAvatarIds: [...new Set([...existingProfile.premiumAvatarIds, ...profile.premiumAvatarIds])],
       stats: {
         ...profile.stats,
         singlePlayerHighRounds: this.mergeSinglePlayerHighRounds(existingProfile, profile),
