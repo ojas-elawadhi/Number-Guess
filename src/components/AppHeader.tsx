@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, type ImageSourcePropType } from "react-native";
 
 import { getDayFromDateKey, getShortMonthLabel } from "../utils/dailyPuzzle";
 import { useHardwareBackHandler } from "../hooks/useHardwareBackHandler";
@@ -13,6 +13,7 @@ export const APP_HEADER_SEPARATOR_HEIGHT = 4;
 export const APP_HEADER_HEIGHT = APP_HEADER_CONTENT_HEIGHT + APP_HEADER_SEPARATOR_HEIGHT;
 
 const HEADER_SIDE_WIDTH = 124;
+const rewardAdBadgeImage = require("../../assets/ui/reward-ad-badge.png") as ImageSourcePropType;
 
 interface AppHeaderProps {
   left?: ReactNode;
@@ -65,6 +66,41 @@ export function HeaderBackButton({ onPress }: HeaderBackButtonProps) {
 
 interface HeaderCoinsPillProps {
   coins: number;
+}
+
+interface HeaderRewardAdButtonProps {
+  amount: number;
+  disabled?: boolean;
+  loading?: boolean;
+  onPress: () => void;
+}
+
+export function HeaderRewardAdButton({ amount, disabled = false, loading = false, onPress }: HeaderRewardAdButtonProps) {
+  return (
+    <Pressable
+      accessibilityLabel={`Watch ad for ${amount} coins`}
+      accessibilityRole="button"
+      disabled={disabled || loading}
+      hitSlop={6}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.rewardAdButton,
+        pressed && !disabled && !loading && styles.pressed,
+        (disabled || loading) && styles.rewardAdButtonDisabled
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color="#ffffff" size="small" />
+      ) : (
+        <Image
+          accessibilityIgnoresInvertColors
+          resizeMode="contain"
+          source={rewardAdBadgeImage}
+          style={styles.rewardAdImage}
+        />
+      )}
+    </Pressable>
+  );
 }
 
 export function HeaderCoinsPill({ coins }: HeaderCoinsPillProps) {
@@ -177,6 +213,22 @@ const styles = StyleSheet.create({
     left: spacing.xs,
     position: "absolute",
     width: 40
+  },
+  rewardAdButton: {
+    alignItems: "center",
+    height: 52,
+    justifyContent: "center",
+    marginRight: -2,
+    position: "relative",
+    width: 74,
+    zIndex: 3
+  },
+  rewardAdButtonDisabled: {
+    opacity: 0.62
+  },
+  rewardAdImage: {
+    height: 52,
+    width: 74
   },
   coinPill: {
     alignItems: "center",

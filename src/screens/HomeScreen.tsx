@@ -6,13 +6,14 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Animated, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions, type ImageSourcePropType } from "react-native";
 import Svg, { Circle, Defs, LinearGradient, Polygon, Stop, Text as SvgText } from "react-native-svg";
 
-import { AppHeader, HeaderBackButton, HeaderCoinsPill } from "../components/AppHeader";
+import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderRewardAdButton } from "../components/AppHeader";
 import { BottomTabs, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { NoAdsPurchasePrompt, ShopTab, ShopTabHeader } from "../components/ShopTab";
 import { profileAvatarImageUrls, profileAvatarOptions } from "../config/avatarCatalog";
 import { getBillingCustomerSnapshot, restoreBillingPurchases } from "../services/billing";
+import { isRewardedReviveSupported, showRewardedReviveAd } from "../services/rewardedReviveAd";
 import { playSound, playSoundAlways } from "../services/soundEffects";
 import { useMonetizationStore } from "../store/useMonetizationStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
@@ -24,6 +25,7 @@ type HomeTab = "play" | "stats" | "shop" | "profile" | "settings";
 type ProfileSection = "stats" | "profile";
 
 const billingEnabled = process.env.EXPO_PUBLIC_ENABLE_BILLING === "true";
+const HEADER_REWARDED_COIN_AMOUNT = 50;
 
 const isHomeTab = (value: string | undefined): value is HomeTab =>
   value === "play" || value === "stats" || value === "shop" || value === "profile" || value === "settings";
@@ -125,6 +127,7 @@ export default function HomeScreen() {
   const leaderboard = usePlayerProgressStore((state) => state.leaderboard);
   const playerKey = usePlayerProgressStore((state) => state.playerKey);
   const singlePlayerHighScores = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighScores);
+  const awardCoins = usePlayerProgressStore((state) => state.awardCoins);
   const claimDailyReward = usePlayerProgressStore((state) => state.claimDailyReward);
   const toggleSoundPlaceholders = usePlayerProgressStore((state) => state.toggleSoundPlaceholders);
   const updateDisplayName = usePlayerProgressStore((state) => state.updateDisplayName);
@@ -134,6 +137,7 @@ export default function HomeScreen() {
   const [activeTab, setActiveTab] = useState<HomeTab>("play");
   const [profileSection, setProfileSection] = useState<ProfileSection>("profile");
   const [isClaimingReward, setIsClaimingReward] = useState(false);
+  const [isClaimingHeaderAdReward, setIsClaimingHeaderAdReward] = useState(false);
   const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [savingAvatarId, setSavingAvatarId] = useState<AvatarId | null>(null);
@@ -238,6 +242,42 @@ export default function HomeScreen() {
       Alert.alert("Daily reward", `+${reward.points} pts, +${reward.xp} XP`);
     } finally {
       setIsClaimingReward(false);
+    }
+  };
+
+  const handleClaimHeaderAdReward = async () => {
+    if (isClaimingHeaderAdReward) {
+      return;
+    }
+
+    if (!isRewardedReviveSupported()) {
+      playSound("purchaseFail");
+      Alert.alert("Rewarded ad unavailable", "Rewarded ads are not available in this build yet.");
+      return;
+    }
+
+    try {
+      setIsClaimingHeaderAdReward(true);
+      const rewarded = await showRewardedReviveAd();
+
+      if (!rewarded) {
+        playSound("purchaseFail");
+        Alert.alert("Reward unavailable", "Ad was skipped or unavailable. Try again.");
+        return;
+      }
+
+      const awarded = await awardCoins(HEADER_REWARDED_COIN_AMOUNT);
+
+      if (!awarded) {
+        throw new Error("Could not add coins right now.");
+      }
+
+      playSound("coinReward");
+    } catch (error) {
+      playSound("purchaseFail");
+      Alert.alert("Reward unavailable", error instanceof Error ? error.message : "Could not add coins right now.");
+    } finally {
+      setIsClaimingHeaderAdReward(false);
     }
   };
 
@@ -487,6 +527,11 @@ export default function HomeScreen() {
               </View>
             ) : (
               <View style={styles.homeHeaderRight}>
+                <HeaderRewardAdButton
+                  amount={HEADER_REWARDED_COIN_AMOUNT}
+                  loading={isClaimingHeaderAdReward}
+                  onPress={() => void handleClaimHeaderAdReward()}
+                />
                 <HeaderCoinsPill coins={profile.coins} />
               </View>
             )}
@@ -1295,7 +1340,12 @@ const styles = StyleSheet.create({
     transform: [{ translateY: 24 }, { scale: 1.72 }]
   },
   homeHeaderRight: {
-    justifyContent: "center"
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    position: "absolute",
+    right: 2,
+    width: 188
   },
   homeHeaderNoAdsSlot: {
     alignItems: "flex-start",
