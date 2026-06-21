@@ -29,7 +29,7 @@ module.exports = {
     },
     android: {
       package: "com.zenostudios.codewars",
-      versionCode: 21,
+      versionCode: 22,
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false
     },

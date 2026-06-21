@@ -11,6 +11,7 @@ import { BottomTabs, ModeTile, StatusPill } from "../components/GameKit";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { NoAdsPurchasePrompt, ShopTab, ShopTabHeader } from "../components/ShopTab";
+import { profileAvatarImageUrls, profileAvatarOptions } from "../config/avatarCatalog";
 import { getBillingCustomerSnapshot, restoreBillingPurchases } from "../services/billing";
 import { playSound, playSoundAlways } from "../services/soundEffects";
 import { useMonetizationStore } from "../store/useMonetizationStore";
@@ -43,84 +44,7 @@ const PROFILE_RING_SIZE = 44;
 const PROFILE_RING_STROKE = 4;
 const PROFILE_RING_RADIUS = (PROFILE_RING_SIZE - PROFILE_RING_STROKE) / 2;
 const PROFILE_RING_CIRCUMFERENCE = 2 * Math.PI * PROFILE_RING_RADIUS;
-const avatarImageSources = {
-  scholar: require("../../assets/avatars/scholar.png"),
-  rocket: require("../../assets/avatars/rocket.png"),
-  flash: require("../../assets/avatars/flash.png"),
-  planet: require("../../assets/avatars/planet.png"),
-  music: require("../../assets/avatars/music.png"),
-  gamepad: require("../../assets/avatars/gamepad.png"),
-  paw: require("../../assets/avatars/paw.png"),
-  book: require("../../assets/avatars/book.png"),
-  flame: require("../../assets/avatars/flame.png"),
-  cafe: require("../../assets/avatars/cafe.png"),
-  tennis: require("../../assets/avatars/tennis.png"),
-  bulb: require("../../assets/avatars/bulb.png"),
-  astronaut: require("../../assets/avatars/astronaut.png"),
-  ninja: require("../../assets/avatars/ninja.png"),
-  scientist: require("../../assets/avatars/scientist.png"),
-  knight: require("../../assets/avatars/knight.png"),
-  chef: require("../../assets/avatars/chef.png"),
-  dragon: require("../../assets/avatars/dragon.png"),
-  alien: require("../../assets/avatars/alien.png"),
-  superhero: require("../../assets/avatars/superhero.png"),
-  detective: require("../../assets/avatars/detective.png"),
-  dinosaur: require("../../assets/avatars/dinosaur.png"),
-  unicorn: require("../../assets/avatars/unicorn.png"),
-  panda: require("../../assets/avatars/panda.png"),
-  skater: require("../../assets/avatars/skater.png")
-} as const satisfies Record<AvatarId, ImageSourcePropType>;
 const noAdsButtonImage = require("../../assets/ui/no-ads-button.png") as ImageSourcePropType;
-
-/*
-const legacyProfileAvatarOptions = [
-  { id: "scholar", icon: "school", background: "#63b4ff", foreground: "#173d64", ring: "#f28f67" },
-  { id: "rocket", icon: "rocket", background: "#ffaf80", foreground: "#7a260d", ring: "#5db5f5" },
-  { id: "flash", icon: "flash", background: "#ffe174", foreground: "#7f5100", ring: "#9dc95b" },
-  { id: "planet", icon: "planet", background: "#c8a8ff", foreground: "#47217e", ring: "#f7b33d" },
-  { id: "music", icon: "musical-notes", background: "#8ddfc9", foreground: "#00583b", ring: "#d979bc" },
-  { id: "gamepad", icon: "game-controller", background: "#90d2ff", foreground: "#0f4970", ring: "#ee6b62" },
-  { id: "paw", icon: "paw", background: "#ffd2ad", foreground: "#7f3d00", ring: "#7cc8ff" },
-  { id: "book", icon: "book", background: "#f8a7d8", foreground: "#7d2052", ring: "#a98ee8" },
-  { id: "flame", icon: "flame", background: "#ffb0a6", foreground: "#80161a", ring: "#5cc78f" },
-  { id: "cafe", icon: "cafe", background: "#d8c4a8", foreground: "#5f3c15", ring: "#f28f67" },
-  { id: "tennis", icon: "tennisball", background: "#d8f58a", foreground: "#3f6b00", ring: "#5db5f5" },
-  { id: "bulb", icon: "bulb", background: "#ffe58c", foreground: "#885700", ring: "#d979bc" }
-];
-*/
-
-const profileAvatarOptions = [
-  { id: "scholar", background: "#63b4ff", image: avatarImageSources.scholar, ring: "#f28f67" },
-  { id: "rocket", background: "#ffaf80", image: avatarImageSources.rocket, ring: "#5db5f5" },
-  { id: "flash", background: "#ffe174", image: avatarImageSources.flash, ring: "#9dc95b" },
-  { id: "planet", background: "#c8a8ff", image: avatarImageSources.planet, ring: "#f7b33d" },
-  { id: "music", background: "#8ddfc9", image: avatarImageSources.music, ring: "#d979bc" },
-  { id: "gamepad", background: "#90d2ff", image: avatarImageSources.gamepad, ring: "#ee6b62" },
-  { id: "paw", background: "#ffd2ad", image: avatarImageSources.paw, ring: "#7cc8ff" },
-  { id: "book", background: "#f8a7d8", image: avatarImageSources.book, ring: "#a98ee8" },
-  { id: "flame", background: "#ffb0a6", image: avatarImageSources.flame, ring: "#5cc78f" },
-  { id: "cafe", background: "#d8c4a8", image: avatarImageSources.cafe, ring: "#f28f67" },
-  { id: "tennis", background: "#d8f58a", image: avatarImageSources.tennis, ring: "#5db5f5" },
-  { id: "bulb", background: "#ffe58c", image: avatarImageSources.bulb, ring: "#d979bc" },
-  { id: "astronaut", background: "#d8ecff", image: avatarImageSources.astronaut, ring: "#ef8a62" },
-  { id: "ninja", background: "#d9c8ff", image: avatarImageSources.ninja, ring: "#51bfa9" },
-  { id: "scientist", background: "#a9e8ff", image: avatarImageSources.scientist, ring: "#f38c77" },
-  { id: "knight", background: "#cbdcff", image: avatarImageSources.knight, ring: "#f4b844" },
-  { id: "chef", background: "#ffe0c5", image: avatarImageSources.chef, ring: "#e56d68" },
-  { id: "dragon", background: "#a9dcff", image: avatarImageSources.dragon, ring: "#f1845f" },
-  { id: "alien", background: "#a8ead4", image: avatarImageSources.alien, ring: "#8e78d7" },
-  { id: "superhero", background: "#ffc3b5", image: avatarImageSources.superhero, ring: "#55b9d1" },
-  { id: "detective", background: "#e4d0b2", image: avatarImageSources.detective, ring: "#4eb8a7" },
-  { id: "dinosaur", background: "#ffe58f", image: avatarImageSources.dinosaur, ring: "#ee765f" },
-  { id: "unicorn", background: "#e2c8ff", image: avatarImageSources.unicorn, ring: "#5bc6c3" },
-  { id: "panda", background: "#ffe09a", image: avatarImageSources.panda, ring: "#579ed6" },
-  { id: "skater", background: "#91e1d5", image: avatarImageSources.skater, ring: "#f37e65" }
-] as const satisfies ReadonlyArray<{
-  id: AvatarId;
-  background: string;
-  image: ImageSourcePropType;
-  ring: string;
-}>;
 
 const difficultyChartConfig = [
   { key: "easy", label: "Easy", accent: colors.practice },
@@ -406,6 +330,16 @@ export default function HomeScreen() {
     profileAvatarOptions.find((option) => option.id === selectedAvatarId) ??
     profileAvatarOptions.find((option) => option.id === DEFAULT_AVATAR_ID) ??
     profileAvatarOptions[0];
+
+  useEffect(() => {
+    void Image.prefetch(selectedAvatar.imageUrl);
+  }, [selectedAvatar.imageUrl]);
+
+  useEffect(() => {
+    if (activeTab === "profile") {
+      void Promise.allSettled(profileAvatarImageUrls.map((imageUrl) => Image.prefetch(imageUrl)));
+    }
+  }, [activeTab]);
   const profileBaseInset = Math.max(12, Math.min(16, screenWidth * 0.04));
   const profileMaxContentWidth = screenWidth >= 560 ? 420 : 380;
   const profileContentWidth = Math.min(profileMaxContentWidth, screenWidth - profileBaseInset * 2);
@@ -514,7 +448,12 @@ export default function HomeScreen() {
 
                       <View style={[styles.profileRingInner, { backgroundColor: selectedAvatar.ring }]}>
                         <View style={[styles.profileAvatarCore, { backgroundColor: selectedAvatar.background }]}>
-                          <Image accessibilityIgnoresInvertColors source={selectedAvatar.image} style={styles.profileAvatarImage} />
+                          <Image
+                            accessibilityIgnoresInvertColors
+                            resizeMode="cover"
+                            source={{ cache: "force-cache", uri: selectedAvatar.imageUrl }}
+                            style={styles.profileAvatarImage}
+                          />
                         </View>
                       </View>
                     </View>
@@ -785,7 +724,13 @@ export default function HomeScreen() {
                         }
                       ]}
                     >
-                      <Image accessibilityIgnoresInvertColors source={selectedAvatar.image} style={styles.profileHeroAvatarImage} />
+                      <Image
+                        accessibilityIgnoresInvertColors
+                        fadeDuration={120}
+                        resizeMode="cover"
+                        source={{ cache: "force-cache", uri: selectedAvatar.imageUrl }}
+                        style={styles.profileHeroAvatarImage}
+                      />
                     </View>
                   </View>
 
@@ -1198,7 +1143,13 @@ export default function HomeScreen() {
                                 }
                               ]}
                             >
-                              <Image accessibilityIgnoresInvertColors source={option.image} style={styles.avatarOptionImage} />
+                              <Image
+                                accessibilityIgnoresInvertColors
+                                fadeDuration={100}
+                                resizeMode="cover"
+                                source={{ cache: "force-cache", uri: option.imageUrl }}
+                                style={styles.avatarOptionImage}
+                              />
                             </View>
                             {isSelected ? (
                               <View style={styles.avatarOptionCheck}>

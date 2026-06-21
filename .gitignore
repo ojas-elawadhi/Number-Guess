@@ -3,6 +3,7 @@ node_modules/
 .expo-shared/
 dist/
 server/dist/
+server/public/avatars/
 *.log
 .env
 server/.env
