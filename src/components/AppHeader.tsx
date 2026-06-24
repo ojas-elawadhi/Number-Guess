@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     height: 52,
     justifyContent: "center",
-    marginRight: -10,
+    marginRight: -16,
     position: "relative",
     width: 74,
     zIndex: 3
