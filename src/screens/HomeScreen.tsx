@@ -18,6 +18,7 @@ import {
   profileAvatarImageUrls,
   profileAvatarOptions
 } from "../config/avatarCatalog";
+import { useHardwareBackHandler } from "../hooks/useHardwareBackHandler";
 import { getBillingCustomerSnapshot, restoreBillingPurchases } from "../services/billing";
 import { isRewardedReviveSupported, showRewardedReviveAd } from "../services/rewardedReviveAd";
 import { playSound, playSoundAlways } from "../services/soundEffects";
@@ -519,6 +520,14 @@ export default function HomeScreen() {
     router.replace({ pathname: "/", params: { tab } });
   };
 
+  const handleReturnHome = () => {
+    playSound("back");
+    router.replace("/");
+  };
+
+  useHardwareBackHandler(handleReturnHome, activeTab === "profile");
+  useHardwareBackHandler(handleReturnHome, activeTab === "settings");
+
   const navigateToGameMode = (path: "/single-player" | "/vs-ai" | "/online" | "/daily-puzzle") => {
     router.push(path);
   };
@@ -633,7 +642,7 @@ export default function HomeScreen() {
                   loading={isClaimingHeaderAdReward}
                   onPress={() => void handleClaimHeaderAdReward()}
                 />
-                <HeaderCoinsPill coins={profile.coins} />
+                <HeaderCoinsPill coins={profile.coins} onPressPlus={() => handleTabChange("shop")} />
               </View>
             )}
           />
@@ -922,7 +931,13 @@ export default function HomeScreen() {
                 <Text style={styles.profileRouteTitle}>YOUR PROFILE</Text>
 
                 <View style={styles.profileHeroHeaderRow}>
-                  <Pressable onPress={() => router.replace("/")} style={({ pressed }) => [styles.profileHeroBackButton, pressed && styles.pressed]}>
+                  <Pressable
+                    accessibilityLabel="Back"
+                    accessibilityRole="button"
+                    hitSlop={10}
+                    onPress={handleReturnHome}
+                    style={({ pressed }) => [styles.profileHeroBackButton, pressed && styles.pressed]}
+                  >
                     <Ionicons color={colors.text} name="arrow-back" size={21} />
                   </Pressable>
                   <HeaderCoinsPill coins={profile.coins} />
@@ -939,17 +954,16 @@ export default function HomeScreen() {
                   ]}
                 >
                   <View
+                    pointerEvents="none"
                     style={[
                       styles.profileHeroAvatarWrap,
                       {
                         height: profileHeroAvatarSize,
-                        marginLeft: -(profileHeroAvatarSize / 2),
-                        top: -(profileHeroAvatarSize * 0.5),
-                        width: profileHeroAvatarSize
+                        top: -(profileHeroAvatarSize * 0.5)
                       }
                     ]}
                   >
-                    <View style={styles.profileHeroShadow} />
+                    <View style={[styles.profileHeroShadow, { width: profileHeroAvatarSize * 0.62 }]} />
                     <View
                       style={[
                         styles.profileHeroAvatar,
@@ -2406,16 +2420,16 @@ const styles = StyleSheet.create({
   profileHeroAvatarWrap: {
     alignItems: "center",
     justifyContent: "center",
-    left: "50%",
-    position: "absolute"
+    left: 0,
+    position: "absolute",
+    right: 0
   },
   profileHeroShadow: {
     backgroundColor: "rgba(47, 50, 51, 0.12)",
     borderRadius: radii.pill,
     bottom: 8,
     height: 12,
-    position: "absolute",
-    width: "62%"
+    position: "absolute"
   },
   profileHeroAvatar: {
     alignItems: "center",

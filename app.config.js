@@ -9,7 +9,7 @@ module.exports = {
     slug: "code-wars-multiplayer",
     version: "1.0.0",
     orientation: "portrait",
-    icon: "./assets/app-icon-code-guess-v24.png",
+    icon: "./assets/playstore-icon-code-guess-512.png",
     scheme: "codeguess",
     userInterfaceStyle: "light",
     newArchEnabled: true,
@@ -29,7 +29,7 @@ module.exports = {
     },
     android: {
       package: "com.zenostudios.codewars",
-      versionCode: 24,
+      versionCode: 26,
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false
     },

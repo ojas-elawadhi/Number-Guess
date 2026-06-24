@@ -66,6 +66,7 @@ export function HeaderBackButton({ onPress }: HeaderBackButtonProps) {
 
 interface HeaderCoinsPillProps {
   coins: number;
+  onPressPlus?: () => void;
 }
 
 interface HeaderRewardAdButtonProps {
@@ -103,7 +104,7 @@ export function HeaderRewardAdButton({ amount, disabled = false, loading = false
   );
 }
 
-export function HeaderCoinsPill({ coins }: HeaderCoinsPillProps) {
+export function HeaderCoinsPill({ coins, onPressPlus }: HeaderCoinsPillProps) {
   return (
     <View style={styles.coinPill}>
       <CoinIcon size={30} />
@@ -114,9 +115,16 @@ export function HeaderCoinsPill({ coins }: HeaderCoinsPillProps) {
         </Text>
       </View>
 
-      <View style={styles.coinPlusBadge}>
+      <Pressable
+        accessibilityLabel="Open shop"
+        accessibilityRole="button"
+        disabled={!onPressPlus}
+        hitSlop={8}
+        onPress={onPressPlus}
+        style={({ pressed }) => [styles.coinPlusBadge, pressed && onPressPlus && styles.pressed]}
+      >
         <Ionicons color="#ffffff" name="add" size={16} />
-      </View>
+      </Pressable>
     </View>
   );
 }
@@ -218,7 +226,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     height: 52,
     justifyContent: "center",
-    marginRight: -2,
+    marginRight: -10,
     position: "relative",
     width: 74,
     zIndex: 3

@@ -1,6 +1,7 @@
 import { router, Stack, usePathname } from "expo-router";
 import { useEffect } from "react";
-import { BackHandler, Platform } from "react-native";
+import { BackHandler, Platform, StyleSheet, View } from "react-native";
+import { StartupSplash } from "../src/components/StartupSplash";
 import { invokeHardwareBackHandler } from "../src/hooks/useHardwareBackHandler";
 import { useMonetizationStore } from "../src/store/useMonetizationStore";
 import { usePlayerProgressStore } from "../src/store/usePlayerProgressStore";
@@ -179,13 +180,22 @@ export default function RootLayout() {
   }, [isGameplayRoute, progressReady, soundEffectsEnabled]);
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: {
-          backgroundColor: colors.background
-        }
-      }}
-    />
+    <View style={styles.appShell}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: {
+            backgroundColor: colors.background
+          }
+        }}
+      />
+      <StartupSplash />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  appShell: {
+    flex: 1
+  }
+});
