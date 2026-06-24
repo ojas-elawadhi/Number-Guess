@@ -26,6 +26,7 @@ import {
 } from "../utils/dailyPuzzle";
 
 interface GuessEntry {
+  counted: boolean;
   guess: number;
   result: GuessFeedback;
 }
@@ -38,7 +39,7 @@ const keypadRows = [
 ] as const;
 
 export default function DailyPuzzleGameScreen() {
-  const params = useLocalSearchParams<{ dateKey?: string }>();
+  const params = useLocalSearchParams<{ dateKey?: string; replayAccess?: string }>();
   const hydrated = usePlayerProgressStore((state) => state.hydrated);
   const fetchDailyPuzzleStatus = usePlayerProgressStore((state) => state.fetchDailyPuzzleStatus);
   const submitDailyPuzzleGuess = usePlayerProgressStore((state) => state.submitDailyPuzzleGuess);
@@ -58,6 +59,9 @@ export default function DailyPuzzleGameScreen() {
 
   const requestedDateKey = typeof params.dateKey === "string" ? params.dateKey : getLocalTodayKey();
   const requestedDateIsToday = isTodayPuzzleDate(requestedDateKey);
+  const requestedDateIsReplayUnlocked =
+    requestedDateKey < getLocalTodayKey() && (params.replayAccess === "ad" || params.replayAccess === "coins");
+  const requestedDateIsPlayable = requestedDateIsToday || requestedDateIsReplayUnlocked;
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -204,7 +208,7 @@ export default function DailyPuzzleGameScreen() {
     !completed && !countdownActive && !isSubmitting && !isUsingPowerUp && (skipBoosters > 0 || canShowRewardedRevive);
 
   const submitGuess = async () => {
-    if (countdownActive || isSubmitting || completed || !puzzleDateKey || !requestedDateIsToday) {
+    if (countdownActive || isSubmitting || completed || !puzzleDateKey || !requestedDateIsPlayable) {
       return;
     }
 
@@ -395,7 +399,7 @@ export default function DailyPuzzleGameScreen() {
   };
 
   const completeDailyPuzzleWithSkip = async (source: "inventory" | "ad") => {
-    if (!puzzleDateKey || !requestedDateIsToday) {
+    if (!puzzleDateKey || !requestedDateIsPlayable) {
       return;
     }
 
@@ -560,11 +564,11 @@ export default function DailyPuzzleGameScreen() {
     );
   }
 
-  if (!requestedDateIsToday) {
+  if (!requestedDateIsPlayable) {
     return (
       <ScreenContainer contentStyle={styles.loadingScreen}>
         <Text style={styles.loadingTitle}>Daily puzzle locked</Text>
-        <Text style={styles.inlineError}>Only today&apos;s daily puzzle can be played.</Text>
+        <Text style={styles.inlineError}>Unlock older daily puzzles from the calendar first.</Text>
         <Pressable
           onPress={() => router.replace("/daily-puzzle")}
           style={({ pressed }) => [styles.returnButton, pressed && styles.pressed]}

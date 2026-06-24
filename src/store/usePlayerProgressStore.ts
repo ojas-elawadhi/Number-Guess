@@ -75,6 +75,7 @@ interface PlayerProgressStore {
     guess: number;
     attempts: number;
     durationMs: number;
+    rewardedSkip?: boolean;
   }) => Promise<DailyPuzzleGuessResponse>;
   saveDailyPuzzleCompletionLocal: (input: {
     dateKey: string;

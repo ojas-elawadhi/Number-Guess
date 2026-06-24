@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
+import { CoinIcon } from "../components/CoinIcon";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { TopBar } from "../components/GameKit";
+import { isRewardedReviveSupported, showRewardedReviveAd } from "../services/rewardedReviveAd";
 import { playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import { colors, radii, shadows, spacing } from "../utils/theme";
@@ -24,18 +26,22 @@ import {
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const milestoneTargets = [3, 10] as const;
+const replayCoinCost = 500;
+const recordedAdDurationMs = 2200;
 
 export default function DailyPuzzleCalendarScreen() {
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   const hydrated = usePlayerProgressStore((state) => state.hydrated);
   const profile = usePlayerProgressStore((state) => state.profile);
   const dailyPuzzleTodayKey = usePlayerProgressStore((state) => state.dailyPuzzleTodayKey);
   const fetchDailyPuzzleStatus = usePlayerProgressStore((state) => state.fetchDailyPuzzleStatus);
+  const spendCoins = usePlayerProgressStore((state) => state.spendCoins);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
+  const [replayUnlockAction, setReplayUnlockAction] = useState<"ad" | "coins" | null>(null);
 
   useEffect(() => {
     if (!hydrated) {
@@ -80,6 +86,7 @@ export default function DailyPuzzleCalendarScreen() {
   }, [fetchDailyPuzzleStatus, hydrated, reloadKey]);
 
   const compactLayout = height < 860;
+  const compactReplayFooter = width < 430;
   const boardPadding = compactLayout ? spacing.sm : spacing.md;
   const dayCellSize = compactLayout ? 40 : 46;
   const todayKey = dailyPuzzleTodayKey ?? selectedDateKey;
@@ -104,17 +111,95 @@ export default function DailyPuzzleCalendarScreen() {
   const canGoForward = Boolean(
     todayKey && monthKey && shiftMonthKey(monthKey, 1) <= getMonthKeyFromDateKey(todayKey)
   );
-  const canOpenSelected = Boolean(selectedDateKey && isTodayPuzzleDate(selectedDateKey));
+  const selectedIsToday = Boolean(selectedDateKey && todayKey && selectedDateKey === todayKey);
+  const selectedIsPast = Boolean(selectedDateKey && todayKey && selectedDateKey < todayKey);
+  const canOpenSelected = Boolean(selectedDateKey && selectedIsToday);
+  const canReplaySelected = Boolean(selectedDateKey && selectedIsPast && !selectedCompletion);
 
-  const openPuzzle = (dateKey: string | null) => {
-    if (!dateKey || !isTodayPuzzleDate(dateKey)) {
+  const playRecordedAd = () =>
+    new Promise<boolean>((resolve) => {
+      setTimeout(() => resolve(true), recordedAdDurationMs);
+    });
+
+  const openPuzzle = (dateKey: string | null, replayAccess?: "ad" | "coins") => {
+    if (!dateKey || !todayKey) {
+      return;
+    }
+
+    const isReplayDate = dateKey < todayKey && Boolean(replayAccess);
+
+    if (dateKey !== todayKey && !isReplayDate) {
       return;
     }
 
     router.push({
       pathname: "/daily-puzzle-game",
-      params: { dateKey }
+      params: replayAccess ? { dateKey, replayAccess } : { dateKey }
     });
+  };
+
+  const unlockReplayWithAd = async () => {
+    if (!selectedDateKey || !canReplaySelected) {
+      return;
+    }
+
+    try {
+      setReplayUnlockAction("ad");
+      playSound("uiTap");
+      const rewarded = isRewardedReviveSupported() ? await showRewardedReviveAd() : await playRecordedAd();
+
+      if (!rewarded) {
+        playSound("error");
+        Alert.alert("Ad not completed", "Watch the full ad to unlock this older daily puzzle.");
+        return;
+      }
+
+      playSound("powerup");
+      openPuzzle(selectedDateKey, "ad");
+    } catch (error) {
+      playSound("error");
+      Alert.alert("Ad unavailable", error instanceof Error ? error.message : "Try again in a moment.");
+    } finally {
+      setReplayUnlockAction(null);
+    }
+  };
+
+  const unlockReplayWithCoins = async () => {
+    if (!selectedDateKey || !canReplaySelected) {
+      return;
+    }
+
+    if (profile.coins < replayCoinCost) {
+      playSound("purchaseFail");
+      Alert.alert(
+        "Not enough coins",
+        `You need ${replayCoinCost.toLocaleString("en-US")} coins to replay this daily puzzle.`
+      );
+      return;
+    }
+
+    try {
+      setReplayUnlockAction("coins");
+      const spent = await spendCoins(replayCoinCost);
+
+      if (!spent) {
+        playSound("purchaseFail");
+        Alert.alert("Not enough coins", "Play a few more rounds or visit the shop first.");
+        return;
+      }
+
+      playSound("purchaseSuccess");
+      openPuzzle(selectedDateKey, "coins");
+    } catch (error) {
+      playSound("error");
+      Alert.alert("Could not unlock replay", error instanceof Error ? error.message : "Try again in a moment.");
+    } finally {
+      setReplayUnlockAction(null);
+    }
+  };
+
+  const returnToHome = () => {
+    router.replace("/");
   };
 
   const selectedStatusCopy = useMemo(() => {
@@ -150,8 +235,8 @@ export default function DailyPuzzleCalendarScreen() {
     }
 
     return {
-      title: `${formatPlayLabel(selectedDateKey)} unavailable`,
-      body: "Daily play is locked to today only."
+      title: `${formatPlayLabel(selectedDateKey)} replay`,
+      body: `Watch an ad or spend ${replayCoinCost.toLocaleString("en-US")} coins to play this date.`
     };
   }, [selectedCompletion, selectedDateKey, todayKey]);
 
@@ -170,7 +255,7 @@ export default function DailyPuzzleCalendarScreen() {
       <TopBar
         accent={colors.warning}
         label="Daily Puzzle"
-        onBack={() => router.back()}
+        onBack={returnToHome}
         title="HIGHER LOWER"
         variant="header-only"
       />
@@ -305,7 +390,7 @@ export default function DailyPuzzleCalendarScreen() {
                       playSound(isTodayPuzzleDate(cell.dateKey) ? "uiTap" : "softNoise");
                       setSelectedDateKey(cell.dateKey);
 
-                      if (isTodayPuzzleDate(cell.dateKey)) {
+                      if (cell.dateKey === todayKey) {
                         openPuzzle(cell.dateKey);
                       }
                     }}
@@ -350,35 +435,81 @@ export default function DailyPuzzleCalendarScreen() {
       </View>
 
       {!(selectedDateKey && completedByDate[selectedDateKey]) ? (
-        <View style={styles.footerCard}>
+        <View style={[styles.footerCard, canReplaySelected && styles.footerCardReplay, compactReplayFooter && styles.footerCardCompact]}>
           <View style={styles.footerCopy}>
             <Text style={styles.footerTitle}>{selectedStatusCopy.title}</Text>
-            <Text numberOfLines={2} style={styles.footerBody}>
+            <Text numberOfLines={compactReplayFooter ? 3 : 2} style={styles.footerBody}>
               {selectedStatusCopy.body}
             </Text>
             {loadError ? <Text style={styles.footerError}>{loadError}</Text> : null}
           </View>
 
-          <Pressable
-            disabled={!canOpenSelected}
-            onPress={() => {
-              if (loadError && selectedDateKey !== todayKey) {
-                playSound("onlineNotify");
-                setReloadKey((current) => current + 1);
-                return;
-              }
+          {canReplaySelected ? (
+            <View style={[styles.replayActions, compactReplayFooter && styles.replayActionsCompact]}>
+              <Pressable
+                disabled={replayUnlockAction !== null}
+                onPress={() => void unlockReplayWithAd()}
+                style={({ pressed }) => [
+                  styles.replayButton,
+                  styles.replayAdButton,
+                  pressed && replayUnlockAction === null && styles.playButtonPressed,
+                  replayUnlockAction !== null && styles.playButtonDisabled
+                ]}
+              >
+                <View style={styles.replayAdIconDisc}>
+                  <Ionicons color="#ffffff" name="play" size={14} />
+                </View>
+                <View style={styles.replayButtonLabelStack}>
+                  <Text numberOfLines={1} style={styles.replayButtonText}>
+                    {replayUnlockAction === "ad" ? "LOADING" : "WATCH AD"}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.replayRewardText}>UNLOCK DAY</Text>
+                </View>
+              </Pressable>
 
-              playSound("uiTap");
-              openPuzzle(selectedDateKey);
-            }}
-            style={({ pressed }) => [
-              styles.playButton,
-              !canOpenSelected && styles.playButtonDisabled,
-              pressed && canOpenSelected && styles.playButtonPressed
-            ]}
-          >
-            <Text style={styles.playButtonText}>{`PLAY ${getShortMonthLabel(todayKey).toUpperCase()} ${getDayFromDateKey(todayKey)}`}</Text>
-          </Pressable>
+              <Pressable
+                disabled={replayUnlockAction !== null}
+                onPress={() => void unlockReplayWithCoins()}
+                style={({ pressed }) => [
+                  styles.replayButton,
+                  styles.replayCoinButton,
+                  pressed && replayUnlockAction === null && styles.playButtonPressed,
+                  replayUnlockAction !== null && styles.playButtonDisabled
+                ]}
+              >
+                <View style={styles.replayCoinIconDisc}>
+                  <CoinIcon size={24} />
+                </View>
+                <View style={styles.replayButtonLabelStack}>
+                  <Text numberOfLines={1} style={styles.replayCoinButtonText}>
+                    {replayUnlockAction === "coins" ? "SPENDING" : replayCoinCost.toLocaleString("en-US")}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.replayCoinSubText}>COINS</Text>
+                </View>
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable
+              disabled={!canOpenSelected}
+              onPress={() => {
+                if (loadError && selectedDateKey !== todayKey) {
+                  playSound("onlineNotify");
+                  setReloadKey((current) => current + 1);
+                  return;
+                }
+
+                playSound("uiTap");
+                openPuzzle(selectedDateKey);
+              }}
+              style={({ pressed }) => [
+                styles.playButton,
+                !canOpenSelected && styles.playButtonDisabled,
+                pressed && canOpenSelected && styles.playButtonPressed
+              ]}
+            >
+              <Text style={styles.playButtonText}>{`PLAY ${getShortMonthLabel(todayKey).toUpperCase()} ${getDayFromDateKey(todayKey)}`}</Text>
+            </Pressable>
+          )}
         </View>
       ) : null}
     </ScreenContainer>
@@ -684,6 +815,19 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     ...shadows.card
   },
+  footerCardReplay: {
+    alignItems: "stretch",
+    borderColor: "#e7eee8",
+    borderWidth: 1,
+    flexDirection: "column",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  footerCardCompact: {
+    alignItems: "stretch",
+    flexDirection: "column"
+  },
   footerCopy: {
     flex: 1,
     gap: 4,
@@ -730,6 +874,101 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0.8,
     textAlign: "center"
+  },
+  replayActions: {
+    alignSelf: "stretch",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minWidth: 0
+  },
+  replayActionsCompact: {
+    width: "100%"
+  },
+  replayButton: {
+    alignItems: "center",
+    borderBottomWidth: 3,
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    flex: 1,
+    flexDirection: "row",
+    gap: 7,
+    justifyContent: "flex-start",
+    minHeight: 44,
+    minWidth: 0,
+    overflow: "hidden",
+    paddingLeft: 9,
+    paddingRight: 10,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3
+  },
+  replayAdButton: {
+    backgroundColor: colors.accent,
+    borderBottomColor: "#005228",
+    borderColor: "#0b8d49"
+  },
+  replayCoinButton: {
+    backgroundColor: "#273142",
+    borderBottomColor: "#151d2b",
+    borderColor: "#46546a",
+    shadowColor: "#111827"
+  },
+  replayAdIconDisc: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderColor: "rgba(255,255,255,0.34)",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    height: 28,
+    justifyContent: "center",
+    width: 28
+  },
+  replayCoinIconDisc: {
+    alignItems: "center",
+    backgroundColor: "#354054",
+    borderColor: "#5a6680",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    height: 30,
+    justifyContent: "center",
+    shadowColor: "#0b1020",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    width: 30
+  },
+  replayButtonLabelStack: {
+    flex: 1,
+    gap: 1,
+    justifyContent: "center",
+    minWidth: 0
+  },
+  replayButtonText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.3
+  },
+  replayRewardText: {
+    color: "#c8ffe2",
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.5
+  },
+  replayCoinButtonText: {
+    color: "#fff7d6",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.2
+  },
+  replayCoinSubText: {
+    color: "#c8d0df",
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.6
   },
   pressed: {
     opacity: 0.84
