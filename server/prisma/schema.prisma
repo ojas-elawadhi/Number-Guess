@@ -30,3 +30,24 @@ model DailyPuzzle {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+model DailyPuzzleResult {
+  id                  String    @id @default(cuid())
+  dateKey             String
+  playerKey           String
+  displayNameSnapshot String
+  avatarIdSnapshot    String    @default("scholar")
+  attempts            Int
+  durationMs          Int
+  completedAt         DateTime
+  rewardEligible      Boolean   @default(true)
+  rewardCoinsAwarded  Int       @default(0)
+  rewardAwardedAt     DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([dateKey, playerKey])
+  @@index([dateKey, attempts, durationMs, completedAt])
+  @@index([dateKey, rewardEligible, attempts, durationMs])
+  @@index([playerKey, dateKey])
+}

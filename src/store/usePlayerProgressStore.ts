@@ -4,6 +4,7 @@ import { create } from "zustand";
 import {
   bootstrapProgress,
   claimDailyRewardRemote,
+  fetchDailyPuzzleLeaderboardRemote,
   fetchDailyPuzzleStatusRemote,
   recordMatchRemote,
   submitDailyPuzzleGuessRemote,
@@ -14,6 +15,7 @@ import type {
   ActivePracticeRunSnapshot,
   AvatarId,
   DailyPuzzleGuessResponse,
+  DailyPuzzleLeaderboardResponse,
   DailyPuzzleStatusResponse,
   LeaderboardEntry,
   MatchInput,
@@ -29,7 +31,7 @@ import {
   getDefaultDisplayName,
   normalizeProfile
 } from "../utils/progression";
-import { getLocalTodayKey } from "../utils/dailyPuzzle";
+import { getUtcTodayKey } from "../utils/dailyPuzzle";
 
 const PLAYER_KEY_STORAGE_KEY = "higher-lower-player-key";
 
@@ -70,6 +72,7 @@ interface PlayerProgressStore {
   }>;
   recordMatch: (input: MatchInput) => Promise<MatchRecord>;
   fetchDailyPuzzleStatus: (dateKey: string) => Promise<DailyPuzzleStatusResponse>;
+  fetchDailyPuzzleLeaderboard: (dateKey: string) => Promise<DailyPuzzleLeaderboardResponse>;
   submitDailyPuzzleGuess: (input: {
     dateKey: string;
     guess: number;
@@ -571,7 +574,18 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
 
     const response = await fetchDailyPuzzleStatusRemote(get().playerKey!, dateKey);
     await applyRemoteSync(set, get, response, {
-      updateDailyPuzzleTodayKey: dateKey === getLocalTodayKey()
+      updateDailyPuzzleTodayKey: dateKey === getUtcTodayKey()
+    });
+    return response;
+  },
+  fetchDailyPuzzleLeaderboard: async (dateKey) => {
+    if (!get().playerKey) {
+      throw new Error("Your profile is still loading. Try again in a moment.");
+    }
+
+    const response = await fetchDailyPuzzleLeaderboardRemote(get().playerKey!, dateKey);
+    await applyRemoteSync(set, get, response, {
+      updateDailyPuzzleTodayKey: false
     });
     return response;
   },
@@ -586,7 +600,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     });
 
     await applyRemoteSync(set, get, response, {
-      updateDailyPuzzleTodayKey: input.dateKey === getLocalTodayKey()
+      updateDailyPuzzleTodayKey: input.dateKey === getUtcTodayKey()
     });
     return response;
   },

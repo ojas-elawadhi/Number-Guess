@@ -3,6 +3,7 @@ import { Router } from "express";
 import { dailyPuzzleService } from "../services/daily-puzzle.service";
 import type {
   DailyPuzzleGuessPayload,
+  DailyPuzzleLeaderboardPayload,
   DailyPuzzleStatusPayload
 } from "../../../shared/progression.types";
 
@@ -24,6 +25,26 @@ dailyPuzzleRouter.get("/status", async (request, response) => {
     console.error("[daily-puzzle/status]", error);
     response.status(503).json({
       message: error instanceof Error ? error.message : "Could not load the daily puzzle."
+    });
+  }
+});
+
+dailyPuzzleRouter.get("/leaderboard", async (request, response) => {
+  try {
+    const payload = request.query as unknown as DailyPuzzleLeaderboardPayload;
+
+    if (!payload.playerKey) {
+      response.status(400).json({
+        message: "playerKey is required."
+      });
+      return;
+    }
+
+    response.json(await dailyPuzzleService.getDailyLeaderboard(payload.playerKey, payload.dateKey));
+  } catch (error) {
+    console.error("[daily-puzzle/leaderboard]", error);
+    response.status(503).json({
+      message: error instanceof Error ? error.message : "Could not load the daily puzzle leaderboard."
     });
   }
 });

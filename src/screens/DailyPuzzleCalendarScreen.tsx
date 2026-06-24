@@ -15,11 +15,11 @@ import {
   formatPlayLabel,
   getDayFromDateKey,
   getDaysInMonth,
-  getLocalTodayKey,
   getMonthCompletions,
   getMonthKeyFromDateKey,
   getMonthLabel,
   getShortMonthLabel,
+  getUtcTodayKey,
   isTodayPuzzleDate,
   shiftMonthKey
 } from "../utils/dailyPuzzle";
@@ -54,7 +54,7 @@ export default function DailyPuzzleCalendarScreen() {
       try {
         setLoadError(null);
         setIsLoading(true);
-        const response = await fetchDailyPuzzleStatus(getLocalTodayKey());
+        const response = await fetchDailyPuzzleStatus(getUtcTodayKey());
 
         if (!isMounted) {
           return;
@@ -67,7 +67,7 @@ export default function DailyPuzzleCalendarScreen() {
           return;
         }
 
-        const todayFallback = getLocalTodayKey();
+        const todayFallback = getUtcTodayKey();
         setLoadError(error instanceof Error ? error.message : "Please try again in a moment.");
         setSelectedDateKey((current) => current ?? todayFallback);
         setSelectedMonthKey((current) => current ?? getMonthKeyFromDateKey(todayFallback));
@@ -202,6 +202,15 @@ export default function DailyPuzzleCalendarScreen() {
     router.replace("/");
   };
 
+  const openLeaderboard = () => {
+    router.push({
+      pathname: "/daily-puzzle-leaderboard",
+      params: {
+        dateKey: selectedDateKey ?? todayKey
+      }
+    });
+  };
+
   const selectedStatusCopy = useMemo(() => {
     if (!selectedDateKey || !todayKey) {
       return {
@@ -230,7 +239,7 @@ export default function DailyPuzzleCalendarScreen() {
     if (selectedDateKey > todayKey) {
       return {
         title: `${formatPlayLabel(selectedDateKey)} locked`,
-        body: "That puzzle opens when your local day begins."
+        body: "That puzzle opens at UTC midnight."
       };
     }
 
@@ -308,8 +317,19 @@ export default function DailyPuzzleCalendarScreen() {
               <Ionicons color={colors.warning} name="bar-chart" size={14} />
               <Text style={styles.progressCaption}>Monthly Progress</Text>
             </View>
-            <View style={styles.progressCountPill}>
-              <Text style={styles.progressCountText}>{monthWins} clears</Text>
+            <View style={styles.progressActions}>
+              <Pressable
+                accessibilityLabel="Open daily puzzle leaderboard"
+                accessibilityRole="button"
+                onPress={openLeaderboard}
+                style={({ pressed }) => [styles.leaderboardButton, pressed && styles.pressed]}
+              >
+                <Ionicons color="#8a5a00" name="trophy" size={14} />
+                <Text style={styles.leaderboardButtonText}>Ranks</Text>
+              </Pressable>
+              <View style={styles.progressCountPill}>
+                <Text style={styles.progressCountText}>{monthWins} clears</Text>
+              </View>
             </View>
           </View>
           <View style={styles.progressTrackFrame}>
@@ -597,6 +617,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     gap: 6
+  },
+  progressActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6
+  },
+  leaderboardButton: {
+    alignItems: "center",
+    backgroundColor: "#fff6df",
+    borderColor: "#f2d17f",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    justifyContent: "center",
+    minHeight: 26,
+    paddingHorizontal: spacing.sm
+  },
+  leaderboardButtonText: {
+    color: "#8a5a00",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+    textTransform: "uppercase"
   },
   progressCaption: {
     color: colors.textMuted,

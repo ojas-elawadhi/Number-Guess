@@ -8,8 +8,9 @@ const getLocalDate = (dateKey: string) => {
   return new Date(year, month - 1, day);
 };
 
-export const getLocalTodayKey = () => getTodayKey();
-export const isTodayPuzzleDate = (dateKey: string) => dateKey === getLocalTodayKey();
+export const getUtcTodayKey = (date = new Date()) => date.toISOString().slice(0, 10);
+export const getLocalTodayKey = getUtcTodayKey;
+export const isTodayPuzzleDate = (dateKey: string) => dateKey === getUtcTodayKey();
 
 export const getMonthKeyFromDateKey = (dateKey: string) => dateKey.slice(0, 7);
 

@@ -325,6 +325,11 @@ export interface DailyPuzzleGuessPayload {
   rewardedSkip?: boolean;
 }
 
+export interface DailyPuzzleLeaderboardPayload {
+  playerKey: string;
+  dateKey?: string;
+}
+
 export interface ProgressSyncResponse {
   playerKey: string;
   displayName: string;
@@ -352,6 +357,28 @@ export interface DailyPuzzleStatusResponse extends ProgressSyncResponse {
   todayKey: string;
   maxNumber: number;
   todayCompletion: DailyPuzzleCompletion | null;
+}
+
+export interface DailyPuzzleLeaderboardEntry {
+  playerKey: string;
+  rank: number;
+  name: string;
+  avatarId: AvatarId;
+  attempts: number;
+  durationMs: number;
+  completedAt: string;
+  rewardEligible: boolean;
+  rewardCoins: number;
+  rewardCoinsAwarded: number;
+  isPlayer?: boolean;
+}
+
+export interface DailyPuzzleLeaderboardResponse extends ProgressSyncResponse {
+  dateKey: string;
+  isFinalized: boolean;
+  rewardConfig: Record<number, number>;
+  topEntries: DailyPuzzleLeaderboardEntry[];
+  playerEntry: DailyPuzzleLeaderboardEntry | null;
 }
 
 export interface DailyPuzzleGuessResponse extends ProgressSyncResponse {

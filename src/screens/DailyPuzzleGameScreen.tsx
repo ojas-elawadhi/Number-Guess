@@ -21,7 +21,7 @@ import { colors, radii, shadows, spacing } from "../utils/theme";
 import {
   DAILY_PUZZLE_DEFAULT_MAX,
   getDeterministicDailyPuzzleNumber,
-  getLocalTodayKey,
+  getUtcTodayKey,
   isTodayPuzzleDate
 } from "../utils/dailyPuzzle";
 
@@ -57,10 +57,10 @@ export default function DailyPuzzleGameScreen() {
   const { countdownActive, startCountdown } = countdown;
   const canShowRewardedRevive = isRewardedReviveSupported();
 
-  const requestedDateKey = typeof params.dateKey === "string" ? params.dateKey : getLocalTodayKey();
+  const requestedDateKey = typeof params.dateKey === "string" ? params.dateKey : getUtcTodayKey();
   const requestedDateIsToday = isTodayPuzzleDate(requestedDateKey);
   const requestedDateIsReplayUnlocked =
-    requestedDateKey < getLocalTodayKey() && (params.replayAccess === "ad" || params.replayAccess === "coins");
+    requestedDateKey < getUtcTodayKey() && (params.replayAccess === "ad" || params.replayAccess === "coins");
   const requestedDateIsPlayable = requestedDateIsToday || requestedDateIsReplayUnlocked;
 
   const [isLoading, setIsLoading] = useState(true);

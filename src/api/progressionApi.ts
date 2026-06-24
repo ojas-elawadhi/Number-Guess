@@ -1,6 +1,7 @@
 import type {
   DailyPuzzleGuessPayload,
   DailyPuzzleGuessResponse,
+  DailyPuzzleLeaderboardResponse,
   DailyPuzzleStatusResponse,
   ClaimDailyRewardResponse,
   ProgressBootstrapPayload,
@@ -112,6 +113,11 @@ export const recordMatchRemote = (payload: RecordMatchPayload) =>
 export const fetchDailyPuzzleStatusRemote = (playerKey: string, dateKey: string) =>
   request<DailyPuzzleStatusResponse>(
     `/api/daily-puzzle/status?playerKey=${encodeURIComponent(playerKey)}&dateKey=${encodeURIComponent(dateKey)}`
+  );
+
+export const fetchDailyPuzzleLeaderboardRemote = (playerKey: string, dateKey: string) =>
+  request<DailyPuzzleLeaderboardResponse>(
+    `/api/daily-puzzle/leaderboard?playerKey=${encodeURIComponent(playerKey)}&dateKey=${encodeURIComponent(dateKey)}`
   );
 
 export const submitDailyPuzzleGuessRemote = (payload: DailyPuzzleGuessPayload) =>
