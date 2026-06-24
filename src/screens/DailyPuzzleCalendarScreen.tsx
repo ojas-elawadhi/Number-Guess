@@ -21,6 +21,7 @@ import {
   getShortMonthLabel,
   getUtcTodayKey,
   isTodayPuzzleDate,
+  shiftUtcDateKeyByDays,
   shiftMonthKey
 } from "../utils/dailyPuzzle";
 
@@ -203,10 +204,23 @@ export default function DailyPuzzleCalendarScreen() {
   };
 
   const openLeaderboard = () => {
+    if (!todayKey) {
+      return;
+    }
+
     router.push({
       pathname: "/daily-puzzle-leaderboard",
       params: {
-        dateKey: selectedDateKey ?? todayKey
+        dateKey: todayKey
+      }
+    });
+  };
+
+  const openLeaderboardForDate = (dateKey: string) => {
+    router.push({
+      pathname: "/daily-puzzle-leaderboard",
+      params: {
+        dateKey
       }
     });
   };
@@ -402,6 +416,7 @@ export default function DailyPuzzleCalendarScreen() {
               const isFuture = cell.dateKey > todayKey;
               const isMissed = !completion && !isFuture && !isToday;
               const isTodayActive = isToday && !completion;
+              const isYesterday = cell.dateKey === shiftUtcDateKeyByDays(todayKey, -1);
 
               return (
                 <View key={cell.dateKey} style={styles.daySlot}>
@@ -412,6 +427,11 @@ export default function DailyPuzzleCalendarScreen() {
 
                       if (cell.dateKey === todayKey) {
                         openPuzzle(cell.dateKey);
+                        return;
+                      }
+
+                      if (isYesterday && completion) {
+                        openLeaderboardForDate(cell.dateKey);
                       }
                     }}
                     style={({ pressed }) => [

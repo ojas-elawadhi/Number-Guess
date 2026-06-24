@@ -1,13 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderDateBadge } from "../components/AppHeader";
 import { BoosterIcon } from "../components/BoosterIcon";
+import { CoinIcon } from "../components/CoinIcon";
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
+import { profileAvatarOptions } from "../config/avatarCatalog";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
 import { maybeShowPendingInterstitialAd, recordInterstitialOpportunity } from "../services/interstitialAd";
 import { isRewardedReviveSupported, showRewardedReviveAd } from "../services/rewardedReviveAd";
@@ -15,7 +17,7 @@ import { playResultSound, playSound } from "../services/soundEffects";
 import { useMonetizationStore } from "../store/useMonetizationStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { GuessFeedback } from "../types/game.types";
-import type { MatchRecord } from "../types/progression.types";
+import type { DailyPuzzleLeaderboardEntry, DailyPuzzleLeaderboardResponse, MatchRecord } from "../types/progression.types";
 import { formatDuration } from "../utils/progression";
 import { colors, radii, shadows, spacing } from "../utils/theme";
 import {
@@ -38,10 +40,103 @@ const keypadRows = [
   ["clear", "0", "backspace"]
 ] as const;
 
+const dailyResultRankTones: Record<number, { background: string; border: string; text: string }> = {
+  1: { background: "#ffd766", border: "#bd8313", text: "#5b3900" },
+  2: { background: "#e8edf3", border: "#94a3b8", text: "#334155" },
+  3: { background: "#f0b079", border: "#a85f2d", text: "#52260d" }
+};
+
+const dailyResultFallbackRankTone = {
+  background: "#f7f8f5",
+  border: "#d8ded5",
+  text: "#34413a"
+};
+
+const dailyResultAvatarById = new Map(profileAvatarOptions.map((option) => [option.id, option]));
+
+const getDailyResultRewardLabel = (entry: DailyPuzzleLeaderboardEntry) => {
+  if (!entry.rewardEligible || entry.rewardCoins <= 0) {
+    return null;
+  }
+
+  const rewardCoins = entry.rewardCoinsAwarded > 0 ? entry.rewardCoinsAwarded : entry.rewardCoins;
+  return `+${rewardCoins.toLocaleString("en-US")}`;
+};
+
+function DailyResultLeaderboardRow({
+  entry,
+  isDetachedPlayer = false
+}: {
+  entry: DailyPuzzleLeaderboardEntry;
+  isDetachedPlayer?: boolean;
+}) {
+  const rankTone = dailyResultRankTones[entry.rank] ?? dailyResultFallbackRankTone;
+  const avatar = dailyResultAvatarById.get(entry.avatarId) ?? profileAvatarOptions[0];
+  const rewardLabel = getDailyResultRewardLabel(entry);
+  const isPlayerRow = Boolean(entry.isPlayer || isDetachedPlayer);
+  const isTopThree = entry.rank <= 3;
+
+  return (
+    <View style={[styles.dailyResultRankRow, isPlayerRow && styles.dailyResultRankRowPlayer]}>
+      <View
+        style={[
+          styles.dailyResultRankBadge,
+          { backgroundColor: rankTone.background, borderColor: rankTone.border },
+          isPlayerRow && styles.dailyResultRankBadgePlayer
+        ]}
+      >
+        {isTopThree ? <Ionicons color={rankTone.text} name={entry.rank === 1 ? "trophy" : "medal"} size={10} /> : null}
+        <Text style={[styles.dailyResultRankText, { color: rankTone.text }, isPlayerRow && styles.dailyResultTextLight]}>
+          {entry.rank}
+        </Text>
+      </View>
+
+      <View style={[styles.dailyResultAvatarFrame, { backgroundColor: avatar.background, borderColor: avatar.ring }]}>
+        <Image
+          accessibilityIgnoresInvertColors
+          resizeMode="contain"
+          source={{ cache: "force-cache", uri: avatar.imageUrl }}
+          style={styles.dailyResultAvatarImage}
+        />
+      </View>
+
+      <View style={styles.dailyResultPlayerCopy}>
+        <View style={styles.dailyResultNameLine}>
+          <Text numberOfLines={1} style={[styles.dailyResultPlayerName, isPlayerRow && styles.dailyResultPlayerNameActive]}>
+            {entry.name}
+          </Text>
+          {entry.isPlayer ? (
+            <View style={styles.dailyResultYouBadge}>
+              <Text style={styles.dailyResultYouBadgeText}>You</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text numberOfLines={1} style={[styles.dailyResultPlayerMeta, isPlayerRow && styles.dailyResultPlayerMetaActive]}>
+          {formatDuration(entry.durationMs)}
+        </Text>
+      </View>
+
+      <View style={styles.dailyResultScoreStack}>
+        <View style={[styles.dailyResultGuessPill, isPlayerRow && styles.dailyResultGuessPillPlayer]}>
+          <Text style={[styles.dailyResultGuessValue, isPlayerRow && styles.dailyResultTextLight]}>{entry.attempts}</Text>
+          <Text style={[styles.dailyResultGuessLabel, isPlayerRow && styles.dailyResultTextSoft]}>guesses</Text>
+        </View>
+        {rewardLabel ? (
+          <View style={styles.dailyResultRewardPill}>
+            <CoinIcon size={12} />
+            <Text style={styles.dailyResultRewardText}>{rewardLabel}</Text>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 export default function DailyPuzzleGameScreen() {
   const params = useLocalSearchParams<{ dateKey?: string; replayAccess?: string }>();
   const hydrated = usePlayerProgressStore((state) => state.hydrated);
   const fetchDailyPuzzleStatus = usePlayerProgressStore((state) => state.fetchDailyPuzzleStatus);
+  const fetchDailyPuzzleLeaderboard = usePlayerProgressStore((state) => state.fetchDailyPuzzleLeaderboard);
   const submitDailyPuzzleGuess = usePlayerProgressStore((state) => state.submitDailyPuzzleGuess);
   const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
   const saveDailyPuzzleCompletionLocal = usePlayerProgressStore((state) => state.saveDailyPuzzleCompletionLocal);
@@ -80,6 +175,9 @@ export default function DailyPuzzleGameScreen() {
   const [powerUpAction, setPowerUpAction] = useState<
     "extra-inventory" | "extra-ad" | "skip-inventory" | "skip-ad" | null
   >(null);
+  const [dailyLeaderboard, setDailyLeaderboard] = useState<DailyPuzzleLeaderboardResponse | null>(null);
+  const [dailyLeaderboardLoading, setDailyLeaderboardLoading] = useState(false);
+  const [dailyLeaderboardError, setDailyLeaderboardError] = useState<string | null>(null);
   const startedAtRef = useRef(Date.now());
 
   const completedByDate = profile.dailyPuzzle?.completedByDate ?? {};
@@ -163,6 +261,41 @@ export default function DailyPuzzleGameScreen() {
     }
   }, [completedByDate, matchSummary, profile.lastMatchSummary, puzzleDateKey]);
 
+  useEffect(() => {
+    if (!hydrated || !completed || !puzzleDateKey) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadLeaderboard = async () => {
+      try {
+        setDailyLeaderboardLoading(true);
+        setDailyLeaderboardError(null);
+        const response = await fetchDailyPuzzleLeaderboard(puzzleDateKey);
+
+        if (isMounted) {
+          setDailyLeaderboard(response);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setDailyLeaderboard(null);
+          setDailyLeaderboardError(error instanceof Error ? error.message : "Could not load the daily leaderboard.");
+        }
+      } finally {
+        if (isMounted) {
+          setDailyLeaderboardLoading(false);
+        }
+      }
+    };
+
+    loadLeaderboard().catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [completed, fetchDailyPuzzleLeaderboard, hydrated, puzzleDateKey]);
+
   const digitLimit = String(maxNumber).length;
   const countedAttempts = guessHistory.filter((entry) => entry.counted).length;
   const attemptsCount = completed && completion ? completion.attempts : countedAttempts;
@@ -206,6 +339,15 @@ export default function DailyPuzzleGameScreen() {
     !completed && !countdownActive && !isSubmitting && !isUsingPowerUp && (extraGuessPowerUps > 0 || canShowRewardedRevive);
   const canTriggerSkipBooster =
     !completed && !countdownActive && !isSubmitting && !isUsingPowerUp && (skipBoosters > 0 || canShowRewardedRevive);
+  const detachedDailyResultPlayerEntry = useMemo(() => {
+    if (!dailyLeaderboard?.playerEntry) {
+      return null;
+    }
+
+    return dailyLeaderboard.topEntries.some((entry) => entry.playerKey === dailyLeaderboard.playerEntry?.playerKey)
+      ? null
+      : dailyLeaderboard.playerEntry;
+  }, [dailyLeaderboard]);
 
   const submitGuess = async () => {
     if (countdownActive || isSubmitting || completed || !puzzleDateKey || !requestedDateIsPlayable) {
@@ -586,10 +728,90 @@ export default function DailyPuzzleGameScreen() {
 
       <AppHeader
         center={<HeaderDateBadge dateKey={puzzleDateKey} />}
-        left={<HeaderBackButton onPress={() => router.back()} />}
+        left={<HeaderBackButton onPress={() => router.replace("/daily-puzzle")} />}
         right={<HeaderCoinsPill coins={profile.coins} />}
       />
 
+      {completed ? (
+        <ScrollView contentContainerStyle={styles.completedResultContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.completedResultSummary}>
+            <View style={styles.completedResultTitleRow}>
+              <View style={styles.completedResultIcon}>
+                <Ionicons color="#ffffff" name="checkmark" size={18} />
+              </View>
+              <View style={styles.completedResultCopy}>
+                <Text style={styles.completedResultEyebrow}>Board clear</Text>
+                <Text style={styles.completedResultTitle}>Daily win locked in</Text>
+              </View>
+            </View>
+
+            <View style={styles.completedResultStats}>
+              <View style={styles.completedResultStat}>
+                <Text style={styles.completedResultStatLabel}>Guesses</Text>
+                <Text style={styles.completedResultStatValue}>{completion?.attempts ?? attemptsCount}</Text>
+              </View>
+              <View style={styles.completedResultStatDivider} />
+              <View style={styles.completedResultStat}>
+                <Text style={styles.completedResultStatLabel}>Time</Text>
+                <Text style={styles.completedResultStatValue}>{completion ? formatDuration(completion.durationMs) : "--"}</Text>
+              </View>
+              <View style={styles.completedResultStatDivider} />
+              <View style={styles.completedResultStat}>
+                <Text style={styles.completedResultStatLabel}>Rank</Text>
+                <Text style={styles.completedResultStatValue}>
+                  {dailyLeaderboard?.playerEntry ? `#${dailyLeaderboard.playerEntry.rank}` : "--"}
+                </Text>
+              </View>
+            </View>
+
+          </View>
+
+          <View style={styles.dailyResultLeaderboardCard}>
+            <View style={styles.dailyResultLeaderboardHeader}>
+              <View>
+                <Text style={styles.dailyResultLeaderboardTitle}>Daily leaderboard</Text>
+                <Text style={styles.dailyResultLeaderboardBody}>Fewest guesses ranks first.</Text>
+              </View>
+              {dailyLeaderboardLoading ? <ActivityIndicator color={colors.warning} size="small" /> : null}
+            </View>
+
+            {dailyLeaderboardError ? (
+              <View style={styles.dailyResultEmptyState}>
+                <Text style={styles.dailyResultEmptyTitle}>Leaderboard unavailable</Text>
+                <Text style={styles.dailyResultEmptyBody}>{dailyLeaderboardError}</Text>
+              </View>
+            ) : dailyLeaderboard && dailyLeaderboard.topEntries.length > 0 ? (
+              <View style={styles.dailyResultLeaderboardShell}>
+                {dailyLeaderboard.topEntries.map((entry) => (
+                  <DailyResultLeaderboardRow entry={entry} key={entry.playerKey} />
+                ))}
+              </View>
+            ) : (
+              <View style={styles.dailyResultEmptyState}>
+                <Text style={styles.dailyResultEmptyTitle}>Waiting for ranks</Text>
+                <Text style={styles.dailyResultEmptyBody}>Your clear is saved. The board will appear when ranking data syncs.</Text>
+              </View>
+            )}
+
+            {detachedDailyResultPlayerEntry ? (
+              <>
+                <View style={styles.dailyResultDivider}>
+                  <Text style={styles.dailyResultDividerText}>Your rank</Text>
+                </View>
+                <DailyResultLeaderboardRow entry={detachedDailyResultPlayerEntry} isDetachedPlayer />
+              </>
+            ) : null}
+          </View>
+
+          <Pressable
+            onPress={() => router.replace("/daily-puzzle")}
+            style={({ pressed }) => [styles.completedResultReturnButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.completedResultReturnText}>BACK TO CALENDAR</Text>
+          </Pressable>
+        </ScrollView>
+      ) : (
+        <>
       <View style={styles.playInfoBar}>
         <View style={styles.playInfoCenter}>
           <View style={styles.modeHint}>
@@ -650,33 +872,6 @@ export default function DailyPuzzleGameScreen() {
 
       <View style={styles.bottomSpacer} />
 
-      {completed ? (
-        <View style={styles.completeCard}>
-          <Text style={styles.completeTitle}>Daily win locked in</Text>
-          <View style={styles.completeStatsRow}>
-            <View style={styles.completeStat}>
-              <Text style={styles.completeStatLabel}>Guesses</Text>
-              <Text style={styles.completeStatValue}>{completion?.attempts ?? attemptsCount}</Text>
-            </View>
-            <View style={styles.completeStatDivider} />
-            <View style={styles.completeStat}>
-              <Text style={styles.completeStatLabel}>Time</Text>
-              <Text style={styles.completeStatValue}>
-                {completion ? formatDuration(completion.durationMs) : "--"}
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.completeBody}>
-            {matchSummary ? `+${matchSummary.points} pts | +${matchSummary.xpEarned} XP` : "Your completion is saved for this date."}
-          </Text>
-          <Pressable
-            onPress={() => router.replace("/daily-puzzle")}
-            style={({ pressed }) => [styles.returnButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.returnButtonText}>BACK TO CALENDAR</Text>
-          </Pressable>
-        </View>
-      ) : (
         <View style={styles.bottomControls}>
           <View style={styles.keypadWrap}>
             {keypadRows.map((row, rowIndex) => (
@@ -752,6 +947,7 @@ export default function DailyPuzzleGameScreen() {
             </Pressable>
           </View>
         </View>
+        </>
       )}
     </ScreenContainer>
   );
@@ -780,6 +976,309 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     textAlign: "center"
+  },
+  completedResultContent: {
+    gap: spacing.sm,
+    paddingBottom: spacing.lg
+  },
+  completedResultSummary: {
+    backgroundColor: colors.surface,
+    borderColor: "#dfe8e1",
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+    ...shadows.card
+  },
+  completedResultTitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm
+  },
+  completedResultIcon: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderBottomColor: colors.accentDark,
+    borderBottomWidth: 4,
+    borderRadius: radii.pill,
+    height: 42,
+    justifyContent: "center",
+    width: 42
+  },
+  completedResultCopy: {
+    flex: 1,
+    gap: 2
+  },
+  completedResultEyebrow: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+    textTransform: "uppercase"
+  },
+  completedResultTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  completedResultStats: {
+    alignItems: "center",
+    backgroundColor: "#f5f8f5",
+    borderColor: "#e2e9e2",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    minHeight: 58,
+    paddingVertical: spacing.xs
+  },
+  completedResultStat: {
+    alignItems: "center",
+    flex: 1,
+    gap: 3
+  },
+  completedResultStatDivider: {
+    backgroundColor: "#d5ded5",
+    height: 34,
+    width: 1
+  },
+  completedResultStatLabel: {
+    color: colors.textMuted,
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.6,
+    textTransform: "uppercase"
+  },
+  completedResultStatValue: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "900"
+  },
+  dailyResultLeaderboardCard: {
+    backgroundColor: colors.surface,
+    borderColor: "#e4e9e6",
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.sm,
+    ...shadows.card
+  },
+  dailyResultLeaderboardHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 36
+  },
+  dailyResultLeaderboardTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  dailyResultLeaderboardBody: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 2
+  },
+  dailyResultLeaderboardShell: {
+    gap: 7
+  },
+  dailyResultRankRow: {
+    alignItems: "center",
+    backgroundColor: "#fffdf8",
+    borderColor: "#e7eadf",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 60,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 7
+  },
+  dailyResultRankRowPlayer: {
+    backgroundColor: "#f255b6",
+    borderColor: "#df2f9c",
+    borderWidth: 1
+  },
+  dailyResultRankBadge: {
+    alignItems: "center",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    height: 32,
+    justifyContent: "center",
+    width: 32
+  },
+  dailyResultRankBadgePlayer: {
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderColor: "rgba(255,255,255,0.5)"
+  },
+  dailyResultRankText: {
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 14
+  },
+  dailyResultAvatarFrame: {
+    alignItems: "center",
+    borderRadius: radii.pill,
+    borderWidth: 2,
+    height: 42,
+    justifyContent: "center",
+    overflow: "hidden",
+    width: 42
+  },
+  dailyResultAvatarImage: {
+    height: 37,
+    width: 37
+  },
+  dailyResultPlayerCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  dailyResultNameLine: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+    minWidth: 0
+  },
+  dailyResultPlayerName: {
+    color: colors.text,
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: "900"
+  },
+  dailyResultPlayerNameActive: {
+    color: "#ffffff"
+  },
+  dailyResultPlayerMeta: {
+    color: "#596357",
+    fontSize: 10,
+    fontWeight: "800",
+    marginTop: 2
+  },
+  dailyResultPlayerMetaActive: {
+    color: "#ffe8f6"
+  },
+  dailyResultYouBadge: {
+    backgroundColor: "rgba(255,255,255,0.22)",
+    borderColor: "rgba(255,255,255,0.5)",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2
+  },
+  dailyResultYouBadgeText: {
+    color: "#ffffff",
+    fontSize: 8,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  dailyResultScoreStack: {
+    alignItems: "flex-end",
+    gap: 3,
+    minWidth: 72
+  },
+  dailyResultGuessPill: {
+    alignItems: "center",
+    backgroundColor: "#aeb5c3",
+    borderBottomColor: "#8f98a8",
+    borderBottomWidth: 2,
+    borderRadius: radii.pill,
+    flexDirection: "row",
+    gap: 4,
+    justifyContent: "center",
+    minHeight: 26,
+    minWidth: 70,
+    paddingHorizontal: 7
+  },
+  dailyResultGuessPillPlayer: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderBottomColor: "rgba(0,0,0,0.18)",
+    borderColor: "rgba(255,255,255,0.34)",
+    borderWidth: 1
+  },
+  dailyResultGuessValue: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "900"
+  },
+  dailyResultGuessLabel: {
+    color: "#ffffff",
+    fontSize: 8,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  dailyResultRewardPill: {
+    alignItems: "center",
+    backgroundColor: "#fff4cf",
+    borderColor: "#f3d27d",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 2,
+    minHeight: 20,
+    paddingHorizontal: 5,
+    paddingVertical: 1
+  },
+  dailyResultRewardText: {
+    color: "#8a5a00",
+    fontSize: 9,
+    fontWeight: "900"
+  },
+  dailyResultTextLight: {
+    color: "#ffffff"
+  },
+  dailyResultTextSoft: {
+    color: "rgba(255,255,255,0.84)"
+  },
+  dailyResultDivider: {
+    alignItems: "center",
+    marginTop: spacing.xs
+  },
+  dailyResultDividerText: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textTransform: "uppercase"
+  },
+  dailyResultEmptyState: {
+    alignItems: "center",
+    backgroundColor: "#f6f8f6",
+    borderColor: "#e3e9e3",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: 4,
+    padding: spacing.md
+  },
+  dailyResultEmptyTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "900"
+  },
+  dailyResultEmptyBody: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
+    textAlign: "center"
+  },
+  completedResultReturnButton: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderBottomColor: colors.accentDark,
+    borderBottomWidth: 5,
+    borderRadius: radii.pill,
+    justifyContent: "center",
+    minHeight: 52,
+    paddingHorizontal: spacing.lg
+  },
+  completedResultReturnText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 0.7
   },
   playInfoBar: {
     alignItems: "center",
@@ -1083,57 +1582,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0
-  },
-  completeCard: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderRadius: radii.xl,
-    gap: spacing.sm,
-    marginTop: "auto",
-    padding: spacing.lg,
-    ...shadows.card
-  },
-  completeTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: "900",
-    textAlign: "center",
-    textTransform: "uppercase"
-  },
-  completeStatsRow: {
-    alignItems: "center",
-    alignSelf: "stretch",
-    flexDirection: "row",
-    justifyContent: "center"
-  },
-  completeStat: {
-    alignItems: "center",
-    flex: 1,
-    gap: 4
-  },
-  completeStatDivider: {
-    backgroundColor: colors.surfaceMuted,
-    height: 36,
-    width: 1
-  },
-  completeStatLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.6,
-    textTransform: "uppercase"
-  },
-  completeStatValue: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: "900"
-  },
-  completeBody: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: "700",
-    lineHeight: 20,
-    textAlign: "center"
   },
   returnButton: {
     alignItems: "center",

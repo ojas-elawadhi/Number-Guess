@@ -12,6 +12,11 @@ export const getUtcTodayKey = (date = new Date()) => date.toISOString().slice(0,
 export const getLocalTodayKey = getUtcTodayKey;
 export const isTodayPuzzleDate = (dateKey: string) => dateKey === getUtcTodayKey();
 
+export const shiftUtcDateKeyByDays = (dateKey: string, delta: number) => {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + delta)).toISOString().slice(0, 10);
+};
+
 export const getMonthKeyFromDateKey = (dateKey: string) => dateKey.slice(0, 7);
 
 export const shiftMonthKey = (monthKey: string, delta: number) => {

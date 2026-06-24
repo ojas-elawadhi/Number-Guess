@@ -368,34 +368,24 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg
   },
   leaderboardShell: {
-    backgroundColor: colors.darkSurface,
-    borderColor: "#232728",
-    borderRadius: 18,
-    borderWidth: 1,
-    gap: 5,
-    padding: 5,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 4
+    gap: 7
   },
   rowCard: {
     alignItems: "center",
-    backgroundColor: "#fffdf7",
-    borderColor: "#ede6d8",
-    borderRadius: 12,
+    backgroundColor: "#fffdf8",
+    borderColor: "#e7eadf",
+    borderRadius: radii.md,
     borderWidth: 1,
     flexDirection: "row",
     gap: 8,
-    minHeight: 64,
+    minHeight: 62,
     overflow: "hidden",
     paddingHorizontal: 8,
     paddingVertical: 7
   },
   rowCardPlayer: {
     backgroundColor: "#f255b6",
-    borderColor: "#ff9bd7"
+    borderColor: "#df2f9c"
   },
   rankBadge: {
     alignItems: "center",
@@ -406,8 +396,8 @@ const styles = StyleSheet.create({
     width: 34
   },
   rankBadgePlayer: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderColor: "rgba(255,255,255,0.46)"
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderColor: "rgba(255,255,255,0.5)"
   },
   rankHash: {
     fontSize: 8,
@@ -487,8 +477,8 @@ const styles = StyleSheet.create({
     color: "#ffe8f6"
   },
   youBadge: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderColor: "rgba(255,255,255,0.45)",
+    backgroundColor: "rgba(255,255,255,0.22)",
+    borderColor: "rgba(255,255,255,0.5)",
     borderRadius: radii.pill,
     borderWidth: 1,
     paddingHorizontal: 6,
@@ -519,7 +509,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8
   },
   guessPillPlayer: {
-    backgroundColor: "rgba(255,255,255,0.22)",
+    backgroundColor: "rgba(255,255,255,0.2)",
     borderBottomColor: "rgba(0,0,0,0.18)",
     borderColor: "rgba(255,255,255,0.34)",
     borderWidth: 1

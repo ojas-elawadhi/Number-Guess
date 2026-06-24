@@ -33,12 +33,13 @@ const getServerTodayKey = () => new Date().toISOString().slice(0, 10);
 const resolvePuzzleDateKey = (dateKey?: string) => (dateKey && isDateKey(dateKey) ? dateKey : getServerTodayKey());
 const isClosedUtcDailyDate = (dateKey: string) => dateKey < getServerTodayKey();
 const getRankCoinReward = (rank: number) => DAILY_PUZZLE_RANK_COIN_REWARDS[rank] ?? 0;
-const isCompletedDuringUtcDailyWindow = (dateKey: string, completedAt: Date) => {
-  const windowStart = new Date(`${dateKey}T00:00:00.000Z`).getTime();
-  const windowEnd = windowStart + 86_400_000;
-  const completedTime = completedAt.getTime();
-
-  return Number.isFinite(completedTime) && completedTime >= windowStart && completedTime < windowEnd;
+const shiftUtcDateKeyByDays = (dateKey: string, delta: number) => {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + delta)).toISOString().slice(0, 10);
+};
+const isAllowedLeaderboardDateKey = (dateKey: string) => {
+  const todayKey = getServerTodayKey();
+  return dateKey === todayKey || dateKey === shiftUtcDateKeyByDays(todayKey, -1);
 };
 
 class DailyPuzzleService {
@@ -163,7 +164,9 @@ class DailyPuzzleService {
 
     const leaderboardDateKey = resolvePuzzleDateKey(dateKey);
 
-    await this.backfillDailyPuzzleResultsForDate(leaderboardDateKey);
+    if (!isAllowedLeaderboardDateKey(leaderboardDateKey)) {
+      throw new Error("Daily challenge leaderboard is available for today and yesterday only.");
+    }
 
     if (isClosedUtcDailyDate(leaderboardDateKey)) {
       await this.finalizeDailyLeaderboardRewards(leaderboardDateKey);
@@ -290,62 +293,6 @@ class DailyPuzzleService {
     });
   }
 
-  private async backfillDailyPuzzleResultsForDate(dateKey: string) {
-    const players = await prisma.playerProgress.findMany({
-      select: {
-        displayName: true,
-        playerKey: true,
-        profile: true
-      }
-    });
-
-    const resultWrites = players.flatMap((player) => {
-      const profile = normalizeProfile(player.profile as Partial<PlayerProfile>);
-      const completion = getDailyPuzzleCompletion(profile, dateKey);
-
-      if (!completion) {
-        return [];
-      }
-
-      const completedAt = new Date(completion.completedAt);
-
-      if (!Number.isFinite(completedAt.getTime())) {
-        return [];
-      }
-
-      return [
-        prisma.dailyPuzzleResult.upsert({
-          where: {
-            dateKey_playerKey: {
-              dateKey,
-              playerKey: player.playerKey
-            }
-          },
-          update: {
-            displayNameSnapshot: player.displayName,
-            avatarIdSnapshot: profile.avatarId
-          },
-          create: {
-            dateKey,
-            playerKey: player.playerKey,
-            displayNameSnapshot: player.displayName,
-            avatarIdSnapshot: profile.avatarId,
-            attempts: completion.attempts,
-            durationMs: completion.durationMs,
-            completedAt,
-            rewardEligible: isCompletedDuringUtcDailyWindow(dateKey, completedAt)
-          }
-        })
-      ];
-    });
-
-    if (resultWrites.length === 0) {
-      return;
-    }
-
-    await prisma.$transaction(resultWrites);
-  }
-
   private async finalizeDailyLeaderboardRewards(dateKey: string) {
     const winners = await prisma.dailyPuzzleResult.findMany({
       where: {
@@ -419,7 +366,7 @@ class DailyPuzzleService {
     return {
       playerKey: result.playerKey,
       rank,
-      name: result.playerKey === playerKey ? "You" : result.displayNameSnapshot,
+      name: result.displayNameSnapshot,
       avatarId: (result.avatarIdSnapshot || DEFAULT_AVATAR_ID) as DailyPuzzleLeaderboardEntry["avatarId"],
       attempts: result.attempts,
       durationMs: result.durationMs,

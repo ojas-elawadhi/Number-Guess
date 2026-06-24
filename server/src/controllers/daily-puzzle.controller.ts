@@ -43,7 +43,10 @@ dailyPuzzleRouter.get("/leaderboard", async (request, response) => {
     response.json(await dailyPuzzleService.getDailyLeaderboard(payload.playerKey, payload.dateKey));
   } catch (error) {
     console.error("[daily-puzzle/leaderboard]", error);
-    response.status(503).json({
+    const statusCode =
+      error instanceof Error && error.message.includes("today and yesterday only") ? 400 : 503;
+
+    response.status(statusCode).json({
       message: error instanceof Error ? error.message : "Could not load the daily puzzle leaderboard."
     });
   }
