@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 
-import { colors, radii, shadows, spacing } from "../utils/theme";
+import { radii, shadows, spacing } from "../utils/theme";
 
 const HOLD_DURATION_MS = 1600;
 const FADE_IN_DURATION_MS = 260;
@@ -66,11 +66,7 @@ export function StartupSplash() {
       accessibilityLabel="Zeno Studios"
       style={[styles.overlay, { opacity }]}
     >
-      <View style={styles.accentRail}>
-        <View style={[styles.accentBlock, styles.accentBlockGreen]} />
-        <View style={[styles.accentBlock, styles.accentBlockBlue]} />
-        <View style={[styles.accentBlock, styles.accentBlockRose]} />
-      </View>
+      <View style={styles.accentRail} />
       <Animated.View style={[styles.logoGroup, { transform: [{ scale }] }]}>
         <View style={styles.logoMark}>
           <View style={styles.logoTileShadow} />
@@ -99,30 +95,18 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
-    backgroundColor: "#101615",
+    backgroundColor: "#000000",
     justifyContent: "center",
     padding: spacing.xl,
     zIndex: 50
   },
   accentRail: {
+    backgroundColor: "#ffffff",
     bottom: 0,
-    flexDirection: "row",
-    height: 8,
+    height: 6,
     left: 0,
     position: "absolute",
     right: 0
-  },
-  accentBlock: {
-    flex: 1
-  },
-  accentBlockGreen: {
-    backgroundColor: colors.practice
-  },
-  accentBlockBlue: {
-    backgroundColor: colors.online
-  },
-  accentBlockRose: {
-    backgroundColor: colors.ai
   },
   logoGroup: {
     alignItems: "center",
@@ -136,7 +120,7 @@ const styles = StyleSheet.create({
     width: 108
   },
   logoTileShadow: {
-    backgroundColor: "#2ecc71",
+    backgroundColor: "#ffffff",
     borderRadius: radii.lg,
     bottom: -8,
     left: 10,
@@ -146,8 +130,8 @@ const styles = StyleSheet.create({
   },
   logoTile: {
     alignItems: "center",
-    backgroundColor: colors.surface,
-    borderColor: "#6ad69a",
+    backgroundColor: "#ffffff",
+    borderColor: "#ffffff",
     borderRadius: radii.lg,
     borderWidth: 3,
     height: 108,
@@ -156,7 +140,7 @@ const styles = StyleSheet.create({
     ...shadows.tactile
   },
   logoLetter: {
-    color: colors.accentDark,
+    color: "#000000",
     fontSize: 68,
     fontWeight: "900",
     lineHeight: 78
@@ -182,12 +166,12 @@ const styles = StyleSheet.create({
     width: "72%"
   },
   presentedLine: {
-    backgroundColor: "rgba(255, 255, 255, 0.36)",
+    backgroundColor: "#ffffff",
     flex: 1,
     height: 1
   },
   presentedText: {
-    color: "rgba(255, 255, 255, 0.7)",
+    color: "#ffffff",
     fontSize: 11,
     fontWeight: "900",
     letterSpacing: 0
