@@ -6,24 +6,13 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View
 import { ScreenContainer } from "../components/ScreenContainer";
 import { TopBar } from "../components/GameKit";
 import { CoinIcon } from "../components/CoinIcon";
+import { RankMedal } from "../components/RankMedal";
 import { profileAvatarOptions } from "../config/avatarCatalog";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { DailyPuzzleLeaderboardEntry, DailyPuzzleLeaderboardResponse } from "../types/progression.types";
 import { formatDuration } from "../utils/progression";
 import { colors, radii, shadows, spacing } from "../utils/theme";
 import { formatPlayLabel, getUtcTodayKey } from "../utils/dailyPuzzle";
-
-const rankTones: Record<number, { background: string; border: string; text: string }> = {
-  1: { background: "#ffd766", border: "#bd8313", text: "#5b3900" },
-  2: { background: "#e8edf3", border: "#94a3b8", text: "#334155" },
-  3: { background: "#f0b079", border: "#a85f2d", text: "#52260d" }
-};
-
-const fallbackRankTone = {
-  background: "#f7f8f5",
-  border: "#d8ded5",
-  text: "#34413a"
-};
 
 const avatarById = new Map(profileAvatarOptions.map((option) => [option.id, option]));
 
@@ -39,29 +28,23 @@ const getRewardLabel = (entry: DailyPuzzleLeaderboardEntry) => {
   return `+${entry.rewardCoins.toLocaleString("en-US")}`;
 };
 
-function LeaderboardRow({ entry, isDetachedPlayer = false }: { entry: DailyPuzzleLeaderboardEntry; isDetachedPlayer?: boolean }) {
-  const rankTone = rankTones[entry.rank] ?? fallbackRankTone;
+function LeaderboardRow({
+  entry,
+  isDetachedPlayer = false,
+  playerDisplayName
+}: {
+  entry: DailyPuzzleLeaderboardEntry;
+  isDetachedPlayer?: boolean;
+  playerDisplayName?: string;
+}) {
   const rewardLabel = getRewardLabel(entry);
   const avatar = avatarById.get(entry.avatarId) ?? profileAvatarOptions[0];
   const isPlayerRow = Boolean(entry.isPlayer || isDetachedPlayer);
-  const isTopThree = entry.rank <= 3;
+  const displayName = isPlayerRow && playerDisplayName ? playerDisplayName : entry.name;
 
   return (
     <View style={[styles.rowCard, isPlayerRow && styles.rowCardPlayer]}>
-      <View
-        style={[
-          styles.rankBadge,
-          { backgroundColor: rankTone.background, borderColor: rankTone.border },
-          isPlayerRow && styles.rankBadgePlayer
-        ]}
-      >
-        {isTopThree ? (
-          <Ionicons color={rankTone.text} name={entry.rank === 1 ? "trophy" : "medal"} size={11} />
-        ) : (
-          <Text style={[styles.rankHash, { color: rankTone.text }, isPlayerRow && styles.playerTextSoft]}>#</Text>
-        )}
-        <Text style={[styles.rankText, { color: rankTone.text }, isPlayerRow && styles.playerText]}>{entry.rank}</Text>
-      </View>
+      <RankMedal rank={entry.rank} size={entry.rank === 1 ? 56 : 52} />
 
       <View style={styles.avatarWrap}>
         <View
@@ -78,17 +61,12 @@ function LeaderboardRow({ entry, isDetachedPlayer = false }: { entry: DailyPuzzl
             style={styles.avatarImage}
           />
         </View>
-        {isTopThree ? (
-          <View style={[styles.medalDot, { backgroundColor: rankTone.background, borderColor: rankTone.border }]}>
-            <Text style={[styles.medalDotText, { color: rankTone.text }]}>{entry.rank}</Text>
-          </View>
-        ) : null}
       </View>
 
       <View style={styles.playerCopy}>
         <View style={styles.nameLine}>
           <Text numberOfLines={1} style={[styles.playerName, isPlayerRow && styles.playerNameActive]}>
-            {entry.name}
+            {displayName}
           </Text>
           {entry.isPlayer ? (
             <View style={styles.youBadge}>
@@ -120,6 +98,7 @@ function LeaderboardRow({ entry, isDetachedPlayer = false }: { entry: DailyPuzzl
 export default function DailyPuzzleLeaderboardScreen() {
   const params = useLocalSearchParams<{ dateKey?: string }>();
   const hydrated = usePlayerProgressStore((state) => state.hydrated);
+  const displayName = usePlayerProgressStore((state) => state.displayName);
   const fetchDailyPuzzleLeaderboard = usePlayerProgressStore((state) => state.fetchDailyPuzzleLeaderboard);
   const dateKey = typeof params.dateKey === "string" ? params.dateKey : getUtcTodayKey();
   const [response, setResponse] = useState<DailyPuzzleLeaderboardResponse | null>(null);
@@ -216,13 +195,9 @@ export default function DailyPuzzleLeaderboardScreen() {
         {prizeEntries.length > 0 ? (
           <View style={styles.prizeStrip}>
             {prizeEntries.map((entry) => {
-              const rankTone = rankTones[entry.rank] ?? fallbackRankTone;
-
               return (
                 <View key={entry.rank} style={styles.prizeChip}>
-                  <View style={[styles.prizeRankDot, { backgroundColor: rankTone.background, borderColor: rankTone.border }]}>
-                    <Text style={[styles.prizeRankText, { color: rankTone.text }]}>{entry.rank}</Text>
-                  </View>
+                  <RankMedal rank={entry.rank} size={22} />
                   <CoinIcon size={15} />
                   <Text style={styles.prizeText}>{entry.coins.toLocaleString("en-US")}</Text>
                 </View>
@@ -241,7 +216,9 @@ export default function DailyPuzzleLeaderboardScreen() {
         <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
           {response && response.topEntries.length > 0 ? (
             <View style={styles.leaderboardShell}>
-              {response.topEntries.map((entry) => <LeaderboardRow entry={entry} key={entry.playerKey} />)}
+              {response.topEntries.map((entry) => (
+                <LeaderboardRow entry={entry} key={entry.playerKey} playerDisplayName={displayName} />
+              ))}
             </View>
           ) : (
             <View style={styles.emptyCard}>
@@ -255,7 +232,7 @@ export default function DailyPuzzleLeaderboardScreen() {
               <View style={styles.detachedDivider}>
                 <Text style={styles.detachedDividerText}>Your rank</Text>
               </View>
-              <LeaderboardRow entry={detachedPlayerEntry} isDetachedPlayer />
+              <LeaderboardRow entry={detachedPlayerEntry} isDetachedPlayer playerDisplayName={displayName} />
             </>
           ) : null}
         </ScrollView>
@@ -346,18 +323,6 @@ const styles = StyleSheet.create({
     minHeight: 30,
     paddingHorizontal: 6
   },
-  prizeRankDot: {
-    alignItems: "center",
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    height: 18,
-    justifyContent: "center",
-    width: 18
-  },
-  prizeRankText: {
-    fontSize: 10,
-    fontWeight: "900"
-  },
   prizeText: {
     color: colors.text,
     fontSize: 11,
@@ -379,35 +344,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     minHeight: 62,
-    overflow: "hidden",
     paddingHorizontal: 8,
     paddingVertical: 7
   },
   rowCardPlayer: {
     backgroundColor: "#f255b6",
     borderColor: "#df2f9c"
-  },
-  rankBadge: {
-    alignItems: "center",
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    height: 34,
-    justifyContent: "center",
-    width: 34
-  },
-  rankBadgePlayer: {
-    backgroundColor: "rgba(255,255,255,0.18)",
-    borderColor: "rgba(255,255,255,0.5)"
-  },
-  rankHash: {
-    fontSize: 8,
-    fontWeight: "900",
-    lineHeight: 9
-  },
-  rankText: {
-    fontSize: 13,
-    fontWeight: "900",
-    lineHeight: 14
   },
   avatarWrap: {
     height: 48,
@@ -430,22 +372,6 @@ const styles = StyleSheet.create({
   avatarImage: {
     height: 41,
     width: 41
-  },
-  medalDot: {
-    alignItems: "center",
-    borderColor: "#ffffff",
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    bottom: -1,
-    height: 18,
-    justifyContent: "center",
-    position: "absolute",
-    right: -1,
-    width: 18
-  },
-  medalDotText: {
-    fontSize: 9,
-    fontWeight: "900"
   },
   playerCopy: {
     flex: 1,

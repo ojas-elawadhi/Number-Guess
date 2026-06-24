@@ -8,6 +8,7 @@ import { BoosterIcon } from "../components/BoosterIcon";
 import { CoinIcon } from "../components/CoinIcon";
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { GameStartCountdown } from "../components/GameStartCountdown";
+import { RankMedal } from "../components/RankMedal";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { profileAvatarOptions } from "../config/avatarCatalog";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
@@ -40,18 +41,6 @@ const keypadRows = [
   ["clear", "0", "backspace"]
 ] as const;
 
-const dailyResultRankTones: Record<number, { background: string; border: string; text: string }> = {
-  1: { background: "#ffd766", border: "#bd8313", text: "#5b3900" },
-  2: { background: "#e8edf3", border: "#94a3b8", text: "#334155" },
-  3: { background: "#f0b079", border: "#a85f2d", text: "#52260d" }
-};
-
-const dailyResultFallbackRankTone = {
-  background: "#f7f8f5",
-  border: "#d8ded5",
-  text: "#34413a"
-};
-
 const dailyResultAvatarById = new Map(profileAvatarOptions.map((option) => [option.id, option]));
 
 const getDailyResultRewardLabel = (entry: DailyPuzzleLeaderboardEntry) => {
@@ -65,31 +54,21 @@ const getDailyResultRewardLabel = (entry: DailyPuzzleLeaderboardEntry) => {
 
 function DailyResultLeaderboardRow({
   entry,
-  isDetachedPlayer = false
+  isDetachedPlayer = false,
+  playerDisplayName
 }: {
   entry: DailyPuzzleLeaderboardEntry;
   isDetachedPlayer?: boolean;
+  playerDisplayName?: string;
 }) {
-  const rankTone = dailyResultRankTones[entry.rank] ?? dailyResultFallbackRankTone;
   const avatar = dailyResultAvatarById.get(entry.avatarId) ?? profileAvatarOptions[0];
   const rewardLabel = getDailyResultRewardLabel(entry);
   const isPlayerRow = Boolean(entry.isPlayer || isDetachedPlayer);
-  const isTopThree = entry.rank <= 3;
+  const displayName = isPlayerRow && playerDisplayName ? playerDisplayName : entry.name;
 
   return (
     <View style={[styles.dailyResultRankRow, isPlayerRow && styles.dailyResultRankRowPlayer]}>
-      <View
-        style={[
-          styles.dailyResultRankBadge,
-          { backgroundColor: rankTone.background, borderColor: rankTone.border },
-          isPlayerRow && styles.dailyResultRankBadgePlayer
-        ]}
-      >
-        {isTopThree ? <Ionicons color={rankTone.text} name={entry.rank === 1 ? "trophy" : "medal"} size={10} /> : null}
-        <Text style={[styles.dailyResultRankText, { color: rankTone.text }, isPlayerRow && styles.dailyResultTextLight]}>
-          {entry.rank}
-        </Text>
-      </View>
+      <RankMedal rank={entry.rank} size={entry.rank === 1 ? 54 : 50} />
 
       <View style={[styles.dailyResultAvatarFrame, { backgroundColor: avatar.background, borderColor: avatar.ring }]}>
         <Image
@@ -103,7 +82,7 @@ function DailyResultLeaderboardRow({
       <View style={styles.dailyResultPlayerCopy}>
         <View style={styles.dailyResultNameLine}>
           <Text numberOfLines={1} style={[styles.dailyResultPlayerName, isPlayerRow && styles.dailyResultPlayerNameActive]}>
-            {entry.name}
+            {displayName}
           </Text>
           {entry.isPlayer ? (
             <View style={styles.dailyResultYouBadge}>
@@ -144,6 +123,7 @@ export default function DailyPuzzleGameScreen() {
   const consumeSkipBooster = usePlayerProgressStore((state) => state.consumeSkipBooster);
   const dailyPuzzleTodayKey = usePlayerProgressStore((state) => state.dailyPuzzleTodayKey);
   const dailyPuzzleMaxNumber = usePlayerProgressStore((state) => state.dailyPuzzleMaxNumber);
+  const displayName = usePlayerProgressStore((state) => state.displayName);
   const profile = usePlayerProgressStore((state) => state.profile);
   const extraGuessPowerUps = usePlayerProgressStore((state) => state.profile.extraGuessPowerUps);
   const skipBoosters = usePlayerProgressStore((state) => state.profile.skipBoosters);
@@ -783,7 +763,7 @@ export default function DailyPuzzleGameScreen() {
             ) : dailyLeaderboard && dailyLeaderboard.topEntries.length > 0 ? (
               <View style={styles.dailyResultLeaderboardShell}>
                 {dailyLeaderboard.topEntries.map((entry) => (
-                  <DailyResultLeaderboardRow entry={entry} key={entry.playerKey} />
+                  <DailyResultLeaderboardRow entry={entry} key={entry.playerKey} playerDisplayName={displayName} />
                 ))}
               </View>
             ) : (
@@ -798,7 +778,11 @@ export default function DailyPuzzleGameScreen() {
                 <View style={styles.dailyResultDivider}>
                   <Text style={styles.dailyResultDividerText}>Your rank</Text>
                 </View>
-                <DailyResultLeaderboardRow entry={detachedDailyResultPlayerEntry} isDetachedPlayer />
+                <DailyResultLeaderboardRow
+                  entry={detachedDailyResultPlayerEntry}
+                  isDetachedPlayer
+                  playerDisplayName={displayName}
+                />
               </>
             ) : null}
           </View>
@@ -1093,7 +1077,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     minHeight: 60,
-    overflow: "hidden",
     paddingHorizontal: 8,
     paddingVertical: 7
   },
@@ -1101,23 +1084,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#f255b6",
     borderColor: "#df2f9c",
     borderWidth: 1
-  },
-  dailyResultRankBadge: {
-    alignItems: "center",
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    height: 32,
-    justifyContent: "center",
-    width: 32
-  },
-  dailyResultRankBadgePlayer: {
-    backgroundColor: "rgba(255,255,255,0.18)",
-    borderColor: "rgba(255,255,255,0.5)"
-  },
-  dailyResultRankText: {
-    fontSize: 12,
-    fontWeight: "900",
-    lineHeight: 14
   },
   dailyResultAvatarFrame: {
     alignItems: "center",
