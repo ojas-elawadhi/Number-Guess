@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderDateBadge } from "../components/AppHeader";
-import { BoosterIcon } from "../components/BoosterIcon";
 import { CoinIcon } from "../components/CoinIcon";
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { GameStartCountdown } from "../components/GameStartCountdown";
@@ -13,7 +12,6 @@ import { ScreenContainer } from "../components/ScreenContainer";
 import { profileAvatarOptions } from "../config/avatarCatalog";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
 import { maybeShowPendingInterstitialAd, recordInterstitialOpportunity } from "../services/interstitialAd";
-import { isRewardedReviveSupported, showRewardedReviveAd } from "../services/rewardedReviveAd";
 import { playResultSound, playSound } from "../services/soundEffects";
 import { useMonetizationStore } from "../store/useMonetizationStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
@@ -119,18 +117,13 @@ export default function DailyPuzzleGameScreen() {
   const submitDailyPuzzleGuess = usePlayerProgressStore((state) => state.submitDailyPuzzleGuess);
   const recordMatch = usePlayerProgressStore((state) => state.recordMatch);
   const saveDailyPuzzleCompletionLocal = usePlayerProgressStore((state) => state.saveDailyPuzzleCompletionLocal);
-  const consumeExtraGuessPowerUp = usePlayerProgressStore((state) => state.consumeExtraGuessPowerUp);
-  const consumeSkipBooster = usePlayerProgressStore((state) => state.consumeSkipBooster);
   const dailyPuzzleTodayKey = usePlayerProgressStore((state) => state.dailyPuzzleTodayKey);
   const dailyPuzzleMaxNumber = usePlayerProgressStore((state) => state.dailyPuzzleMaxNumber);
   const displayName = usePlayerProgressStore((state) => state.displayName);
   const profile = usePlayerProgressStore((state) => state.profile);
-  const extraGuessPowerUps = usePlayerProgressStore((state) => state.profile.extraGuessPowerUps);
-  const skipBoosters = usePlayerProgressStore((state) => state.profile.skipBoosters);
   const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
   const countdown = useGameStartCountdown();
   const { countdownActive, startCountdown } = countdown;
-  const canShowRewardedRevive = isRewardedReviveSupported();
 
   const requestedDateKey = typeof params.dateKey === "string" ? params.dateKey : getUtcTodayKey();
   const requestedDateIsToday = isTodayPuzzleDate(requestedDateKey);
@@ -150,11 +143,6 @@ export default function DailyPuzzleGameScreen() {
   const [lastFeedback, setLastFeedback] = useState<GuessFeedback | null>(null);
   const [guessHistory, setGuessHistory] = useState<GuessEntry[]>([]);
   const [matchSummary, setMatchSummary] = useState<MatchRecord | null>(null);
-  const [powerUpMessage, setPowerUpMessage] = useState<string | null>(null);
-  const [freeGuessCredits, setFreeGuessCredits] = useState(0);
-  const [powerUpAction, setPowerUpAction] = useState<
-    "extra-inventory" | "extra-ad" | "skip-inventory" | "skip-ad" | null
-  >(null);
   const [dailyLeaderboard, setDailyLeaderboard] = useState<DailyPuzzleLeaderboardResponse | null>(null);
   const [dailyLeaderboardLoading, setDailyLeaderboardLoading] = useState(false);
   const [dailyLeaderboardError, setDailyLeaderboardError] = useState<string | null>(null);
@@ -311,14 +299,8 @@ export default function DailyPuzzleGameScreen() {
   const statusMeta =
     errorMessage ??
     (usingOfflineFallback ? loadError ?? "Server sync is offline. Your local board still stays consistent for today." : null) ??
-    powerUpMessage ??
     statusState.detail;
-  const isUsingPowerUp = powerUpAction !== null;
-  const ctaDisabled = countdownActive || isSubmitting || isUsingPowerUp || guess.length === 0;
-  const canTriggerExtraGuess =
-    !completed && !countdownActive && !isSubmitting && !isUsingPowerUp && (extraGuessPowerUps > 0 || canShowRewardedRevive);
-  const canTriggerSkipBooster =
-    !completed && !countdownActive && !isSubmitting && !isUsingPowerUp && (skipBoosters > 0 || canShowRewardedRevive);
+  const ctaDisabled = countdownActive || isSubmitting || guess.length === 0;
   const detachedDailyResultPlayerEntry = useMemo(() => {
     if (!dailyLeaderboard?.playerEntry) {
       return null;
@@ -342,14 +324,12 @@ export default function DailyPuzzleGameScreen() {
       return;
     }
 
-    const usesFreeGuess = freeGuessCredits > 0;
-    const attempts = Math.max(1, countedAttempts + (usesFreeGuess ? 0 : 1));
+    const attempts = Math.max(1, countedAttempts + 1);
     const durationMs = Date.now() - startedAtRef.current;
 
     try {
       setIsSubmitting(true);
       setErrorMessage(null);
-      setPowerUpMessage(null);
       playSound("guessLock");
 
       const response = await submitDailyPuzzleGuess({
@@ -371,11 +351,8 @@ export default function DailyPuzzleGameScreen() {
 
       setUsingOfflineFallback(false);
       setLastFeedback(feedback);
-      if (usesFreeGuess) {
-        setFreeGuessCredits((currentCredits) => Math.max(0, currentCredits - 1));
-      }
       setGuessHistory((currentHistory) => [
-        { counted: !usesFreeGuess || feedback === "correct", guess: parsedGuess, result: feedback },
+        { counted: true, guess: parsedGuess, result: feedback },
         ...currentHistory
       ]);
       setGuess("");
@@ -398,11 +375,8 @@ export default function DailyPuzzleGameScreen() {
       setUsingOfflineFallback(true);
       setLoadError(error instanceof Error ? error.message : "Server sync unavailable.");
       setLastFeedback(feedback);
-      if (usesFreeGuess) {
-        setFreeGuessCredits((currentCredits) => Math.max(0, currentCredits - 1));
-      }
       setGuessHistory((currentHistory) => [
-        { counted: !usesFreeGuess || feedback === "correct", guess: parsedGuess, result: feedback },
+        { counted: true, guess: parsedGuess, result: feedback },
         ...currentHistory
       ]);
       setGuess("");
@@ -457,7 +431,6 @@ export default function DailyPuzzleGameScreen() {
     playSound("numberKey");
     setGuess((currentGuess) => `${currentGuess}${digit}`);
     setErrorMessage(null);
-    setPowerUpMessage(null);
   };
 
   const removeDigit = () => {
@@ -468,7 +441,6 @@ export default function DailyPuzzleGameScreen() {
     playSound("erase");
     setGuess((currentGuess) => currentGuess.slice(0, -1));
     setErrorMessage(null);
-    setPowerUpMessage(null);
   };
 
   const clearDigit = () => {
@@ -479,7 +451,6 @@ export default function DailyPuzzleGameScreen() {
     playSound("clear");
     setGuess("");
     setErrorMessage(null);
-    setPowerUpMessage(null);
   };
 
   const renderKey = (key: (typeof keypadRows)[number][number]) => {
@@ -511,154 +482,6 @@ export default function DailyPuzzleGameScreen() {
         {label}
       </Pressable>
     );
-  };
-
-  const grantExtraGuess = (source: "inventory" | "ad") => {
-    setFreeGuessCredits((currentCredits) => currentCredits + 1);
-    setErrorMessage(null);
-    setPowerUpMessage(source === "inventory" ? "Extra guess power-up used." : "Reward unlocked. Your next miss is free.");
-    playSound("powerup");
-  };
-
-  const completeDailyPuzzleWithSkip = async (source: "inventory" | "ad") => {
-    if (!puzzleDateKey || !requestedDateIsPlayable) {
-      return;
-    }
-
-    const durationMs = Date.now() - startedAtRef.current;
-    const attempts = Math.max(1, countedAttempts + 1);
-
-    try {
-      setIsSubmitting(true);
-      setErrorMessage(null);
-      setPowerUpMessage(null);
-
-      const response = await submitDailyPuzzleGuess({
-        attempts,
-        dateKey: puzzleDateKey,
-        durationMs,
-        guess: 1,
-        rewardedSkip: true
-      });
-
-      setUsingOfflineFallback(false);
-      setGuess("");
-      setLastFeedback("correct");
-      setMatchSummary(response.record);
-      playSound("victory");
-      playSound("coinReward");
-      setPowerUpMessage(source === "inventory" ? "Skip booster cleared today's board." : "Reward unlocked. Today's board is cleared.");
-    } catch (error) {
-      const secretNumber = getDeterministicDailyPuzzleNumber(puzzleDateKey, maxNumber);
-
-      try {
-        const offlineRecord = await recordMatch({
-          category: "single-player",
-          mode: "daily",
-          difficulty: "impossible",
-          outcome: "win",
-          attempts,
-          durationMs,
-          opponentName: "Daily Board",
-          opponentPersona: `LOCAL SKIP ${puzzleDateKey}`
-        });
-
-        await saveDailyPuzzleCompletionLocal({
-          dateKey: puzzleDateKey,
-          attempts,
-          durationMs,
-          recordId: offlineRecord.id
-        });
-
-        setUsingOfflineFallback(true);
-        setLoadError(error instanceof Error ? error.message : "Server sync unavailable.");
-        setGuess("");
-        setLastFeedback("correct");
-        setGuessHistory((currentHistory) => [
-          { counted: true, guess: secretNumber, result: "correct" },
-          ...currentHistory
-        ]);
-        setMatchSummary(offlineRecord);
-        playSound("victory");
-        playSound("coinReward");
-        setPowerUpMessage(source === "inventory" ? "Skip booster cleared the local board." : "Reward unlocked. Local board cleared.");
-      } catch (fallbackError) {
-        playSound("error");
-        setErrorMessage(fallbackError instanceof Error ? fallbackError.message : "Could not apply skip reward.");
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handlePowerUpPress = async (kind: "extra" | "skip") => {
-    if (kind === "extra" && !canTriggerExtraGuess) {
-      playSound("error");
-      return;
-    }
-
-    if (kind === "skip" && !canTriggerSkipBooster) {
-      playSound("error");
-      return;
-    }
-
-    if (kind === "extra" && extraGuessPowerUps > 0) {
-      try {
-        setPowerUpAction("extra-inventory");
-        const used = await consumeExtraGuessPowerUp();
-
-        if (!used) {
-          playSound("error");
-          setPowerUpMessage("That power-up could not be used right now.");
-          return;
-        }
-
-        grantExtraGuess("inventory");
-      } finally {
-        setPowerUpAction(null);
-      }
-
-      return;
-    }
-
-    if (kind === "skip" && skipBoosters > 0) {
-      try {
-        setPowerUpAction("skip-inventory");
-        const used = await consumeSkipBooster();
-
-        if (!used) {
-          playSound("error");
-          setPowerUpMessage("That skip booster could not be used right now.");
-          return;
-        }
-
-        await completeDailyPuzzleWithSkip("inventory");
-      } finally {
-        setPowerUpAction(null);
-      }
-
-      return;
-    }
-
-    try {
-      setPowerUpAction(kind === "extra" ? "extra-ad" : "skip-ad");
-      const rewarded = await showRewardedReviveAd();
-
-      if (!rewarded) {
-        playSound("error");
-        setPowerUpMessage("Ad was skipped or unavailable. Try again.");
-        return;
-      }
-
-      if (kind === "extra") {
-        grantExtraGuess("ad");
-        return;
-      }
-
-      await completeDailyPuzzleWithSkip("ad");
-    } finally {
-      setPowerUpAction(null);
-    }
   };
 
   if (!hydrated || isLoading) {
@@ -805,7 +628,7 @@ export default function DailyPuzzleGameScreen() {
         </View>
 
         <View style={styles.chancesTextWrap}>
-          <BoosterIcon kind="extra-guess" size={30} />
+          <Ionicons color="#176fb8" name="analytics-outline" size={18} />
           <Text style={styles.chancesText}>
             {attemptsCount} used
           </Text>
@@ -867,32 +690,6 @@ export default function DailyPuzzleGameScreen() {
 
           <View style={styles.actionRow}>
             <Pressable
-              accessibilityLabel="Use extra guess power-up"
-              disabled={!canTriggerExtraGuess}
-              onPress={() => void handlePowerUpPress("extra")}
-              style={({ pressed }) => [
-                styles.powerUpButton,
-                pressed && canTriggerExtraGuess && styles.actionButtonPressed,
-              !canTriggerExtraGuess && styles.powerUpButtonDisabled
-            ]}
-          >
-              <BoosterIcon kind="extra-guess" size={52} />
-              {powerUpAction === "extra-inventory" || powerUpAction === "extra-ad" ? (
-                <View style={styles.powerUpCountBadge}>
-                  <Text style={styles.powerUpCountBadgeText}>...</Text>
-                </View>
-              ) : extraGuessPowerUps > 0 ? (
-                <View style={styles.powerUpCountBadge}>
-                  <Text style={styles.powerUpCountBadgeText}>x{extraGuessPowerUps}</Text>
-                </View>
-              ) : canShowRewardedRevive ? (
-                <View style={styles.powerUpCountBadge}>
-                  <Ionicons color="#3a2a00" name="play" size={11} />
-                </View>
-              ) : null}
-            </Pressable>
-
-            <Pressable
               disabled={ctaDisabled}
               onPress={() => void submitGuess()}
               style={({ pressed }) => [
@@ -902,32 +699,6 @@ export default function DailyPuzzleGameScreen() {
               ]}
             >
               <Text style={styles.guessButtonText}>{isSubmitting ? "LOADING..." : "GUESS >"}</Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityLabel="Use skip booster"
-              disabled={!canTriggerSkipBooster}
-              onPress={() => void handlePowerUpPress("skip")}
-              style={({ pressed }) => [
-                styles.powerUpButton,
-                pressed && canTriggerSkipBooster && styles.actionButtonPressed,
-                !canTriggerSkipBooster && styles.powerUpButtonDisabled
-              ]}
-            >
-              <BoosterIcon kind="skip" size={52} />
-              {powerUpAction === "skip-inventory" || powerUpAction === "skip-ad" ? (
-                <View style={styles.powerUpCountBadge}>
-                  <Text style={styles.powerUpCountBadgeText}>...</Text>
-                </View>
-              ) : skipBoosters > 0 ? (
-                <View style={styles.powerUpCountBadge}>
-                  <Text style={styles.powerUpCountBadgeText}>x{skipBoosters}</Text>
-                </View>
-              ) : canShowRewardedRevive ? (
-                <View style={styles.powerUpCountBadge}>
-                  <Ionicons color="#3a2a00" name="play" size={11} />
-                </View>
-              ) : null}
             </Pressable>
           </View>
         </View>
@@ -1402,11 +1173,10 @@ const styles = StyleSheet.create({
     textAlign: "center"
   },
   bottomSpacer: {
-    flex: 1,
+    flex: 1
   },
   bottomControls: {
-    gap: spacing.xs,
-    justifyContent: "flex-end"
+    gap: spacing.xs
   },
   actionRow: {
     alignItems: "center",
@@ -1415,24 +1185,15 @@ const styles = StyleSheet.create({
     marginHorizontal: 6,
     marginTop: 4
   },
-  actionSpacer: {
-    height: 58,
-    width: 64
-  },
   keypadWrap: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e3e8e8",
+    backgroundColor: "transparent",
+    borderColor: "transparent",
     borderRadius: 18,
-    borderWidth: 1,
+    borderWidth: 0,
     gap: 6,
     marginHorizontal: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    shadowColor: "#263238",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3
+    paddingHorizontal: 0,
+    paddingVertical: 0
   },
   keyRow: {
     flexDirection: "row",
@@ -1482,28 +1243,9 @@ const styles = StyleSheet.create({
   },
   guessButtonText: {
     color: "#ffffff",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "900",
-    letterSpacing: 0.4
-  },
-  powerUpButton: {
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderBottomColor: "#d8dddd",
-    borderBottomWidth: 4,
-    borderColor: "#e5e9e9",
-    borderRadius: 20,
-    borderWidth: 1,
-    height: 58,
-    justifyContent: "center",
-    overflow: "visible",
-    position: "relative",
-    shadowColor: "#263238",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 7,
-    width: 64,
-    elevation: 3
+    letterSpacing: 1
   },
   actionButtonPressed: {
     borderBottomWidth: 2,
@@ -1514,40 +1256,6 @@ const styles = StyleSheet.create({
     borderBottomColor: "#9cada2",
     borderColor: "#c7d3cc",
     shadowOpacity: 0
-  },
-  powerUpButtonDisabled: {
-    backgroundColor: "#f1f3f3",
-    borderBottomColor: "#e1e5e5",
-    opacity: 0.42,
-    shadowOpacity: 0
-  },
-  skipBoosterButton: {},
-  powerUpCountBadge: {
-    alignItems: "center",
-    backgroundColor: "#ffd86b",
-    borderBottomColor: "#d69b1e",
-    borderBottomWidth: 1,
-    borderColor: "#fff6cf",
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    height: 20,
-    justifyContent: "center",
-    minWidth: 24,
-    paddingHorizontal: 5,
-    position: "absolute",
-    right: -1,
-    shadowColor: "#5a3400",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 3,
-    top: -2,
-    zIndex: 2
-  },
-  powerUpCountBadgeText: {
-    color: "#342300",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 0
   },
   returnButton: {
     alignItems: "center",
