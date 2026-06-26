@@ -29,7 +29,7 @@ module.exports = {
     },
     android: {
       package: "com.zenostudios.codewars",
-      versionCode: 29,
+      versionCode: 30,
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon-code-guess-foreground.png",
         backgroundColor: "#fffaf2"
