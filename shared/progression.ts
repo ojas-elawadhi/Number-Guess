@@ -1,4 +1,5 @@
 import type { Difficulty } from "./game.types";
+import { normalizeSinglePlayerModifier } from "./singlePlayerModifiers";
 import {
   AVATAR_IDS,
   PREMIUM_AVATAR_IDS,
@@ -355,9 +356,27 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
                 ((snapshot as ActivePracticeRunSnapshot).runState === "playing" ||
                   (snapshot as ActivePracticeRunSnapshot).runState === "round-cleared")
               ) {
+                const normalizedSecretNumber = Math.max(1, Math.floor((snapshot as ActivePracticeRunSnapshot).secretNumber));
+                const normalizedRoundNumber = Math.max(1, Math.floor((snapshot as ActivePracticeRunSnapshot).roundNumber));
+                const normalizedDifficulty = difficultyKey as Difficulty;
+                const maxNumber =
+                  normalizedDifficulty === "easy" ? 99 : normalizedDifficulty === "hard" ? 999 : 9999;
+                const normalizedReviveCount =
+                  typeof (snapshot as ActivePracticeRunSnapshot).reviveCount === "number" &&
+                  Number.isFinite((snapshot as ActivePracticeRunSnapshot).reviveCount)
+                    ? Math.max(0, Math.floor((snapshot as ActivePracticeRunSnapshot).reviveCount ?? 0))
+                    : Boolean((snapshot as ActivePracticeRunSnapshot).reviveUsedThisRun)
+                      ? 1
+                      : 0;
+                const normalizedAdReviveCount =
+                  typeof (snapshot as ActivePracticeRunSnapshot).adReviveCount === "number" &&
+                  Number.isFinite((snapshot as ActivePracticeRunSnapshot).adReviveCount)
+                    ? Math.max(0, Math.floor((snapshot as ActivePracticeRunSnapshot).adReviveCount ?? 0))
+                    : 0;
+
                 accumulator[difficultyKey] = {
                   difficulty: difficultyKey,
-                  secretNumber: Math.max(1, Math.floor((snapshot as ActivePracticeRunSnapshot).secretNumber)),
+                  secretNumber: normalizedSecretNumber,
                   guessHistory: (snapshot as ActivePracticeRunSnapshot).guessHistory
                     .filter(
                       (entry) =>
@@ -366,15 +385,28 @@ export const normalizeProfile = (profile?: Partial<PlayerProfile> | null): Playe
                         (entry.result === "higher" || entry.result === "lower" || entry.result === "correct")
                     )
                     .map((entry) => ({
+                      chanceCost:
+                        typeof entry.chanceCost === "number" && Number.isFinite(entry.chanceCost)
+                          ? Math.max(1, Math.floor(entry.chanceCost))
+                          : 1,
                       guess: Math.max(1, Math.floor(entry.guess)),
                       result: entry.result
                     })),
-                  roundNumber: Math.max(1, Math.floor((snapshot as ActivePracticeRunSnapshot).roundNumber)),
+                  roundNumber: normalizedRoundNumber,
                   remainingChances: Math.max(0, Math.floor((snapshot as ActivePracticeRunSnapshot).remainingChances)),
                   currentScore: Math.max(0, Math.floor((snapshot as ActivePracticeRunSnapshot).currentScore)),
                   lastScoreGain: Math.max(0, Math.floor((snapshot as ActivePracticeRunSnapshot).lastScoreGain)),
+                  modifier: normalizeSinglePlayerModifier(
+                    (snapshot as ActivePracticeRunSnapshot).modifier,
+                    normalizedDifficulty,
+                    normalizedRoundNumber,
+                    normalizedSecretNumber,
+                    maxNumber
+                  ),
                   runState: (snapshot as ActivePracticeRunSnapshot).runState,
-                  reviveUsedThisRun: Boolean((snapshot as ActivePracticeRunSnapshot).reviveUsedThisRun),
+                  adReviveCount: normalizedAdReviveCount,
+                  reviveCount: normalizedReviveCount,
+                  reviveUsedThisRun: normalizedReviveCount > 0,
                   roundElapsedMs: Math.max(0, Math.floor((snapshot as ActivePracticeRunSnapshot).roundElapsedMs ?? 0)),
                   updatedAt:
                     typeof (snapshot as ActivePracticeRunSnapshot).updatedAt === "string"

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderScorePill } from "../components/AppHeader";
 import { BoosterIcon } from "../components/BoosterIcon";
@@ -20,8 +20,18 @@ import type { ActivePracticeRunSnapshot, MatchRecord } from "../types/progressio
 import { formatDuration } from "../utils/progression";
 import { colors, radii, spacing } from "../utils/theme";
 import { getDifficultyConfig, parseDifficulty } from "../../shared/difficulty";
+import {
+  createSinglePlayerModifier,
+  getModifierClueText,
+  getModifierRuleDetails,
+  getNextMilestone,
+  normalizeSinglePlayerModifier,
+  resolveSinglePlayerGuess,
+  type SinglePlayerModifierSnapshot
+} from "../../shared/singlePlayerModifiers";
 
 interface PracticeGuessEntry {
+  chanceCost?: number;
   guess: number;
   result: GuessFeedback;
 }
@@ -36,8 +46,11 @@ const keypadRows = [
   ["clear", "0", "backspace"]
 ] as const;
 
-const REVIVE_COIN_COST = 1000;
+const REVIVE_COIN_COST = 250;
 const REVIVE_GUESSES = 5;
+const MAX_REWARDED_REVIVES_PER_RUN = 3;
+const BOSS_INTRO_DURATION_MS = 4000;
+const getReviveCoinCost = (revivesUsed: number) => REVIVE_COIN_COST * 2 ** Math.max(0, revivesUsed);
 
 const canRestorePracticeRun = (
   snapshot: ActivePracticeRunSnapshot | undefined,
@@ -89,13 +102,32 @@ function PracticeGame() {
   const countdown = useGameStartCountdown();
   const { countdownActive, startCountdown } = countdown;
   const createSecretNumber = () => Math.floor(Math.random() * difficultyConfig.maxNumber) + 1;
+  const createRoundState = (nextRoundNumber: number) => {
+    const nextSecretNumber = createSecretNumber();
+
+    return {
+      modifier: createSinglePlayerModifier(difficulty, nextRoundNumber, nextSecretNumber, difficultyConfig.maxNumber),
+      secretNumber: nextSecretNumber
+    };
+  };
   const savedPracticeRun = profile.activePracticeRuns[difficulty];
   const restoredPracticeRun = canRestorePracticeRun(savedPracticeRun, difficultyConfig.maxNumber)
     ? savedPracticeRun
     : null;
+  const initialSecretNumberRef = useRef(restoredPracticeRun?.secretNumber ?? createSecretNumber());
+  const initialModifierRef = useRef(
+    normalizeSinglePlayerModifier(
+      restoredPracticeRun?.modifier,
+      difficulty,
+      restoredPracticeRun?.roundNumber ?? 1,
+      initialSecretNumberRef.current,
+      difficultyConfig.maxNumber
+    )
+  );
   const roundStartTimeRef = useRef(Date.now() - (restoredPracticeRun?.roundElapsedMs ?? 0));
   const isInitialSyncRef = useRef(true);
-  const [secretNumber, setSecretNumber] = useState(() => restoredPracticeRun?.secretNumber ?? createSecretNumber());
+  const [secretNumber, setSecretNumber] = useState(() => initialSecretNumberRef.current);
+  const [roundModifier, setRoundModifier] = useState<SinglePlayerModifierSnapshot>(() => initialModifierRef.current);
   const [guess, setGuess] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<PracticeGuessEntry | null>(
@@ -113,6 +145,10 @@ function PracticeGame() {
     "extra-guess-inventory" | "extra-guess-ad" | "skip-inventory" | "skip-ad" | null
   >(null);
   const [powerUpMessage, setPowerUpMessage] = useState<string | null>(null);
+  const [reviveCount, setReviveCount] = useState(
+    () => restoredPracticeRun?.reviveCount ?? (restoredPracticeRun?.reviveUsedThisRun ? 1 : 0)
+  );
+  const [adReviveCount, setAdReviveCount] = useState(() => restoredPracticeRun?.adReviveCount ?? 0);
   const [reviveUsedThisRun, setReviveUsedThisRun] = useState(() => restoredPracticeRun?.reviveUsedThisRun ?? false);
   const [reviveAction, setReviveAction] = useState<"ad" | "coins" | null>(null);
   const [reviveMessage, setReviveMessage] = useState<string | null>(null);
@@ -122,49 +158,94 @@ function PracticeGame() {
   const [runBonusCoinsEarned, setRunBonusCoinsEarned] = useState(0);
   const [coinBonusClaimed, setCoinBonusClaimed] = useState(false);
   const [coinClaimAction, setCoinClaimAction] = useState<"ad" | null>(null);
+  const [isRulesModalVisible, setIsRulesModalVisible] = useState(false);
+  const [isBossIntroVisible, setIsBossIntroVisible] = useState(false);
+  const shownBossIntroKeysRef = useRef(new Set<string>());
+  const bossIntroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bossIntroOpacity = useRef(new Animated.Value(0)).current;
+  const bossIntroScale = useRef(new Animated.Value(0.94)).current;
+  const bossCardPulse = useRef(new Animated.Value(1)).current;
   const isRoundCleared = runState === "round-cleared";
   const isGameOver = runState === "game-over";
+  const lastGuessResolution = lastResult
+    ? resolveSinglePlayerGuess(lastResult.guess, secretNumber, difficultyConfig.maxNumber, roundModifier)
+    : null;
+  const modifierClueText = getModifierClueText(roundModifier, difficultyConfig.maxNumber);
+  const modifierRuleDetails = getModifierRuleDetails(roundModifier, difficultyConfig.maxNumber);
+  const nextMilestone = getNextMilestone(roundNumber);
+  const roundsUntilMilestone = Math.max(0, nextMilestone - roundNumber);
   const canShowRewardedRevive = isRewardedReviveSupported();
   const isUsingRevive = reviveAction !== null;
-  const canUseRewardedRevive = isGameOver && canShowRewardedRevive && !reviveUsedThisRun && !isUsingRevive;
-  const canUseCoinRevive = isGameOver && !reviveUsedThisRun && !isUsingRevive;
-  const bannerTone = isRoundCleared
-    ? "cleared"
-    : isGameOver
-      ? "game-over"
-      : lastResult?.result === "higher"
-        ? "higher"
-        : lastResult?.result === "lower"
-          ? "lower"
-          : "ready";
+  const currentReviveCoinCost = getReviveCoinCost(reviveCount);
+  const nextReviveNumber = reviveCount + 1;
+  const rewardedRevivesLeft = Math.max(0, MAX_REWARDED_REVIVES_PER_RUN - adReviveCount);
+  const hasRewardedRevivesLeft = rewardedRevivesLeft > 0;
+  const canUseRewardedRevive = isGameOver && canShowRewardedRevive && hasRewardedRevivesLeft && !isUsingRevive;
+  const canUseCoinRevive = isGameOver && !isUsingRevive;
   const bannerTitle =
-    bannerTone === "cleared"
+    isRoundCleared
       ? "ROUND CLEAR"
-      : bannerTone === "game-over"
+      : isGameOver
         ? "OUT OF CHANCES"
-        : bannerTone === "higher"
-          ? "HIGHER"
-          : bannerTone === "lower"
-            ? "LOWER"
-            : "READY";
+        : lastGuessResolution
+          ? lastGuessResolution.primaryLabel.toUpperCase()
+          : "READY";
   const bannerIcon =
-    bannerTone === "cleared"
+    isRoundCleared
       ? "checkmark"
-      : bannerTone === "game-over"
+      : isGameOver
         ? "alert-circle"
-        : bannerTone === "higher"
+        : lastGuessResolution?.hotColdLevel
+          ? "flame"
+          : lastGuessResolution?.result === "higher"
           ? "arrow-up"
-          : "arrow-down";
+          : lastGuessResolution?.result === "lower"
+            ? "arrow-down"
+            : "remove";
   const bannerColor =
-    bannerTone === "cleared"
+    isRoundCleared
       ? "#1fc46d"
-      : bannerTone === "game-over"
+      : isGameOver
         ? "#ff7b7b"
-        : bannerTone === "higher"
-          ? "#ff8a6a"
-          : "#61b7ff";
+        : lastGuessResolution?.historyColor ?? roundModifier.accentColor;
   const historyItems = guessHistory.slice(0, 2);
   const modeRangeLabel = `1-${difficultyConfig.maxNumber}`;
+  const formattedScoreMultiplier = Number.isInteger(roundModifier.scoreMultiplier)
+    ? roundModifier.scoreMultiplier.toString()
+    : roundModifier.scoreMultiplier.toFixed(2).replace(/0$/, "");
+  const scoreMultiplierLabel =
+    roundModifier.scoreMultiplier > 1
+      ? `${formattedScoreMultiplier}x score`
+      : "Base score";
+  const bossIntroChips = [
+    roundModifier.mirrorMode
+      ? "Mirror heat"
+      : typeof roundModifier.digitSumMin === "number"
+        ? `Sum ${roundModifier.digitSumMin}-${roundModifier.digitSumMax}`
+        : roundModifier.parity
+          ? `${roundModifier.parity} target`
+          : Array.isArray(roundModifier.containsDigits) && roundModifier.containsDigits.length > 1
+            ? `Contains ${roundModifier.containsDigits.join("/")}`
+            : typeof roundModifier.lockedDigitValue === "string"
+              ? "Locked digit"
+              : roundModifier.rangeSeal === "at-or-above" && typeof roundModifier.rangeSealValue === "number"
+                ? `${roundModifier.rangeSealValue}+`
+                : roundModifier.rangeSeal === "below" && typeof roundModifier.rangeSealValue === "number"
+                  ? `Below ${roundModifier.rangeSealValue}`
+                  : "Boss rule",
+    "Heat only",
+    "Hidden trap",
+    scoreMultiplierLabel.replace(" score", "")
+  ];
+  const lockedDigitDisplaySlots =
+    guess.length === 0 &&
+    typeof roundModifier.lockedDigitIndex === "number" &&
+    typeof roundModifier.lockedDigitValue === "string"
+      ? Array.from({ length: digitLimit }, (_, index) => ({
+          isLocked: index === roundModifier.lockedDigitIndex,
+          value: index === roundModifier.lockedDigitIndex ? roundModifier.lockedDigitValue : "-"
+        }))
+      : null;
   const ctaDisabled = countdownActive || (runState === "playing" && guess.length === 0);
   const isPlayingRound = runState === "playing";
   const isUsingPowerUp = powerUpAction !== null;
@@ -185,6 +266,87 @@ function PracticeGame() {
       startCountdown();
     }
   }, [restoredPracticeRun, startCountdown]);
+
+  const hideBossIntro = () => {
+    if (bossIntroTimerRef.current) {
+      clearTimeout(bossIntroTimerRef.current);
+      bossIntroTimerRef.current = null;
+    }
+
+    Animated.parallel([
+      Animated.timing(bossIntroOpacity, {
+        duration: 180,
+        easing: Easing.out(Easing.quad),
+        toValue: 0,
+        useNativeDriver: true
+      }),
+      Animated.timing(bossIntroScale, {
+        duration: 180,
+        easing: Easing.out(Easing.quad),
+        toValue: 0.98,
+        useNativeDriver: true
+      })
+    ]).start(() => setIsBossIntroVisible(false));
+  };
+
+  useEffect(() => {
+    return () => {
+      if (bossIntroTimerRef.current) {
+        clearTimeout(bossIntroTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!roundModifier.isBoss || runState !== "playing") {
+      return;
+    }
+
+    const bossIntroKey = `${difficulty}-${roundNumber}-${roundModifier.id}`;
+
+    if (shownBossIntroKeysRef.current.has(bossIntroKey)) {
+      return;
+    }
+
+    shownBossIntroKeysRef.current.add(bossIntroKey);
+    setIsBossIntroVisible(true);
+    bossIntroOpacity.setValue(0);
+    bossIntroScale.setValue(0.94);
+    bossCardPulse.setValue(1);
+    playSound("powerup");
+
+    Animated.parallel([
+      Animated.timing(bossIntroOpacity, {
+        duration: 220,
+        easing: Easing.out(Easing.quad),
+        toValue: 1,
+        useNativeDriver: true
+      }),
+      Animated.spring(bossIntroScale, {
+        friction: 7,
+        tension: 90,
+        toValue: 1,
+        useNativeDriver: true
+      })
+    ]).start();
+
+    Animated.sequence([
+      Animated.timing(bossCardPulse, {
+        duration: 180,
+        easing: Easing.out(Easing.quad),
+        toValue: 1.025,
+        useNativeDriver: true
+      }),
+      Animated.timing(bossCardPulse, {
+        duration: 260,
+        easing: Easing.out(Easing.quad),
+        toValue: 1,
+        useNativeDriver: true
+      })
+    ]).start();
+
+    bossIntroTimerRef.current = setTimeout(hideBossIntro, BOSS_INTRO_DURATION_MS);
+  }, [bossCardPulse, bossIntroOpacity, bossIntroScale, difficulty, roundModifier.id, roundModifier.isBoss, roundNumber, runState]);
 
   useEffect(() => {
     // The first run mirrors the just-restored snapshot (or an untouched fresh
@@ -208,7 +370,10 @@ function PracticeGame() {
       remainingChances,
       currentScore,
       lastScoreGain,
+      modifier: roundModifier,
       runState,
+      adReviveCount,
+      reviveCount,
       reviveUsedThisRun,
       roundElapsedMs: Math.max(0, Date.now() - roundStartTimeRef.current),
       updatedAt: new Date().toISOString()
@@ -221,7 +386,10 @@ function PracticeGame() {
     guessHistory,
     lastScoreGain,
     remainingChances,
+    adReviveCount,
+    reviveCount,
     reviveUsedThisRun,
+    roundModifier,
     roundNumber,
     runState,
     secretNumber,
@@ -230,13 +398,13 @@ function PracticeGame() {
 
   const persistHighScoreIfNeeded = (candidateRound: number) => {
     if (candidateRound > singlePlayerHighRounds[difficulty]) {
-      void updateSinglePlayerHighScore(difficulty, candidateRound);
+      void updateSinglePlayerHighScore(difficulty, candidateRound).catch(() => { });
     }
   };
 
   const persistBestScoreIfNeeded = (candidateScore: number) => {
     if (candidateScore > singlePlayerHighScores[difficulty]) {
-      void updateSinglePlayerBestScore(difficulty, candidateScore);
+      void updateSinglePlayerBestScore(difficulty, candidateScore).catch(() => { });
     }
   };
 
@@ -259,11 +427,11 @@ function PracticeGame() {
       return;
     }
 
-    const result: GuessFeedback =
-      parsedGuess === secretNumber ? "correct" : parsedGuess < secretNumber ? "higher" : "lower";
-    const entry = { guess: parsedGuess, result } satisfies PracticeGuessEntry;
+    const resolution = resolveSinglePlayerGuess(parsedGuess, secretNumber, difficultyConfig.maxNumber, roundModifier);
+    const result = resolution.result;
+    const entry = { chanceCost: resolution.chanceCost, guess: parsedGuess, result } satisfies PracticeGuessEntry;
     const attempts = guessHistory.length + 1;
-    const nextRemainingChances = Math.max(remainingChances - 1, 0);
+    const nextRemainingChances = Math.max(remainingChances - resolution.chanceCost, 0);
 
     setLastResult(entry);
     setGuessHistory((currentHistory) => [entry, ...currentHistory].slice(0, 8));
@@ -273,11 +441,15 @@ function PracticeGame() {
     setPowerUpMessage(null);
     setRemainingChances(nextRemainingChances);
     playSound("guessLock");
-    playResultSound(result);
+    if (resolution.soundResult) {
+      playResultSound(resolution.soundResult);
+    } else {
+      playSound(resolution.trapped ? "error" : "softNoise");
+    }
 
     if (result === "correct") {
       const durationMs = Date.now() - roundStartTimeRef.current;
-      const scoreGain = nextRemainingChances + 1;
+      const scoreGain = Math.max(1, Math.ceil((nextRemainingChances + 1) * roundModifier.scoreMultiplier));
       const nextScore = currentScore + scoreGain;
       const coinsEarned = scoreGain * 5;
 
@@ -332,8 +504,10 @@ function PracticeGame() {
     }
 
     persistHighScoreIfNeeded(nextRoundNumber);
+    const nextRoundState = createRoundState(nextRoundNumber);
     roundStartTimeRef.current = Date.now();
-    setSecretNumber(createSecretNumber());
+    setSecretNumber(nextRoundState.secretNumber);
+    setRoundModifier(nextRoundState.modifier);
     setGuess("");
     setErrorMessage(null);
     setReviveMessage(null);
@@ -356,15 +530,17 @@ function PracticeGame() {
 
     persistHighScoreIfNeeded(nextRoundNumber);
     persistBestScoreIfNeeded(nextScore);
+    const nextRoundState = createRoundState(nextRoundNumber);
     roundStartTimeRef.current = Date.now();
-    setSecretNumber(createSecretNumber());
+    setSecretNumber(nextRoundState.secretNumber);
+    setRoundModifier(nextRoundState.modifier);
     setGuess("");
     setErrorMessage(null);
     setReviveMessage(null);
     setPowerUpMessage(
       source === "inventory"
-        ? `Skip booster used. +${scoreGain} score and straight to round ${nextRoundNumber}.`
-        : `Skip ad reward unlocked. +${scoreGain} score and straight to round ${nextRoundNumber}.`
+        ? `Skip booster used. +${scoreGain} score and straight to round ${nextRoundNumber}. Modifier bonus skipped.`
+        : `Skip ad reward unlocked. +${scoreGain} score and straight to round ${nextRoundNumber}. Modifier bonus skipped.`
     );
     setLastResult(null);
     setLastScoreGain(scoreGain);
@@ -384,7 +560,7 @@ function PracticeGame() {
     playSound("coinReward");
   };
 
-  const applyRevive = () => {
+  const applyRevive = (source: "ad" | "coins") => {
     setGuess("");
     setErrorMessage(null);
     setReviveMessage(null);
@@ -394,6 +570,10 @@ function PracticeGame() {
     setRemainingChances(REVIVE_GUESSES);
     setGameOverView("revive");
     setRunState("playing");
+    setReviveCount((currentReviveCount) => currentReviveCount + 1);
+    if (source === "ad") {
+      setAdReviveCount((currentAdReviveCount) => currentAdReviveCount + 1);
+    }
     setReviveUsedThisRun(true);
     playSound("revive");
   };
@@ -414,7 +594,7 @@ function PracticeGame() {
         return;
       }
 
-      applyRevive();
+      applyRevive("ad");
     } finally {
       setReviveAction(null);
     }
@@ -425,16 +605,16 @@ function PracticeGame() {
       return;
     }
 
-    if (coins < REVIVE_COIN_COST) {
+    if (coins < currentReviveCoinCost) {
       playSound("error");
-      setReviveMessage(`You need ${REVIVE_COIN_COST.toLocaleString("en-US")} coins to revive.`);
+      setReviveMessage(`You need ${currentReviveCoinCost.toLocaleString("en-US")} coins to revive.`);
       return;
     }
 
     try {
       setReviveAction("coins");
       setReviveMessage(null);
-      const spent = await spendCoins(REVIVE_COIN_COST);
+      const spent = await spendCoins(currentReviveCoinCost);
 
       if (!spent) {
         playSound("error");
@@ -442,7 +622,7 @@ function PracticeGame() {
         return;
       }
 
-      applyRevive();
+      applyRevive("coins");
     } catch (error) {
       playSound("error");
       setReviveMessage(error instanceof Error ? error.message : "Could not use coins right now. Try again.");
@@ -453,8 +633,10 @@ function PracticeGame() {
 
   const handlePlayAgain = () => {
     playSound("uiTap");
+    const nextRoundState = createRoundState(1);
     roundStartTimeRef.current = Date.now();
-    setSecretNumber(createSecretNumber());
+    setSecretNumber(nextRoundState.secretNumber);
+    setRoundModifier(nextRoundState.modifier);
     setGuess("");
     setErrorMessage(null);
     setReviveMessage(null);
@@ -469,6 +651,8 @@ function PracticeGame() {
     setRoundNumber(1);
     setRemainingChances(startingChances);
     setRunState("playing");
+    setAdReviveCount(0);
+    setReviveCount(0);
     setReviveUsedThisRun(false);
     setMatchSummary(null);
     setCoinBonusClaimed(false);
@@ -704,17 +888,173 @@ function PracticeGame() {
         </View>
       </View>
 
+      <Animated.View
+        style={[
+          styles.modifierCard,
+          roundModifier.isBoss && styles.modifierCardBoss,
+          { borderColor: roundModifier.accentColor },
+          roundModifier.isBoss && { transform: [{ scale: bossCardPulse }] }
+        ]}
+      >
+        <View style={[styles.modifierIcon, { backgroundColor: roundModifier.accentColor }]}>
+          <Ionicons color="#ffffff" name={roundModifier.isBoss ? "trophy" : roundModifier.hotColdMode ? "flame" : roundModifier.trapStart ? "warning" : "sparkles"} size={18} />
+        </View>
+        <View style={styles.modifierCopy}>
+          <View style={styles.modifierTitleRow}>
+            <Text numberOfLines={1} style={[styles.modifierTitle, roundModifier.isBoss && styles.modifierTitleBoss]}>
+              Round {roundNumber} - {roundModifier.label}
+            </Text>
+            <View
+              style={[
+                styles.modifierMultiplierPill,
+                { backgroundColor: roundModifier.accentColor },
+                roundModifier.isBoss && styles.modifierMultiplierPillBoss,
+                roundModifier.isBoss && { backgroundColor: "#6f5cff" }
+              ]}
+            >
+              <Text style={styles.modifierMultiplierText}>{scoreMultiplierLabel}</Text>
+            </View>
+            <Pressable
+              accessibilityLabel="Show round rules"
+              accessibilityRole="button"
+              onPress={() => {
+                playSound("uiTap");
+                setIsRulesModalVisible(true);
+              }}
+              style={({ pressed }) => [
+                styles.modifierInfoButton,
+                roundModifier.isBoss && styles.modifierInfoButtonBoss,
+                pressed && styles.guessButtonPressed
+              ]}
+            >
+              <Ionicons color={roundModifier.isBoss ? "#ffffff" : roundModifier.accentColor} name="information-circle" size={20} />
+            </Pressable>
+          </View>
+          <Text numberOfLines={2} style={[styles.modifierBody, roundModifier.isBoss && styles.modifierBodyBoss]}>
+            {modifierClueText || roundModifier.description}
+          </Text>
+        </View>
+      </Animated.View>
+
+      <Modal
+        animationType="none"
+        statusBarTranslucent
+        transparent
+        visible={isBossIntroVisible}
+        onRequestClose={hideBossIntro}
+      >
+        <Pressable accessibilityRole="button" onPress={hideBossIntro} style={styles.bossIntroOverlay}>
+          <Animated.View
+            style={[
+              styles.bossIntroCard,
+              { borderColor: roundModifier.accentColor, opacity: bossIntroOpacity, transform: [{ scale: bossIntroScale }] }
+            ]}
+          >
+            <View style={[styles.bossIntroIcon, { backgroundColor: roundModifier.accentColor }]}>
+              <Ionicons color="#ffffff" name="trophy" size={30} />
+            </View>
+            <Text style={styles.bossIntroEyebrow}>BOSS ROUND</Text>
+            <Text numberOfLines={1} style={styles.bossIntroTitle}>
+              {roundModifier.label.replace("Boss: ", "")}
+            </Text>
+            <View style={styles.bossIntroChipRow}>
+              {bossIntroChips.map((chip) => (
+                <View key={chip} style={[styles.bossIntroChip, { borderColor: roundModifier.accentColor }]}>
+                  <Text style={[styles.bossIntroChipText, { color: roundModifier.accentColor }]}>{chip}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={styles.bossIntroHint}>Tap to start</Text>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        statusBarTranslucent
+        transparent
+        visible={isRulesModalVisible}
+        onRequestClose={() => setIsRulesModalVisible(false)}
+      >
+        <View style={styles.rulesOverlay}>
+          <View style={styles.rulesCard}>
+            <View style={styles.rulesHeader}>
+              <View style={[styles.rulesIcon, { backgroundColor: roundModifier.accentColor }]}>
+                <Ionicons color="#ffffff" name={roundModifier.isBoss ? "trophy" : "information-circle"} size={22} />
+              </View>
+              <View style={styles.rulesHeaderCopy}>
+                <Text style={styles.rulesEyebrow}>Round {roundNumber}</Text>
+                <Text numberOfLines={1} style={styles.rulesTitle}>
+                  {roundModifier.label}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityLabel="Close round rules"
+                accessibilityRole="button"
+                onPress={() => {
+                  playSound("uiTap");
+                  setIsRulesModalVisible(false);
+                }}
+                style={({ pressed }) => [styles.rulesCloseButton, pressed && styles.guessButtonPressed]}
+              >
+                <Ionicons color={colors.textMuted} name="close" size={22} />
+              </Pressable>
+            </View>
+
+            <View style={[styles.rulesSummaryPill, { borderColor: roundModifier.accentColor }]}>
+              <Text style={[styles.rulesSummaryText, { color: roundModifier.accentColor }]}>
+                {modifierClueText || roundModifier.description}
+              </Text>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.rulesList} showsVerticalScrollIndicator={false}>
+              {modifierRuleDetails.map((rule, index) => (
+                <View key={`${rule}-${index}`} style={styles.rulesItem}>
+                  <View style={[styles.rulesBullet, { backgroundColor: roundModifier.accentColor }]} />
+                  <Text style={styles.rulesItemText}>{rule}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.guessPanel}>
         <View style={styles.guessHero}>
-          <Text style={[styles.guessInputValue, guess.length === 0 && styles.guessInputValueEmpty]}>
-            {guess.length > 0 ? guess : "--"}
-          </Text>
+          {lockedDigitDisplaySlots ? (
+            <View style={styles.lockedGuessSlots}>
+              {lockedDigitDisplaySlots.map((slot, index) => (
+                <Text
+                  key={`${slot.value}-${index}`}
+                  style={[
+                    styles.guessInputValue,
+                    styles.lockedGuessSlotText,
+                    !slot.isLocked && styles.guessInputValueEmpty,
+                    slot.isLocked && styles.lockedGuessDigit
+                  ]}
+                >
+                  {slot.value}
+                </Text>
+              ))}
+            </View>
+          ) : (
+            <Text style={[styles.guessInputValue, guess.length === 0 && styles.guessInputValueEmpty]}>
+              {guess.length > 0 ? guess : "--"}
+            </Text>
+          )}
         </View>
 
         <View style={[styles.bannerCard, { borderColor: bannerColor }]}>
           <Ionicons color={bannerColor} name={bannerIcon} size={20} />
           <Text style={[styles.bannerText, { color: bannerColor }]}>{bannerTitle}</Text>
         </View>
+        {lastGuessResolution?.secondaryLabel ? (
+          <View style={[styles.secondaryFeedbackPill, { borderColor: bannerColor }]}>
+            <Text style={[styles.secondaryFeedbackText, { color: bannerColor }]}>
+              {lastGuessResolution.secondaryLabel}
+            </Text>
+          </View>
+        ) : null}
 
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
         {isRoundCleared ? (
@@ -726,11 +1066,20 @@ function PracticeGame() {
         ) : null}
         {isRoundCleared ? (
           <Text style={styles.statusMeta}>
-            +{lastScoreGain} score from leftover guesses
+            +{lastScoreGain} score with {scoreMultiplierLabel}. Next milestone: round {nextMilestone}.
           </Text>
         ) : null}
         {!isRoundCleared && !isGameOver && powerUpMessage ? (
           <Text style={styles.statusMeta}>{powerUpMessage}</Text>
+        ) : null}
+        {!isRoundCleared && !isGameOver && !powerUpMessage && !errorMessage ? (
+          <Text style={styles.statusMeta}>
+            {lastGuessResolution?.statusText
+              ? lastGuessResolution.statusText
+              : roundsUntilMilestone > 0
+                ? `${roundsUntilMilestone} round${roundsUntilMilestone === 1 ? "" : "s"} to the next milestone.`
+                : "Milestone round."}
+          </Text>
         ) : null}
       </View>
 
@@ -740,16 +1089,20 @@ function PracticeGame() {
         {historyItems.length > 0 ? (
           <View style={styles.historyList}>
             {historyItems.map((entry, index) => {
-              const resultColor =
-                entry.result === "higher" ? "#ff8a6a" : entry.result === "lower" ? "#61b7ff" : "#1fc46d";
-              const resultLabel =
-                entry.result === "higher" ? "HIGHER" : entry.result === "lower" ? "LOWER" : "HIT";
+              const entryResolution = resolveSinglePlayerGuess(
+                entry.guess,
+                secretNumber,
+                difficultyConfig.maxNumber,
+                roundModifier
+              );
 
               return (
                 <View key={`${entry.guess}-${index}`} style={styles.historyCard}>
                   <Text style={styles.historyGuess}>{entry.guess}</Text>
-                  <View style={[styles.historyResultBadge, { borderColor: resultColor }]}>
-                    <Text style={[styles.historyResultText, { color: resultColor }]}>{resultLabel}</Text>
+                  <View style={[styles.historyResultBadge, { borderColor: entryResolution.historyColor }]}>
+                    <Text style={[styles.historyResultText, { color: entryResolution.historyColor }]}>
+                      {entryResolution.historyLabel.toUpperCase()}
+                    </Text>
                   </View>
                 </View>
               );
@@ -847,13 +1200,17 @@ function PracticeGame() {
               <Ionicons color="#ffffff" name="alert" size={34} />
             </View>
             <Text style={styles.gameOverTitle}>GAME OVER</Text>
-            <Text style={styles.gameOverMessage}>Revive now to keep your score and continue the run.</Text>
+            <Text style={styles.gameOverMessage}>
+              Revive now to keep your score and push toward round {nextMilestone}.
+            </Text>
             <View style={styles.gameOverRewardPill}>
               <Ionicons color={colors.accent} name="flash" size={15} />
               <Text style={styles.gameOverRewardText}>{REVIVE_GUESSES} guesses on revive</Text>
             </View>
-            {reviveUsedThisRun ? (
-              <Text style={styles.gameOverHint}>Revive already used for this game.</Text>
+            {reviveCount > 0 ? (
+              <Text style={styles.gameOverHint}>
+                Revive #{nextReviveNumber}. Coin price doubles each time.
+              </Text>
             ) : null}
             {reviveMessage ? <Text style={styles.gameOverHint}>{reviveMessage}</Text> : null}
 
@@ -872,13 +1229,11 @@ function PracticeGame() {
                 <View style={styles.gameOverBadge}>
                   <Ionicons color="#ffffff" name="play-circle" size={16} />
                   <Text style={styles.gameOverBadgeText}>
-                    {reviveUsedThisRun
-                      ? "USED"
-                      : reviveAction === "ad"
-                        ? "LOADING"
-                        : canShowRewardedRevive
-                          ? "FREE AD"
-                          : "AD UNAVAILABLE"}
+                    {reviveAction === "ad"
+                      ? "LOADING"
+                      : !canShowRewardedRevive || !hasRewardedRevivesLeft
+                        ? "AD UNAVAILABLE"
+                        : "FREE AD"}
                   </Text>
                 </View>
               </Pressable>
@@ -897,7 +1252,7 @@ function PracticeGame() {
                 <View style={styles.gameOverBadge}>
                   <CoinIcon size={17} />
                   <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={styles.gameOverBadgeText}>
-                    {reviveAction === "coins" ? "SPENDING" : `${REVIVE_COIN_COST.toLocaleString("en-US")} COINS`}
+                    {reviveAction === "coins" ? "SPENDING" : `${currentReviveCoinCost.toLocaleString("en-US")} COINS`}
                   </Text>
                 </View>
               </Pressable>
@@ -940,7 +1295,7 @@ function PracticeGame() {
                 {currentScore.toLocaleString("en-US")}
               </Text>
               <Text style={styles.resultsScoreMeta}>
-                {roundsCleared === 1 ? "1 round cleared" : `${roundsCleared} rounds cleared`}
+                {roundsCleared === 1 ? "1 round cleared" : `${roundsCleared} rounds cleared`} | Next milestone: round {nextMilestone}
               </Text>
             </View>
 
@@ -992,14 +1347,24 @@ function PracticeGame() {
       <Modal animationType="fade" statusBarTranslucent transparent visible={isRoundCleared}>
         <View style={styles.gameOverOverlay}>
           <ConfettiBurst visible={isRoundCleared} />
-          <View style={styles.winCard}>
-            <Text style={styles.winTitle}>ROUND CLEAR</Text>
-            <View style={styles.winIconWrap}>
-              <Ionicons color="#eafff3" name="checkmark" size={48} />
+          <View style={[styles.winCard, roundModifier.isBoss && styles.winCardBoss, roundModifier.isBoss && { borderColor: roundModifier.accentColor }]}>
+            <Text style={[styles.winTitle, roundModifier.isBoss && { color: roundModifier.accentColor }]}>
+              {roundModifier.isBoss ? "BOSS CLEARED" : "ROUND CLEAR"}
+            </Text>
+            <View style={[styles.winIconWrap, roundModifier.isBoss && { backgroundColor: roundModifier.accentColor, borderColor: roundModifier.accentColor }]}>
+              <Ionicons color="#eafff3" name={roundModifier.isBoss ? "trophy" : "checkmark"} size={48} />
             </View>
             <Text style={styles.winMessage}>
-              The number was {secretNumber}.
+              {roundModifier.isBoss
+                ? `You beat ${roundModifier.label.replace("Boss: ", "")}. Number: ${secretNumber}.`
+                : `The number was ${secretNumber}.`}
             </Text>
+            <View style={[styles.winModifierPill, { borderColor: roundModifier.accentColor }]}>
+              <Ionicons color={roundModifier.accentColor} name={roundModifier.isBoss ? "trophy" : "sparkles"} size={16} />
+              <Text style={[styles.winModifierText, { color: roundModifier.accentColor }]}>
+                {roundModifier.label} cleared | {scoreMultiplierLabel}
+              </Text>
+            </View>
 
             <View style={styles.winScoreBox}>
               <View style={styles.winRewardRow}>
@@ -1174,6 +1539,264 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textTransform: "uppercase"
   },
+  modifierCard: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    flexDirection: "row",
+    gap: 10,
+    marginTop: spacing.sm,
+    minHeight: 70,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 3
+  },
+  modifierCardBoss: {
+    backgroundColor: "#1f1849",
+    shadowColor: "#161033",
+    shadowOpacity: 0.2
+  },
+  modifierIcon: {
+    alignItems: "center",
+    borderBottomColor: "rgba(0,0,0,0.18)",
+    borderBottomWidth: 3,
+    borderRadius: 16,
+    height: 36,
+    justifyContent: "center",
+    width: 36
+  },
+  modifierCopy: {
+    flex: 1,
+    gap: 4,
+    minWidth: 0
+  },
+  modifierTitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8
+  },
+  modifierTitle: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  modifierTitleBoss: {
+    color: "#ffffff"
+  },
+  modifierMultiplierPill: {
+    alignItems: "center",
+    borderRadius: radii.pill,
+    justifyContent: "center",
+    minHeight: 24,
+    paddingHorizontal: 9
+  },
+  modifierMultiplierPillBoss: {
+    backgroundColor: "#6f5cff",
+    borderColor: "rgba(255,255,255,0.22)",
+    borderWidth: 1
+  },
+  modifierMultiplierText: {
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  modifierInfoButton: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    height: 28,
+    justifyContent: "center",
+    width: 28
+  },
+  modifierInfoButtonBoss: {
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderColor: "rgba(255,255,255,0.26)"
+  },
+  modifierBody: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 16
+  },
+  modifierBodyBoss: {
+    color: "#ece9ff"
+  },
+  bossIntroOverlay: {
+    alignItems: "center",
+    backgroundColor: "rgba(13, 17, 23, 0.78)",
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.lg
+  },
+  bossIntroCard: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: 28,
+    borderWidth: 3,
+    gap: spacing.sm,
+    maxWidth: 420,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    width: "100%",
+    elevation: 16
+  },
+  bossIntroIcon: {
+    alignItems: "center",
+    borderBottomColor: "rgba(0,0,0,0.22)",
+    borderBottomWidth: 5,
+    borderRadius: 28,
+    height: 58,
+    justifyContent: "center",
+    width: 58
+  },
+  bossIntroEyebrow: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.3,
+    textTransform: "uppercase"
+  },
+  bossIntroTitle: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textAlign: "center",
+    textTransform: "uppercase"
+  },
+  bossIntroChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    justifyContent: "center",
+    marginTop: spacing.xs
+  },
+  bossIntroChip: {
+    backgroundColor: colors.background,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    minHeight: 30,
+    paddingHorizontal: 11,
+    paddingVertical: 6
+  },
+  bossIntroChipText: {
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  bossIntroHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: spacing.xs
+  },
+  rulesOverlay: {
+    alignItems: "center",
+    backgroundColor: "rgba(22, 27, 34, 0.72)",
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.lg
+  },
+  rulesCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    maxHeight: "78%",
+    maxWidth: 460,
+    padding: spacing.lg,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    width: "100%",
+    elevation: 10
+  },
+  rulesHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm
+  },
+  rulesIcon: {
+    alignItems: "center",
+    borderBottomColor: "rgba(0,0,0,0.18)",
+    borderBottomWidth: 3,
+    borderRadius: 18,
+    height: 42,
+    justifyContent: "center",
+    width: 42
+  },
+  rulesHeaderCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  rulesEyebrow: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  rulesTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  rulesCloseButton: {
+    alignItems: "center",
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    height: 34,
+    justifyContent: "center",
+    width: 34
+  },
+  rulesSummaryPill: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  rulesSummaryText: {
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 17
+  },
+  rulesList: {
+    gap: spacing.sm,
+    paddingTop: spacing.md
+  },
+  rulesItem: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.sm
+  },
+  rulesBullet: {
+    borderRadius: 4,
+    height: 8,
+    marginTop: 6,
+    width: 8
+  },
+  rulesItemText: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 20
+  },
   bannerCard: {
     alignItems: "center",
     alignSelf: "center",
@@ -1196,6 +1819,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "900",
     letterSpacing: 0.6
+  },
+  secondaryFeedbackPill: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 28,
+    paddingHorizontal: 12
+  },
+  secondaryFeedbackText: {
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase"
   },
   guessPanel: {
     alignItems: "center",
@@ -1220,6 +1857,19 @@ const styles = StyleSheet.create({
     color: "#8b9298",
     fontSize: 48,
     letterSpacing: 4
+  },
+  lockedGuessSlots: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center"
+  },
+  lockedGuessSlotText: {
+    minWidth: 34
+  },
+  lockedGuessDigit: {
+    color: "#7f8790",
+    opacity: 0.48
   },
   historyList: {
     gap: spacing.xs,
@@ -1732,6 +2382,10 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 420
   },
+  winCardBoss: {
+    backgroundColor: "#ffffff",
+    borderWidth: 6
+  },
   winTitle: {
     color: "#15181b",
     fontSize: 26,
@@ -1756,6 +2410,23 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 26,
     textAlign: "center"
+  },
+  winModifierPill: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center",
+    minHeight: 34,
+    paddingHorizontal: 12
+  },
+  winModifierText: {
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase"
   },
   winScoreBox: {
     alignItems: "center",

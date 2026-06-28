@@ -1,4 +1,5 @@
 import type { Difficulty, GuessFeedback } from "./game.types";
+import type { SinglePlayerModifierSnapshot } from "./singlePlayerModifiers";
 
 export type MatchCategory = "single-player" | "vs-ai" | "online";
 export type MatchMode = "practice" | "classic" | "duel" | "daily";
@@ -215,6 +216,7 @@ export interface DailyPuzzleState {
 }
 
 export interface PracticeGuessSnapshot {
+  chanceCost?: number;
   guess: number;
   result: GuessFeedback;
 }
@@ -227,7 +229,10 @@ export interface ActivePracticeRunSnapshot {
   remainingChances: number;
   currentScore: number;
   lastScoreGain: number;
+  modifier?: SinglePlayerModifierSnapshot;
   runState: "playing" | "round-cleared";
+  adReviveCount?: number;
+  reviveCount?: number;
   reviveUsedThisRun: boolean;
   roundElapsedMs: number;
   updatedAt: string;
