@@ -4,15 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import { CoinIcon } from "../components/CoinIcon";
+import { DailyPrizeModal } from "../components/DailyPrizeModal";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { TopBar } from "../components/GameKit";
 import { isRewardedReviveSupported, showRewardedReviveAd } from "../services/rewardedReviveAd";
 import { playSound } from "../services/soundEffects";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
+import { getDailyPuzzleCurrentStreak } from "../utils/progression";
 import { colors, radii, shadows, spacing } from "../utils/theme";
 import {
   buildCalendarDays,
+  formatResetCountdown,
   formatPlayLabel,
+  getDailyPrizeEntries,
+  getDailyPrizeLabel,
   getDayFromDateKey,
   getDaysInMonth,
   getMonthCompletions,
@@ -36,6 +41,7 @@ export default function DailyPuzzleCalendarScreen() {
   const profile = usePlayerProgressStore((state) => state.profile);
   const dailyPuzzleTodayKey = usePlayerProgressStore((state) => state.dailyPuzzleTodayKey);
   const fetchDailyPuzzleStatus = usePlayerProgressStore((state) => state.fetchDailyPuzzleStatus);
+  const fetchDailyPuzzleLeaderboard = usePlayerProgressStore((state) => state.fetchDailyPuzzleLeaderboard);
   const spendCoins = usePlayerProgressStore((state) => state.spendCoins);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -43,6 +49,9 @@ export default function DailyPuzzleCalendarScreen() {
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
   const [replayUnlockAction, setReplayUnlockAction] = useState<"ad" | "coins" | null>(null);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [dailyRewardConfig, setDailyRewardConfig] = useState<Record<number, number> | null>(null);
+  const [prizeModalVisible, setPrizeModalVisible] = useState(false);
 
   useEffect(() => {
     if (!hydrated) {
@@ -86,6 +95,16 @@ export default function DailyPuzzleCalendarScreen() {
     };
   }, [fetchDailyPuzzleStatus, hydrated, reloadKey]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, []);
+
   const compactLayout = height < 860;
   const compactReplayFooter = width < 430;
   const boardPadding = compactLayout ? spacing.sm : spacing.md;
@@ -93,6 +112,34 @@ export default function DailyPuzzleCalendarScreen() {
   const todayKey = dailyPuzzleTodayKey ?? selectedDateKey;
   const monthKey = selectedMonthKey ?? (todayKey ? getMonthKeyFromDateKey(todayKey) : null);
   const completedByDate = profile.dailyPuzzle?.completedByDate ?? {};
+
+  useEffect(() => {
+    if (!hydrated || !todayKey) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadLeaderboardRewards = async () => {
+      try {
+        const response = await fetchDailyPuzzleLeaderboard(todayKey);
+
+        if (isMounted) {
+          setDailyRewardConfig(response.rewardConfig);
+        }
+      } catch {
+        if (isMounted) {
+          setDailyRewardConfig(null);
+        }
+      }
+    };
+
+    loadLeaderboardRewards().catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchDailyPuzzleLeaderboard, hydrated, todayKey]);
 
   const calendarCells = useMemo(() => (monthKey ? buildCalendarDays(monthKey) : []), [monthKey]);
   const selectedCompletion = selectedDateKey ? completedByDate[selectedDateKey] ?? null : null;
@@ -116,6 +163,16 @@ export default function DailyPuzzleCalendarScreen() {
   const selectedIsPast = Boolean(selectedDateKey && todayKey && selectedDateKey < todayKey);
   const canOpenSelected = Boolean(selectedDateKey && selectedIsToday);
   const canReplaySelected = Boolean(selectedDateKey && selectedIsPast && !selectedCompletion);
+  const streakAnchor = todayKey && completedByDate[todayKey] ? todayKey : todayKey ? shiftUtcDateKeyByDays(todayKey, -1) : null;
+  const dailyStreak = streakAnchor ? getDailyPuzzleCurrentStreak(profile, streakAnchor) : 0;
+  const resetCountdown = formatResetCountdown(currentTime);
+  const prizeEntries = getDailyPrizeEntries(dailyRewardConfig);
+  const prizeLabel = getDailyPrizeLabel(prizeEntries);
+
+  const showPrizeDetails = () => {
+    playSound("uiTap");
+    setPrizeModalVisible(true);
+  };
 
   const playRecordedAd = () =>
     new Promise<boolean>((resolve) => {
@@ -282,6 +339,29 @@ export default function DailyPuzzleCalendarScreen() {
         title="HIGHER LOWER"
         variant="header-only"
       />
+      <DailyPrizeModal entries={prizeEntries} onClose={() => setPrizeModalVisible(false)} visible={prizeModalVisible} />
+
+      <View style={styles.dailyStatusCard}>
+        <View style={styles.dailyStatusPill}>
+          <Ionicons color={colors.warning} name="timer-outline" size={14} />
+          <Text numberOfLines={1} style={styles.dailyStatusText}>Next in {resetCountdown}</Text>
+        </View>
+
+        <View style={[styles.dailyStatusPill, styles.dailyStatusStreakPill]}>
+          <Ionicons color={colors.accent} name="flame-outline" size={14} />
+          <Text numberOfLines={1} style={styles.dailyStatusText}>Streak {dailyStreak}</Text>
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={showPrizeDetails}
+          style={({ pressed }) => [styles.dailyStatusPill, styles.dailyStatusPrizePill, pressed && styles.pressed]}
+        >
+          <CoinIcon size={14} />
+          <Text numberOfLines={1} style={styles.dailyStatusPrizeText}>{prizeLabel}</Text>
+          <Ionicons color="#8a5a00" name="information-circle-outline" size={13} />
+        </Pressable>
+      </View>
 
       <View style={[styles.boardCard, { padding: boardPadding }]}>
         <View style={styles.boardHeader}>
@@ -558,8 +638,7 @@ export default function DailyPuzzleCalendarScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    // backgroundColor: colors.backgroundAlt,
-    // gap: spacing.sm
+    gap: spacing.sm
   },
   loadingScreen: {
     alignItems: "center",
@@ -583,6 +662,52 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: spacing.sm,
     ...shadows.card
+  },
+  dailyStatusCard: {
+    alignItems: "center",
+    backgroundColor: "transparent",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    justifyContent: "center",
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 0
+  },
+  dailyStatusPill: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: "#e4e9e6",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    justifyContent: "center",
+    minHeight: 28,
+    paddingHorizontal: 9
+  },
+  dailyStatusStreakPill: {
+    backgroundColor: "#f3faf6",
+    borderColor: "#d8eee3"
+  },
+  dailyStatusPrizePill: {
+    backgroundColor: "#fff6df",
+    borderColor: "#f2d17f",
+    flex: 1,
+    maxWidth: 360,
+    minWidth: 220,
+    paddingHorizontal: 10
+  },
+  dailyStatusText: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: "900"
+  },
+  dailyStatusPrizeText: {
+    color: "#8a5a00",
+    flexShrink: 1,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.2
   },
   boardHeader: {
     alignItems: "center",

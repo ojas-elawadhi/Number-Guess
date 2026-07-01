@@ -2,6 +2,16 @@ import type { DailyPuzzleCompletion } from "../types/progression.types";
 import { getTodayKey } from "./progression";
 
 export const DAILY_PUZZLE_DEFAULT_MAX = 9999;
+export const DAILY_PUZZLE_DEFAULT_PRIZES = [
+  { coins: 1000, rank: 1 },
+  { coins: 500, rank: 2 },
+  { coins: 100, rank: 3 }
+] as const;
+
+export interface DailyPrizeEntry {
+  coins: number;
+  rank: number;
+}
 
 const getLocalDate = (dateKey: string) => {
   const [year, month, day] = dateKey.split("-").map(Number);
@@ -11,6 +21,32 @@ const getLocalDate = (dateKey: string) => {
 export const getUtcTodayKey = (date = new Date()) => date.toISOString().slice(0, 10);
 export const getLocalTodayKey = getUtcTodayKey;
 export const isTodayPuzzleDate = (dateKey: string) => dateKey === getUtcTodayKey();
+
+export const formatResetCountdown = (date: Date) => {
+  const nextReset = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1);
+  const remainingMs = Math.max(0, nextReset - date.getTime());
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${hours}h ${`${minutes}`.padStart(2, "0")}m ${`${seconds}`.padStart(2, "0")}s`;
+};
+
+export const getDailyPrizeEntries = (rewardConfig?: Record<number, number> | null): DailyPrizeEntry[] => {
+  const configuredEntries = Object.entries(rewardConfig ?? {})
+    .map(([rank, coins]) => ({
+      coins,
+      rank: Number(rank)
+    }))
+    .filter((entry) => Number.isFinite(entry.rank) && entry.rank > 0 && entry.coins > 0)
+    .sort((left, right) => left.rank - right.rank);
+
+  return configuredEntries.length > 0 ? configuredEntries : [...DAILY_PUZZLE_DEFAULT_PRIZES];
+};
+
+export const getDailyPrizeLabel = (entries: DailyPrizeEntry[]) =>
+  entries.length === 1 ? "#1 prize" : `Top ${entries.length} prizes`;
 
 export const shiftUtcDateKeyByDays = (dateKey: string, delta: number) => {
   const [year, month, day] = dateKey.split("-").map(Number);

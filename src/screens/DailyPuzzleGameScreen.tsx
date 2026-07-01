@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Animated, Image, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderDateBadge } from "../components/AppHeader";
+import { BoosterIcon } from "../components/BoosterIcon";
 import { CoinIcon } from "../components/CoinIcon";
 import { ConfettiBurst } from "../components/ConfettiBurst";
+import { DailyPrizeModal } from "../components/DailyPrizeModal";
 import { GameStartCountdown } from "../components/GameStartCountdown";
 import { RankMedal } from "../components/RankMedal";
 import { ScreenContainer } from "../components/ScreenContainer";
@@ -17,13 +19,18 @@ import { useMonetizationStore } from "../store/useMonetizationStore";
 import { usePlayerProgressStore } from "../store/usePlayerProgressStore";
 import type { GuessFeedback } from "../types/game.types";
 import type { DailyPuzzleLeaderboardEntry, DailyPuzzleLeaderboardResponse, MatchRecord } from "../types/progression.types";
-import { formatDuration } from "../utils/progression";
+import { formatDuration, getDailyPuzzleCurrentStreak } from "../utils/progression";
 import { colors, radii, shadows, spacing } from "../utils/theme";
 import {
   DAILY_PUZZLE_DEFAULT_MAX,
+  formatResetCountdown,
+  formatPlayLabel,
+  getDailyPrizeEntries,
+  getDailyPrizeLabel,
   getDeterministicDailyPuzzleNumber,
   getUtcTodayKey,
-  isTodayPuzzleDate
+  isTodayPuzzleDate,
+  shiftUtcDateKeyByDays
 } from "../utils/dailyPuzzle";
 
 interface GuessEntry {
@@ -146,7 +153,13 @@ export default function DailyPuzzleGameScreen() {
   const [dailyLeaderboard, setDailyLeaderboard] = useState<DailyPuzzleLeaderboardResponse | null>(null);
   const [dailyLeaderboardLoading, setDailyLeaderboardLoading] = useState(false);
   const [dailyLeaderboardError, setDailyLeaderboardError] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [revealedRank, setRevealedRank] = useState<number | null>(null);
+  const [isSharingResult, setIsSharingResult] = useState(false);
+  const [prizeModalVisible, setPrizeModalVisible] = useState(false);
   const startedAtRef = useRef(Date.now());
+  const rankRevealOpacity = useRef(new Animated.Value(0.65)).current;
+  const rankRevealScale = useRef(new Animated.Value(0.96)).current;
 
   const completedByDate = profile.dailyPuzzle?.completedByDate ?? {};
   const completion = puzzleDateKey ? completedByDate[puzzleDateKey] ?? null : null;
@@ -208,6 +221,16 @@ export default function DailyPuzzleGameScreen() {
   }, [fetchDailyPuzzleStatus, hasRequestedDateCompletion, hydrated, reloadKey, requestedDateKey, startCountdown]);
 
   useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
     if (dailyPuzzleTodayKey && !params.dateKey) {
       setPuzzleDateKey(dailyPuzzleTodayKey);
     }
@@ -264,11 +287,75 @@ export default function DailyPuzzleGameScreen() {
     };
   }, [completed, fetchDailyPuzzleLeaderboard, hydrated, puzzleDateKey]);
 
+  useEffect(() => {
+    const nextRank = dailyLeaderboard?.playerEntry?.rank ?? null;
+
+    if (!completed || !nextRank) {
+      setRevealedRank(null);
+      rankRevealOpacity.setValue(0.65);
+      rankRevealScale.setValue(0.96);
+      return;
+    }
+
+    setRevealedRank(null);
+    rankRevealOpacity.setValue(0.65);
+    rankRevealScale.setValue(0.96);
+
+    const revealTimer = setTimeout(() => {
+      setRevealedRank(nextRank);
+      Animated.parallel([
+        Animated.timing(rankRevealOpacity, {
+          duration: 320,
+          toValue: 1,
+          useNativeDriver: true
+        }),
+        Animated.spring(rankRevealScale, {
+          friction: 7,
+          tension: 90,
+          toValue: 1,
+          useNativeDriver: true
+        })
+      ]).start();
+    }, 550);
+
+    return () => {
+      clearTimeout(revealTimer);
+    };
+  }, [completed, dailyLeaderboard?.playerEntry?.rank, rankRevealOpacity, rankRevealScale]);
+
   const digitLimit = String(maxNumber).length;
   const countedAttempts = guessHistory.filter((entry) => entry.counted).length;
   const attemptsCount = completed && completion ? completion.attempts : countedAttempts;
   const recentGuesses = guessHistory.slice(0, 2);
   const guessDisplayValue = completed ? "WIN" : guess.length > 0 ? guess : "--";
+  const dailyStreakAnchor = puzzleDateKey && completed ? puzzleDateKey : puzzleDateKey ? shiftUtcDateKeyByDays(puzzleDateKey, -1) : null;
+  const dailyStreak = dailyStreakAnchor ? getDailyPuzzleCurrentStreak(profile, dailyStreakAnchor) : 0;
+  const resetCountdown = formatResetCountdown(currentTime);
+  const playerEntry = dailyLeaderboard?.playerEntry ?? null;
+  const rankLabel = revealedRank ? `#${revealedRank}` : playerEntry ? "Calculating..." : dailyLeaderboardLoading ? "Syncing..." : "--";
+  const completionAttempts = completion?.attempts ?? attemptsCount;
+  const completionDuration = completion ? formatDuration(completion.durationMs) : "--";
+  const shareDateLabel = puzzleDateKey ? formatPlayLabel(puzzleDateKey) : "today";
+  const rewardConfig = dailyLeaderboard?.rewardConfig ?? {};
+  const prizeEntries = [1, 2, 3]
+    .map((rank) => ({
+      coins: rewardConfig[rank] ?? 0,
+      rank
+    }))
+    .filter((entry) => entry.coins > 0);
+  const prizePreviewEntries = getDailyPrizeEntries(rewardConfig);
+  const prizeLabel = getDailyPrizeLabel(prizePreviewEntries);
+  const playerRewardStatus = playerEntry
+    ? !playerEntry.rewardEligible
+      ? "Replay result. Prizes are for today's first clear."
+      : playerEntry.rewardCoinsAwarded > 0
+        ? `${playerEntry.rewardCoinsAwarded.toLocaleString("en-US")} coins awarded.`
+        : playerEntry.rewardCoins > 0
+          ? `Prize spot: ${playerEntry.rewardCoins.toLocaleString("en-US")} coins pending UTC midnight.`
+          : "Top 3 win coins. Your result is saved on the board."
+    : dailyLeaderboardError
+      ? "Your clear is saved. Ranking will sync when the board is reachable."
+      : "Your clear is saved. Ranking is syncing.";
   const statusState = completed
     ? {
         color: "#1fc46d",
@@ -484,6 +571,35 @@ export default function DailyPuzzleGameScreen() {
     );
   };
 
+  const handleShareResult = async () => {
+    if (isSharingResult || !completion) {
+      return;
+    }
+
+    const rankText = playerEntry ? `Rank #${playerEntry.rank}` : "Rank syncing";
+    const message = [
+      `Code Guess Daily - ${shareDateLabel}`,
+      `Solved in ${completionAttempts} guess${completionAttempts === 1 ? "" : "es"} | ${completionDuration}`,
+      rankText,
+      `Daily streak: ${dailyStreak}`
+    ].join("\n");
+
+    try {
+      setIsSharingResult(true);
+      await Share.share({ message });
+      playSound("onlineNotify");
+    } catch {
+      playSound("error");
+    } finally {
+      setIsSharingResult(false);
+    }
+  };
+
+  const showPrizeDetails = () => {
+    playSound("uiTap");
+    setPrizeModalVisible(true);
+  };
+
   if (!hydrated || isLoading) {
     return (
       <ScreenContainer contentStyle={styles.loadingScreen}>
@@ -528,6 +644,11 @@ export default function DailyPuzzleGameScreen() {
     <ScreenContainer contentStyle={styles.screen}>
       <ConfettiBurst visible={completed} />
       <GameStartCountdown controller={countdown} label="Daily puzzle" />
+      <DailyPrizeModal
+        entries={prizePreviewEntries}
+        onClose={() => setPrizeModalVisible(false)}
+        visible={prizeModalVisible}
+      />
 
       <AppHeader
         center={<HeaderDateBadge dateKey={puzzleDateKey} />}
@@ -545,28 +666,77 @@ export default function DailyPuzzleGameScreen() {
               <View style={styles.completedResultCopy}>
                 <Text style={styles.completedResultEyebrow}>Board clear</Text>
                 <Text style={styles.completedResultTitle}>Daily win locked in</Text>
-              </View>
-            </View>
-
-            <View style={styles.completedResultStats}>
-              <View style={styles.completedResultStat}>
-                <Text style={styles.completedResultStatLabel}>Guesses</Text>
-                <Text style={styles.completedResultStatValue}>{completion?.attempts ?? attemptsCount}</Text>
-              </View>
-              <View style={styles.completedResultStatDivider} />
-              <View style={styles.completedResultStat}>
-                <Text style={styles.completedResultStatLabel}>Time</Text>
-                <Text style={styles.completedResultStatValue}>{completion ? formatDuration(completion.durationMs) : "--"}</Text>
-              </View>
-              <View style={styles.completedResultStatDivider} />
-              <View style={styles.completedResultStat}>
-                <Text style={styles.completedResultStatLabel}>Rank</Text>
-                <Text style={styles.completedResultStatValue}>
-                  {dailyLeaderboard?.playerEntry ? `#${dailyLeaderboard.playerEntry.rank}` : "--"}
+                <Text style={styles.completedResultSubtitle}>
+                  Same puzzle for everyone. Fewest guesses ranks higher.
                 </Text>
               </View>
             </View>
 
+            <Animated.View
+              style={[
+                styles.rankRevealCard,
+                {
+                  opacity: rankRevealOpacity,
+                  transform: [{ scale: rankRevealScale }]
+                }
+              ]}
+            >
+              <Text style={styles.rankRevealEyebrow}>
+                {playerEntry || dailyLeaderboardLoading ? "Today's rank" : "Rank syncing"}
+              </Text>
+              <Text adjustsFontSizeToFit numberOfLines={1} style={styles.rankRevealValue}>
+                {rankLabel}
+              </Text>
+              <Text style={styles.rankRevealMeta}>{playerRewardStatus}</Text>
+            </Animated.View>
+
+            <View style={styles.completedResultStats}>
+              <View style={styles.completedResultStat}>
+                <Text style={styles.completedResultStatLabel}>Guesses</Text>
+                <Text style={styles.completedResultStatValue}>{completionAttempts}</Text>
+              </View>
+              <View style={styles.completedResultStatDivider} />
+              <View style={styles.completedResultStat}>
+                <Text style={styles.completedResultStatLabel}>Time</Text>
+                <Text style={styles.completedResultStatValue}>{completionDuration}</Text>
+              </View>
+              <View style={styles.completedResultStatDivider} />
+              <View style={styles.completedResultStat}>
+                <Text style={styles.completedResultStatLabel}>Streak</Text>
+                <Text style={styles.completedResultStatValue}>{dailyStreak}</Text>
+              </View>
+            </View>
+
+            <View style={styles.resetInfoRow}>
+              <View style={styles.resetInfoPill}>
+                <Ionicons color={colors.warning} name="timer-outline" size={15} />
+                <Text style={styles.resetInfoText}>Next puzzle in {resetCountdown}</Text>
+              </View>
+              {prizeEntries.length > 0 ? (
+                <View style={styles.rewardMiniStrip}>
+                  {prizeEntries.map((entry) => (
+                    <View key={entry.rank} style={styles.rewardMiniChip}>
+                      <Text style={styles.rewardMiniRank}>#{entry.rank}</Text>
+                      <CoinIcon size={12} />
+                      <Text style={styles.rewardMiniText}>{entry.coins.toLocaleString("en-US")}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+
+            <Pressable
+              disabled={isSharingResult || !completion}
+              onPress={() => void handleShareResult()}
+              style={({ pressed }) => [
+                styles.shareResultButton,
+                (isSharingResult || !completion) && styles.shareResultButtonDisabled,
+                pressed && !isSharingResult && completion && styles.pressed
+              ]}
+            >
+              <Ionicons color="#ffffff" name="share-social" size={18} />
+              <Text style={styles.shareResultText}>{isSharingResult ? "SHARING..." : "SHARE RESULT"}</Text>
+            </Pressable>
           </View>
 
           <View style={styles.dailyResultLeaderboardCard}>
@@ -619,6 +789,28 @@ export default function DailyPuzzleGameScreen() {
         </ScrollView>
       ) : (
         <>
+      <View style={styles.dailyIntroCard}>
+        <View style={styles.dailyIntroMetaRow}>
+          <View style={[styles.dailyIntroPill, styles.dailyIntroTimerPill]}>
+            <Ionicons color={colors.warning} name="timer-outline" size={14} />
+            <Text style={styles.dailyIntroPillText}>Next in {resetCountdown}</Text>
+          </View>
+          <View style={[styles.dailyIntroPill, styles.dailyIntroStreakPill]}>
+            <Ionicons color={colors.accent} name="flame-outline" size={14} />
+            <Text style={styles.dailyIntroPillText}>Streak {dailyStreak}</Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            onPress={showPrizeDetails}
+            style={({ pressed }) => [styles.dailyIntroPill, styles.dailyIntroPrizePill, pressed && styles.pressed]}
+          >
+            <CoinIcon size={13} />
+            <Text numberOfLines={1} style={styles.dailyIntroPrizeText}>{prizeLabel}</Text>
+            <Ionicons color="#8a5a00" name="information-circle-outline" size={13} />
+          </Pressable>
+        </View>
+      </View>
+
       <View style={styles.playInfoBar}>
         <View style={styles.playInfoCenter}>
           <View style={styles.modeHint}>
@@ -628,7 +820,7 @@ export default function DailyPuzzleGameScreen() {
         </View>
 
         <View style={styles.chancesTextWrap}>
-          <Ionicons color="#176fb8" name="analytics-outline" size={18} />
+          <BoosterIcon kind="extra-guess" size={30} />
           <Text style={styles.chancesText}>
             {attemptsCount} used
           </Text>
@@ -656,30 +848,31 @@ export default function DailyPuzzleGameScreen() {
 
         <Text style={[styles.statusMeta, errorMessage ? styles.error : null]}>{statusMeta}</Text>
 
-        {recentGuesses.length > 0 ? (
-          <View style={styles.historyList}>
-            {recentGuesses.map((entry, index) => {
-              const toneColor =
-                entry.result === "higher" ? "#ff8a6a" : entry.result === "lower" ? "#61b7ff" : colors.correct;
-              const toneLabel =
-                entry.result === "higher" ? "HIGHER" : entry.result === "lower" ? "LOWER" : "HIT";
-
-              return (
-                <View key={`${entry.guess}-${index}`} style={styles.historyCard}>
-                  <Text style={styles.historyGuess}>{entry.guess}</Text>
-                  <View style={[styles.historyResultBadge, { borderColor: toneColor }]}>
-                    <Text style={[styles.historyResultText, { color: toneColor }]}>{toneLabel}</Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
       </View>
 
       <View style={styles.bottomSpacer} />
 
         <View style={styles.bottomControls}>
+          {recentGuesses.length > 0 ? (
+            <View style={[styles.historyList, styles.bottomHistoryList]}>
+              {recentGuesses.map((entry, index) => {
+                const toneColor =
+                  entry.result === "higher" ? "#ff8a6a" : entry.result === "lower" ? "#61b7ff" : colors.correct;
+                const toneLabel =
+                  entry.result === "higher" ? "HIGHER" : entry.result === "lower" ? "LOWER" : "HIT";
+
+                return (
+                  <View key={`${entry.guess}-${index}`} style={styles.historyCard}>
+                    <Text style={styles.historyGuess}>{entry.guess}</Text>
+                    <View style={[styles.historyResultBadge, { borderColor: toneColor }]}>
+                      <Text style={[styles.historyResultText, { color: toneColor }]}>{toneLabel}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+
           <View style={styles.keypadWrap}>
             {keypadRows.map((row, rowIndex) => (
               <View key={rowIndex} style={styles.keyRow}>
@@ -777,6 +970,44 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textTransform: "uppercase"
   },
+  completedResultSubtitle: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17
+  },
+  rankRevealCard: {
+    alignItems: "center",
+    backgroundColor: "#fff8de",
+    borderColor: "#f0ca61",
+    borderRadius: 18,
+    borderWidth: 1.5,
+    gap: 3,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md
+  },
+  rankRevealEyebrow: {
+    color: "#9b6a00",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+    textTransform: "uppercase"
+  },
+  rankRevealValue: {
+    color: "#24180b",
+    fontSize: 46,
+    fontWeight: "900",
+    includeFontPadding: false,
+    lineHeight: 52,
+    maxWidth: "100%"
+  },
+  rankRevealMeta: {
+    color: "#7a5a16",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
+    textAlign: "center"
+  },
   completedResultStats: {
     alignItems: "center",
     backgroundColor: "#f5f8f5",
@@ -808,6 +1039,74 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 18,
     fontWeight: "900"
+  },
+  resetInfoRow: {
+    gap: 8
+  },
+  resetInfoPill: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.surfaceMuted,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 34,
+    paddingHorizontal: 12
+  },
+  resetInfoText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "900"
+  },
+  rewardMiniStrip: {
+    flexDirection: "row",
+    gap: 6
+  },
+  rewardMiniChip: {
+    alignItems: "center",
+    backgroundColor: "#fff4cf",
+    borderColor: "#f3d27d",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: "row",
+    gap: 3,
+    justifyContent: "center",
+    minHeight: 28,
+    paddingHorizontal: 6
+  },
+  rewardMiniRank: {
+    color: "#8a5a00",
+    fontSize: 10,
+    fontWeight: "900"
+  },
+  rewardMiniText: {
+    color: "#8a5a00",
+    fontSize: 10,
+    fontWeight: "900"
+  },
+  shareResultButton: {
+    alignItems: "center",
+    backgroundColor: colors.online,
+    borderBottomColor: "#267ebd",
+    borderBottomWidth: 4,
+    borderRadius: radii.pill,
+    flexDirection: "row",
+    gap: 7,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: spacing.lg
+  },
+  shareResultButtonDisabled: {
+    opacity: 0.55
+  },
+  shareResultText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 0.7
   },
   dailyResultLeaderboardCard: {
     backgroundColor: colors.surface,
@@ -1017,6 +1316,57 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0.7
   },
+  dailyIntroCard: {
+    backgroundColor: "transparent",
+    paddingHorizontal: 2,
+    paddingVertical: 0
+  },
+  dailyIntroMetaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+    justifyContent: "center"
+  },
+  dailyIntroPill: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "#e4e9e6",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    minHeight: 28,
+    paddingHorizontal: 9
+  },
+  dailyIntroTimerPill: {
+    borderColor: "#ead8a8"
+  },
+  dailyIntroStreakPill: {
+    backgroundColor: "#f3faf6",
+    borderColor: "#cfeadd"
+  },
+  dailyIntroPrizePill: {
+    backgroundColor: "#fff6df",
+    borderColor: "#f2d17f",
+    flexGrow: 1,
+    justifyContent: "center",
+    maxWidth: 360,
+    minWidth: 210,
+    paddingHorizontal: 10
+  },
+  dailyIntroPillText: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: "900"
+  },
+  dailyIntroPrizeText: {
+    color: "#8a5a00",
+    flexShrink: 1,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.2
+  },
   playInfoBar: {
     alignItems: "center",
     alignSelf: "center",
@@ -1118,6 +1468,10 @@ const styles = StyleSheet.create({
   historyList: {
     gap: spacing.xs,
     width: "100%"
+  },
+  bottomHistoryList: {
+    marginHorizontal: 6,
+    width: "auto"
   },
   historyCard: {
     alignItems: "center",
