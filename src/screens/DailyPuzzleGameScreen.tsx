@@ -578,7 +578,7 @@ export default function DailyPuzzleGameScreen() {
 
     const rankText = playerEntry ? `Rank #${playerEntry.rank}` : "Rank syncing";
     const message = [
-      `Code Guess Daily - ${shareDateLabel}`,
+      `Number Guess: Higher Lower Daily - ${shareDateLabel}`,
       `Solved in ${completionAttempts} guess${completionAttempts === 1 ? "" : "es"} | ${completionDuration}`,
       rankText,
       `Daily streak: ${dailyStreak}`

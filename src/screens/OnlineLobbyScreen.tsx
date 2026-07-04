@@ -140,7 +140,7 @@ export default function OnlineLobbyScreen() {
 
   const handleShareCode = async () => {
     await Share.share({
-      message: `Join my Code Guess room: ${room.roomId}`
+      message: `Join my Number Guess: Higher Lower room: ${room.roomId}`
     });
     playSound("onlineNotify");
   };

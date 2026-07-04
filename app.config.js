@@ -5,7 +5,7 @@ const iosAppId =
 
 module.exports = {
   expo: {
-    name: "Code Guess",
+    name: "Number Guess: Higher Lower",
     slug: "code-wars-multiplayer",
     version: "1.0.0",
     orientation: "portrait",

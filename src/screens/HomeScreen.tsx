@@ -39,16 +39,24 @@ const HEADER_REWARDED_COIN_AMOUNT = 50;
 const isHomeTab = (value: string | undefined): value is HomeTab =>
   value === "play" || value === "stats" || value === "shop" || value === "profile" || value === "settings";
 
-const titleLetters = [
-  { accent: "#f28f67", letter: "C" },
-  { accent: "#5db5f5", letter: "O" },
-  { accent: "#9dc95b", letter: "D" },
-  { accent: "#f7b33d", letter: "E" },
-  { accent: "#d979bc", letter: "G" },
-  { accent: "#ee6b62", letter: "U" },
-  { accent: "#7cc8ff", letter: "E" },
-  { accent: "#a98ee8", letter: "S" },
-  { accent: "#5cc78f", letter: "S" }
+const appDisplayName = "Number Guess: Higher Lower";
+
+const titleLetterRows = [
+  [
+    { accent: "#f28f67", letter: "N" },
+    { accent: "#5db5f5", letter: "U" },
+    { accent: "#9dc95b", letter: "M" },
+    { accent: "#f7b33d", letter: "B" },
+    { accent: "#d979bc", letter: "E" },
+    { accent: "#ee6b62", letter: "R" }
+  ],
+  [
+    { accent: "#7cc8ff", letter: "G" },
+    { accent: "#a98ee8", letter: "U" },
+    { accent: "#5cc78f", letter: "E" },
+    { accent: "#f28f67", letter: "S" },
+    { accent: "#5db5f5", letter: "S" }
+  ]
 ] as const;
 
 const PROFILE_RING_SIZE = 44;
@@ -751,26 +759,15 @@ export default function HomeScreen() {
 
               <View style={styles.wordmarkWrap}>
                 <View style={styles.wordmark}>
-                  <View style={styles.wordRow}>
-                    {titleLetters.slice(0, 4).map((item, index) => (
-                      <View
-                        key={`${item.letter}-${index}`}
-                        style={[styles.wordBubble, { backgroundColor: item.accent }]}
-                      >
-                        <Text style={styles.wordBubbleText}>{item.letter}</Text>
-                      </View>
-                    ))}
-                  </View>
-                  <View style={styles.wordRow}>
-                    {titleLetters.slice(4).map((item, index) => (
-                      <View
-                        key={`${item.letter}-${index + 4}`}
-                        style={[styles.wordBubble, { backgroundColor: item.accent }]}
-                      >
-                        <Text style={styles.wordBubbleText}>{item.letter}</Text>
-                      </View>
-                    ))}
-                  </View>
+                  {titleLetterRows.map((row, rowIndex) => (
+                    <View key={`title-row-${rowIndex}`} style={styles.wordRow}>
+                      {row.map((item, index) => (
+                        <View key={`${item.letter}-${rowIndex}-${index}`} style={[styles.wordBubble, { backgroundColor: item.accent }]}>
+                          <Text style={styles.wordBubbleText}>{item.letter}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ))}
                 </View>
               </View>
 
@@ -1608,7 +1605,7 @@ export default function HomeScreen() {
                   <View style={styles.settingsAppIcon}>
                     <Ionicons color={colors.accent} name="apps" size={17} />
                   </View>
-                  <Text style={styles.settingsAppName}>Code Guess</Text>
+                  <Text style={styles.settingsAppName}>{appDisplayName}</Text>
                   <Text style={styles.settingsAppVersion}>
                     v{appVersion} | build {appBuildNumber ?? "-"}
                   </Text>
