@@ -1079,10 +1079,6 @@ export const getPlayerBestScore = (profile: PlayerProfile) => {
   return Math.max(singlePlayerBest, historyBest, latestBest);
 };
 
-export const getPlayerClimbScore = (profile: PlayerProfile) => {
-  return getPlayerBestScore(profile);
-};
-
 export const buildOnlineLeaderboard = (profile: PlayerProfile): LeaderboardEntry[] => {
   const playerScore = getPlayerBestScore(profile);
   const hasScoreActivity = profile.stats.matches > 0 || playerScore > 0;
