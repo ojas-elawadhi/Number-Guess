@@ -40,6 +40,7 @@ const createPlayerKey = () => `player_${Date.now().toString(36)}_${Math.random()
 interface PlayerProgressStore {
   hydrated: boolean;
   progressReady: boolean;
+  progressSynced: boolean;
   playerKey: string | null;
   displayName: string;
   profile: PlayerProfile;
@@ -165,6 +166,7 @@ const applyRemoteSync = async (
 export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => ({
   hydrated: false,
   progressReady: false,
+  progressSynced: false,
   playerKey: null,
   displayName: "",
   profile: createInitialProfile(),
@@ -184,6 +186,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     set({
       hydrated: true,
       progressReady: false,
+      progressSynced: false,
       playerKey,
       displayName: fallbackDisplayName,
       profile: createInitialProfile(),
@@ -197,6 +200,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       });
 
       await applyRemoteSync(set, get, response);
+      set({ progressSynced: true });
     } finally {
       // Remote profile has settled (loaded or failed). Screens can now safely
       // restore from / sync the persisted snapshot without clobbering it.

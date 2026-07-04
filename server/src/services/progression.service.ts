@@ -27,7 +27,7 @@ import {
   claimProfileDailyReward,
   createInitialProfile,
   getDefaultDisplayName,
-  getPlayerOnlineScore,
+  getPlayerBestScore,
   normalizeProfile,
   validateDisplayName
 } from "../../../shared/progression";
@@ -53,8 +53,9 @@ const toLeaderboardEntry = (
   id: playerKey,
   rank: 0,
   name: isPlayer ? "You" : displayName,
-  points: getPlayerOnlineScore(profile) + profile.bestWinStreak * 8 + profile.level * 16,
-  streak: profile.currentWinStreak,
+  avatarId: profile.avatarId,
+  points: getPlayerBestScore(profile),
+  streak: profile.bestWinStreak,
   level: profile.level,
   isPlayer
 });
@@ -321,36 +322,48 @@ class ProgressionService {
       return createFallbackLeaderboard(profile);
     }
 
-    const topPlayers = await prisma.playerProgress.findMany({
-      orderBy: [
-        {
-          onlinePoints: "desc"
-        },
-        {
-          level: "desc"
-        },
-        {
-          currentWinStreak: "desc"
-        }
-      ],
-      take: 8
+    const players = await prisma.playerProgress.findMany({
+      select: {
+        displayName: true,
+        playerKey: true,
+        profile: true
+      }
     });
 
-    const entries: LeaderboardEntry[] = topPlayers.map((entry) =>
-      toLeaderboardEntry(entry.playerKey, entry.displayName, parseProfile(entry.profile), entry.playerKey === playerKey)
-    );
+    const entries: LeaderboardEntry[] = players.map((entry) => {
+      const isPlayer = entry.playerKey === playerKey;
+
+      return toLeaderboardEntry(
+        entry.playerKey,
+        isPlayer ? displayName : entry.displayName,
+        isPlayer ? profile : parseProfile(entry.profile),
+        isPlayer
+      );
+    });
 
     if (!entries.some((entry: LeaderboardEntry) => entry.id === playerKey)) {
       entries.push(toLeaderboardEntry(playerKey, displayName, profile, true));
     }
 
-    return entries
-      .sort((left: LeaderboardEntry, right: LeaderboardEntry) => right.points - left.points)
-      .slice(0, 8)
+    const rankedEntries = entries
+      .sort(
+        (left: LeaderboardEntry, right: LeaderboardEntry) =>
+          right.points - left.points ||
+          right.streak - left.streak ||
+          right.level - left.level ||
+          left.name.localeCompare(right.name)
+      )
       .map((entry: LeaderboardEntry, index: number) => ({
         ...entry,
         rank: index + 1
       }));
+
+    const topEntries = rankedEntries.slice(0, 8);
+    const playerEntry = rankedEntries.find((entry: LeaderboardEntry) => entry.id === playerKey);
+
+    return playerEntry && !topEntries.some((entry: LeaderboardEntry) => entry.id === playerKey)
+      ? [...topEntries, playerEntry]
+      : topEntries;
   }
 
   private async resolveDisplayName(playerKey: string, requestedDisplayName?: string, requireUnique = false) {

@@ -181,6 +181,7 @@ function PracticeGame() {
   const modifierRuleDetails = getModifierRuleDetails(roundModifier, difficultyConfig.maxNumber);
   const modifierStrategyText = getModifierStrategyText(roundModifier, difficultyConfig.maxNumber);
   const modifierIntroText = getModifierIntroText(roundModifier, difficultyConfig.maxNumber);
+  const modifierCardTitle = roundModifier.isBoss ? roundModifier.label.replace("Boss: ", "") : roundModifier.label;
   const revealedDigits = Array.isArray(roundModifier.containsDigits) ? roundModifier.containsDigits : [];
   const revealedDigitLabel = revealedDigits.length === 1 ? "Revealed digit" : "One digit is real";
   const centeredModifierRule: null | { label: string; values: string[] } = (() => {
@@ -1028,43 +1029,6 @@ function PracticeGame() {
             roundModifier.isBoss && styles.modifierAccentTrackBoss
           ]}
         />
-        {centeredModifierRule ? (
-          <View pointerEvents="none" style={styles.modifierCenteredRuleSlot}>
-            <View
-              style={[
-                styles.modifierRuleCallout,
-                styles.modifierRuleCalloutCentered,
-                { borderColor: roundModifier.accentColor },
-                roundModifier.isBoss && styles.modifierRuleCalloutBoss
-              ]}
-            >
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.modifierRuleCalloutLabel,
-                  { color: roundModifier.accentColor },
-                  roundModifier.isBoss && styles.modifierRuleCalloutLabelBoss
-                ]}
-              >
-                {centeredModifierRule.label}
-              </Text>
-              <View style={styles.modifierRuleCalloutValueRow}>
-                {centeredModifierRule.values.map((value) => (
-                  <View key={value} style={[styles.modifierRuleCalloutValueBadge, { backgroundColor: roundModifier.accentColor }]}>
-                    <Text
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.72}
-                      style={styles.modifierRuleCalloutValueText}
-                    >
-                      {value}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
-        ) : null}
         <View style={styles.modifierCopy}>
           <View style={styles.modifierTitleRow}>
             <View style={styles.modifierTitleCluster}>
@@ -1087,10 +1051,47 @@ function PracticeGame() {
                   ) : null}
                 </View>
                 <Text numberOfLines={1} style={[styles.modifierTitle, roundModifier.isBoss && styles.modifierTitleBoss]}>
-                  {roundModifier.label}
+                  {modifierCardTitle}
                 </Text>
               </View>
             </View>
+            {centeredModifierRule ? (
+              <View pointerEvents="none" style={styles.modifierInlineRuleSlot}>
+                <View
+                  style={[
+                    styles.modifierRuleCallout,
+                    styles.modifierRuleCalloutCentered,
+                    { borderColor: roundModifier.accentColor },
+                    roundModifier.isBoss && styles.modifierRuleCalloutBoss
+                  ]}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.modifierRuleCalloutLabel,
+                      { color: roundModifier.accentColor },
+                      roundModifier.isBoss && styles.modifierRuleCalloutLabelBoss
+                    ]}
+                  >
+                    {centeredModifierRule.label}
+                  </Text>
+                  <View style={styles.modifierRuleCalloutValueRow}>
+                    {centeredModifierRule.values.map((value) => (
+                      <View key={value} style={[styles.modifierRuleCalloutValueBadge, { backgroundColor: roundModifier.accentColor }]}>
+                        <Text
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.72}
+                          style={styles.modifierRuleCalloutValueText}
+                        >
+                          {value}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            ) : null}
             <View style={styles.modifierActionCluster}>
               <View
                 style={[
@@ -1859,9 +1860,9 @@ const styles = StyleSheet.create({
     minWidth: 0
   },
   modifierTitleRow: {
-    alignItems: "flex-start",
+    alignItems: "center",
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
     justifyContent: "space-between"
   },
   modifierTitleCluster: {
@@ -1970,13 +1971,10 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingLeft: 41
   },
-  modifierCenteredRuleSlot: {
+  modifierInlineRuleSlot: {
     alignItems: "center",
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: 10,
-    zIndex: 2
+    flexShrink: 0,
+    justifyContent: "center"
   },
   modifierRuleCallout: {
     alignItems: "center",

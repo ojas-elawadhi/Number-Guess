@@ -1066,25 +1066,38 @@ export const applyRecordedMatch = (profile: PlayerProfile, input: MatchInput) =>
 export const getPlayerOnlineScore = (profile: PlayerProfile) =>
   profile.stats.category.online.points + profile.stats.category.online.wins * 45;
 
-export const buildOnlineLeaderboard = (profile: PlayerProfile): LeaderboardEntry[] => {
-  const playerOnlinePoints = getPlayerOnlineScore(profile);
-  const hasOnlineActivity =
-    profile.stats.category.online.matches > 0 ||
-    playerOnlinePoints > 0 ||
-    profile.stats.category.online.wins > 0;
+export const getPlayerBestScore = (profile: PlayerProfile) => {
+  const singlePlayerBest = Math.max(
+    profile.stats.singlePlayerHighScores.easy,
+    profile.stats.singlePlayerHighScores.hard,
+    profile.stats.singlePlayerHighScores.impossible
+  );
 
-  if (!hasOnlineActivity) {
+  const historyBest = profile.history.reduce((best, match) => Math.max(best, match.points), 0);
+  const latestBest = profile.lastMatchSummary?.points ?? 0;
+
+  return Math.max(singlePlayerBest, historyBest, latestBest);
+};
+
+export const getPlayerClimbScore = (profile: PlayerProfile) => {
+  return getPlayerBestScore(profile);
+};
+
+export const buildOnlineLeaderboard = (profile: PlayerProfile): LeaderboardEntry[] => {
+  const playerScore = getPlayerBestScore(profile);
+  const hasScoreActivity = profile.stats.matches > 0 || playerScore > 0;
+
+  if (!hasScoreActivity) {
     return [];
   }
-
-  const playerScore = playerOnlinePoints + profile.bestWinStreak * 8 + profile.level * 16;
 
   return [
     {
       id: "you",
       name: "You",
+      avatarId: profile.avatarId,
       points: playerScore,
-      streak: profile.currentWinStreak,
+      streak: profile.bestWinStreak,
       level: profile.level,
       isPlayer: true,
       rank: 1

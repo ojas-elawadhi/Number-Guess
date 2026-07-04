@@ -87,6 +87,15 @@ export const updateProgressPreferences = (payload: ProgressPreferencesPayload) =
     body: JSON.stringify(payload)
   });
 
+export const sendTutorialEventRemote = (playerKey: string, event: string) =>
+  request<{ ok: boolean }>("/api/progression/tutorial-event", {
+    method: "POST",
+    body: JSON.stringify({
+      playerKey,
+      event
+    })
+  });
+
 export const updateDisplayNameRemote = (playerKey: string, displayName: string) =>
   request<UpdateDisplayNameResponse>("/api/progression/display-name", {
     method: "PATCH",

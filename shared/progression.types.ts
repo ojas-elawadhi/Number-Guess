@@ -266,6 +266,7 @@ export interface LeaderboardEntry {
   id: string;
   rank: number;
   name: string;
+  avatarId?: AvatarId;
   points: number;
   streak: number;
   level: number;

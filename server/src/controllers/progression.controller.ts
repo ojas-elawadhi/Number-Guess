@@ -108,6 +108,12 @@ progressionRouter.patch("/preferences", async (request, response) => {
   }
 });
 
+progressionRouter.post("/tutorial-event", (request, response) => {
+  const { playerKey, event } = request.body as { playerKey?: string; event?: string };
+  console.log(`[tutorial-event] ${new Date().toISOString()} player=${playerKey ?? "unknown"} event=${event ?? "unknown"}`);
+  response.json({ ok: true });
+});
+
 progressionRouter.patch("/display-name", async (request, response) => {
   try {
     const payload = request.body as UpdateDisplayNamePayload;

@@ -16,7 +16,7 @@ import {
   applyRecordedMatch,
   DEFAULT_AVATAR_ID,
   getDailyPuzzleCompletion,
-  getPlayerOnlineScore,
+  getPlayerBestScore,
   normalizeProfile
 } from "../../../shared/progression";
 
@@ -430,49 +430,57 @@ class DailyPuzzleService {
       id: entryKey,
       rank: 0,
       name: entryKey === playerKey ? "You" : displayName,
-      points: getPlayerOnlineScore(profile) + profile.bestWinStreak * 8 + profile.level * 16,
-      streak: profile.currentWinStreak,
+      avatarId: profile.avatarId,
+      points: getPlayerBestScore(profile),
+      streak: profile.bestWinStreak,
       level: profile.level,
       isPlayer: entryKey === playerKey
     };
   }
 
   private async getLeaderboard(playerKey: string, profile: PlayerProfile, displayName: string) {
-    const topPlayers = await prisma.playerProgress.findMany({
-      orderBy: [
-        {
-          onlinePoints: "desc"
-        },
-        {
-          level: "desc"
-        },
-        {
-          currentWinStreak: "desc"
-        }
-      ],
-      take: 8
+    const players = await prisma.playerProgress.findMany({
+      select: {
+        displayName: true,
+        playerKey: true,
+        profile: true
+      }
     });
 
-    const entries = topPlayers.map((entry) =>
-      this.toLeaderboardEntry(
+    const entries = players.map((entry) => {
+      const isPlayer = entry.playerKey === playerKey;
+
+      return this.toLeaderboardEntry(
         playerKey,
         entry.playerKey,
-        entry.displayName,
-        normalizeProfile(entry.profile as Partial<PlayerProfile>)
-      )
-    );
+        isPlayer ? displayName : entry.displayName,
+        isPlayer ? profile : normalizeProfile(entry.profile as Partial<PlayerProfile>)
+      );
+    });
 
     if (!entries.some((entry) => entry.id === playerKey)) {
       entries.push(this.toLeaderboardEntry(playerKey, playerKey, displayName, profile));
     }
 
-    return entries
-      .sort((left, right) => right.points - left.points)
-      .slice(0, 8)
+    const rankedEntries = entries
+      .sort(
+        (left, right) =>
+          right.points - left.points ||
+          right.streak - left.streak ||
+          right.level - left.level ||
+          left.name.localeCompare(right.name)
+      )
       .map((entry, index) => ({
         ...entry,
         rank: index + 1
       }));
+
+    const topEntries = rankedEntries.slice(0, 8);
+    const playerEntry = rankedEntries.find((entry) => entry.id === playerKey);
+
+    return playerEntry && !topEntries.some((entry) => entry.id === playerKey)
+      ? [...topEntries, playerEntry]
+      : topEntries;
   }
 }
 
