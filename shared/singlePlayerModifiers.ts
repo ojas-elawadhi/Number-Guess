@@ -76,14 +76,6 @@ const hotColdMeta: Record<HotColdLevel, { label: string; color: string }> = {
   burning: { label: "Burning", color: "#f25555" }
 };
 
-const hotColdGuidance: Record<HotColdLevel, string> = {
-  "very-cold": "You are far away. Make a big move.",
-  cold: "Still far. Move a good distance.",
-  warm: "Getting closer. Narrow the range.",
-  hot: "Close. Make smaller moves.",
-  burning: "Very close. Fine tune it."
-};
-
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const seededIndex = (seed: number, length: number) => {
@@ -260,63 +252,63 @@ const getModifierBase = (id: SinglePlayerModifierId) => {
       return {
         label: "Digit Hint",
         shortLabel: "Digit",
-        description: "One target digit is revealed, but not its position.",
+        description: "One target digit is revealed. Use it to ignore numbers that cannot fit.",
         scoreMultiplier: 1.25
       };
     case "hot-cold-radar":
       return {
         label: "Radar",
         shortLabel: "Radar",
-        description: "Only heat is shown. No higher/lower clues.",
+        description: "Heat replaces higher/lower. Big moves find the zone, small moves finish it.",
         scoreMultiplier: 1.75
       };
     case "trap-range":
       return {
         label: "Trap Range",
         shortLabel: "Trap",
-        description: "A hidden danger zone is active. Landing there costs 2 guesses.",
+        description: "A hidden range is active. Landing inside it costs 2 guesses.",
         scoreMultiplier: 1.5
       };
     case "boss-range-seal":
       return {
         label: "Boss: Range Seal",
         shortLabel: "Boss",
-        description: "Half the range is sealed away. Radar only with a hidden trap.",
+        description: "Half the range is sealed away. Use the smaller search space, then read heat.",
         scoreMultiplier: 2
       };
     case "boss-parity-radar":
       return {
         label: "Boss: Parity Radar",
         shortLabel: "Boss",
-        description: "Odd/even clue, radar only, and a hidden trap.",
+        description: "Odd/even clue plus heat. Filter the board before every guess.",
         scoreMultiplier: 2.5
       };
     case "boss-digit-choice":
       return {
         label: "Boss: Digit Choice",
         shortLabel: "Boss",
-        description: "One of two shown digits is in the target. Radar only with a hidden trap.",
+        description: "One shown digit is real. Test likely ranges without trusting both digits.",
         scoreMultiplier: 2.75
       };
     case "boss-digit-anchor":
       return {
         label: "Boss: Digit Anchor",
         shortLabel: "Boss",
-        description: "One digit is locked in place. Radar only with a hidden trap.",
+        description: "One digit is locked in place. Build guesses around the fixed slot.",
         scoreMultiplier: 2.25
       };
     case "boss-sum":
       return {
         label: "Boss: Sum Code",
         shortLabel: "Boss",
-        description: "Digit sum band revealed. Radar only with a hidden trap.",
+        description: "The digit sum is bounded. Remove numbers with impossible digit totals.",
         scoreMultiplier: 3
       };
     case "boss-mirror":
       return {
         label: "Boss: Mirror Trap",
         shortLabel: "Boss",
-        description: "Clues judge your mirrored number. Radar only with a hidden trap.",
+        description: "Heat reads the mirror of your guess. Think from the opposite end.",
         scoreMultiplier: 3.25
       };
     case "classic":
@@ -324,7 +316,7 @@ const getModifierBase = (id: SinglePlayerModifierId) => {
       return {
         label: "Classic",
         shortLabel: "Classic",
-        description: "Use higher/lower clues to find the number.",
+        description: "Use higher/lower clues to shrink the range.",
         scoreMultiplier: 1
       };
   }
@@ -435,10 +427,44 @@ const getHotColdThresholds = (maxNumber: number) => {
   }
 
   if (maxNumber <= 999) {
-    return { burning: 20, hot: 70, warm: 140, cold: 280 };
+    return { burning: 10, hot: 45, warm: 140, cold: 320 };
   }
 
-  return { burning: 200, hot: 700, warm: 1400, cold: 2800 };
+  return { burning: 25, hot: 250, warm: 900, cold: 2500 };
+};
+
+const getHotColdRangeText = (level: HotColdLevel, maxNumber: number) => {
+  const { burning, hot, warm, cold } = getHotColdThresholds(maxNumber);
+
+  switch (level) {
+    case "burning":
+      return `Within ${burning}`;
+    case "hot":
+      return `Within ${hot}`;
+    case "warm":
+      return `Within ${warm}`;
+    case "cold":
+      return `Within ${cold}`;
+    case "very-cold":
+      return `More than ${cold} away`;
+  }
+};
+
+const getHotColdGuidance = (level: HotColdLevel, maxNumber: number) => {
+  const rangeText = getHotColdRangeText(level, maxNumber);
+
+  switch (level) {
+    case "burning":
+      return `${rangeText}. Tiny moves now.`;
+    case "hot":
+      return `${rangeText}. Cut this zone down.`;
+    case "warm":
+      return `${rangeText}. Try medium moves.`;
+    case "cold":
+      return `${rangeText}. Sweep toward a warmer band.`;
+    case "very-cold":
+      return `${rangeText}. Make a big jump.`;
+  }
 };
 
 export const getHotColdLevel = (guess: number, secretNumber: number, maxNumber: number): HotColdLevel => {
@@ -541,7 +567,10 @@ export const resolveSinglePlayerGuess = (
       historyColor: trapped ? "#ef476f" : getHotColdColor(hotColdLevel),
       statusText: trapped
         ? getTrapStatusText(modifier)
-        : `${modifier.mirrorMode && mirrorGuess ? `Mirror ${mirrorGuess}. ` : "Radar only. "}${hotColdGuidance[hotColdLevel]}`,
+        : `${modifier.mirrorMode && mirrorGuess ? `Mirror ${mirrorGuess}. ` : "Radar only. "}${getHotColdGuidance(
+            hotColdLevel,
+            maxNumber
+          )}`,
       soundResult: null,
       trapped
     };
@@ -612,7 +641,7 @@ export const getModifierClueText = (modifier: SinglePlayerModifierSnapshot, maxN
   }
 
   if (typeof modifier.trapStart === "number" && typeof modifier.trapEnd === "number") {
-    parts.push("Hidden trap (-2 guesses).");
+    parts.push("Hidden range (-2 guesses).");
   }
 
   if (modifier.hotColdMode === "blind") {
@@ -624,6 +653,60 @@ export const getModifierClueText = (modifier: SinglePlayerModifierSnapshot, maxN
   return parts.join(" ");
 };
 
+export const getModifierStrategyText = (modifier: SinglePlayerModifierSnapshot, maxNumber: number) => {
+  if (modifier.id === "classic") {
+    return "Shrink the range after every Higher or Lower clue.";
+  }
+
+  if (modifier.mirrorMode) {
+    return `Guessing low tests the high side too, because mirror = ${maxNumber + 1} minus your guess.`;
+  }
+
+  if (typeof modifier.digitSumMin === "number" && typeof modifier.digitSumMax === "number") {
+    return "Check digit totals first, then use heat to choose between the remaining numbers.";
+  }
+
+  if (typeof modifier.lockedDigitValue === "string") {
+    return "Keep the locked digit fixed and only experiment with the open slots.";
+  }
+
+  if (Array.isArray(modifier.containsDigits) && modifier.containsDigits.length > 1) {
+    return "Target contains one shown digit. Test them by range.";
+  }
+
+  if (Array.isArray(modifier.containsDigits) && modifier.containsDigits.length === 1) {
+    return `Target number contains ${modifier.containsDigits[0]}.`;
+  }
+
+  if (modifier.parity) {
+    return `Skip impossible numbers: the target is ${modifier.parity}.`;
+  }
+
+  if (modifier.rangeSeal && typeof modifier.rangeSealValue === "number") {
+    return modifier.rangeSeal === "at-or-above"
+      ? "The lower half is impossible. Start in the open half and tighten from there."
+      : "The upper half is impossible. Start below the seal and tighten from there.";
+  }
+
+  if (modifier.hotColdMode === "blind") {
+    return `Find warmer bands. Burning means ${getHotColdRangeText("burning", maxNumber).toLowerCase()}.`;
+  }
+
+  if (typeof modifier.trapStart === "number" && typeof modifier.trapEnd === "number") {
+    return "Hidden range costs 2 guesses.";
+  }
+
+  return modifier.description;
+};
+
+export const getModifierIntroText = (modifier: SinglePlayerModifierSnapshot, maxNumber: number) => {
+  if (modifier.id === "classic") {
+    return "Normal higher/lower rules. Clear the round to meet smarter twists.";
+  }
+
+  return getModifierStrategyText(modifier, maxNumber);
+};
+
 export const getModifierRuleDetails = (modifier: SinglePlayerModifierSnapshot, maxNumber: number) => {
   const rules: string[] = [];
   const lockedPattern = getLockedDigitPattern(modifier, maxNumber);
@@ -631,7 +714,7 @@ export const getModifierRuleDetails = (modifier: SinglePlayerModifierSnapshot, m
   if (modifier.id === "classic") {
     return [
       "You get Higher or Lower after each wrong guess.",
-      "No heat clues, hidden trap, or boss rule."
+      "No heat clues, hidden range, or boss rule."
     ];
   }
 
@@ -669,6 +752,7 @@ export const getModifierRuleDetails = (modifier: SinglePlayerModifierSnapshot, m
     rules.push("If the mirror is the target, you broke the mirror.");
   } else if (modifier.hotColdMode === "blind") {
     rules.push("You get heat clues only: Very Cold, Cold, Warm, Hot, or Burning.");
+    rules.push(`Burning means the target is ${getHotColdRangeText("burning", maxNumber).toLowerCase()} numbers of your guess.`);
   }
 
   if (modifier.hotColdMode === "blind") {
@@ -678,10 +762,10 @@ export const getModifierRuleDetails = (modifier: SinglePlayerModifierSnapshot, m
   }
 
   if (typeof modifier.trapStart === "number" && typeof modifier.trapEnd === "number") {
-    rules.push("A hidden trap exists. A wrong guess in the danger zone costs 2 guesses.");
-    rules.push("The trap range is revealed only if you hit it.");
+    rules.push("A hidden range exists. Landing inside it costs 2 guesses.");
+    rules.push("The hidden range is revealed only if you hit it.");
   } else {
-    rules.push("No hidden trap.");
+    rules.push("No hidden range.");
   }
 
   return rules;

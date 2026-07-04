@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -23,7 +24,9 @@ import { getDifficultyConfig, parseDifficulty } from "../../shared/difficulty";
 import {
   createSinglePlayerModifier,
   getModifierClueText,
+  getModifierIntroText,
   getModifierRuleDetails,
+  getModifierStrategyText,
   getNextMilestone,
   normalizeSinglePlayerModifier,
   resolveSinglePlayerGuess,
@@ -50,6 +53,7 @@ const REVIVE_COIN_COST = 250;
 const REVIVE_GUESSES = 5;
 const MAX_REWARDED_REVIVES_PER_RUN = 3;
 const BOSS_INTRO_DURATION_MS = 4000;
+const MODIFIER_ONBOARDING_STORAGE_KEY = "code-wars:seen-single-player-modifiers";
 const getReviveCoinCost = (revivesUsed: number) => REVIVE_COIN_COST * 2 ** Math.max(0, revivesUsed);
 
 const canRestorePracticeRun = (
@@ -159,6 +163,9 @@ function PracticeGame() {
   const [coinBonusClaimed, setCoinBonusClaimed] = useState(false);
   const [coinClaimAction, setCoinClaimAction] = useState<"ad" | null>(null);
   const [isRulesModalVisible, setIsRulesModalVisible] = useState(false);
+  const [isModifierIntroVisible, setIsModifierIntroVisible] = useState(false);
+  const [modifierOnboardingLoaded, setModifierOnboardingLoaded] = useState(false);
+  const [seenModifierIds, setSeenModifierIds] = useState<Set<string>>(() => new Set());
   const [isBossIntroVisible, setIsBossIntroVisible] = useState(false);
   const shownBossIntroKeysRef = useRef(new Set<string>());
   const bossIntroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -172,6 +179,49 @@ function PracticeGame() {
     : null;
   const modifierClueText = getModifierClueText(roundModifier, difficultyConfig.maxNumber);
   const modifierRuleDetails = getModifierRuleDetails(roundModifier, difficultyConfig.maxNumber);
+  const modifierStrategyText = getModifierStrategyText(roundModifier, difficultyConfig.maxNumber);
+  const modifierIntroText = getModifierIntroText(roundModifier, difficultyConfig.maxNumber);
+  const revealedDigits = Array.isArray(roundModifier.containsDigits) ? roundModifier.containsDigits : [];
+  const revealedDigitLabel = revealedDigits.length === 1 ? "Revealed digit" : "One digit is real";
+  const centeredModifierRule: null | { label: string; values: string[] } = (() => {
+    if (revealedDigits.length > 0) {
+      return {
+        label: revealedDigits.length === 1 ? "Digit" : "One digit",
+        values: revealedDigits
+      };
+    }
+
+    if (roundModifier.mirrorMode) {
+      return { label: "Mirror", values: ["Heat"] };
+    }
+
+    if (typeof roundModifier.digitSumMin === "number" && typeof roundModifier.digitSumMax === "number") {
+      return { label: "Digit sum", values: [`${roundModifier.digitSumMin}-${roundModifier.digitSumMax}`] };
+    }
+
+    if (typeof roundModifier.lockedDigitValue === "string") {
+      return { label: "Locked digit", values: [roundModifier.lockedDigitValue] };
+    }
+
+    if (roundModifier.parity) {
+      return { label: "Target", values: [roundModifier.parity] };
+    }
+
+    if (roundModifier.rangeSeal === "at-or-above" && typeof roundModifier.rangeSealValue === "number") {
+      return { label: "Range", values: [`${roundModifier.rangeSealValue}+`] };
+    }
+
+    if (roundModifier.rangeSeal === "below" && typeof roundModifier.rangeSealValue === "number") {
+      return { label: "Range", values: [`<${roundModifier.rangeSealValue}`] };
+    }
+
+    return null;
+  })();
+  const isNewModifierDiscovery =
+    modifierOnboardingLoaded &&
+    roundModifier.id !== "classic" &&
+    !roundModifier.isBoss &&
+    !seenModifierIds.has(roundModifier.id);
   const nextMilestone = getNextMilestone(roundNumber);
   const roundsUntilMilestone = Math.max(0, nextMilestone - roundNumber);
   const canShowRewardedRevive = isRewardedReviveSupported();
@@ -234,7 +284,7 @@ function PracticeGame() {
                   ? `Below ${roundModifier.rangeSealValue}`
                   : "Boss rule",
     "Heat only",
-    "Hidden trap",
+    "Hidden range",
     scoreMultiplierLabel.replace(" score", "")
   ];
   const lockedDigitDisplaySlots =
@@ -266,6 +316,78 @@ function PracticeGame() {
       startCountdown();
     }
   }, [restoredPracticeRun, startCountdown]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSeenModifiers = async () => {
+      try {
+        const storedValue = await AsyncStorage.getItem(MODIFIER_ONBOARDING_STORAGE_KEY);
+        const parsedValue = storedValue ? JSON.parse(storedValue) : [];
+        const nextSeenModifiers = Array.isArray(parsedValue)
+          ? parsedValue.filter((id): id is string => typeof id === "string")
+          : [];
+
+        if (isMounted) {
+          setSeenModifierIds(new Set(nextSeenModifiers));
+        }
+      } catch {
+        if (isMounted) {
+          setSeenModifierIds(new Set());
+        }
+      } finally {
+        if (isMounted) {
+          setModifierOnboardingLoaded(true);
+        }
+      }
+    };
+
+    loadSeenModifiers().catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      !modifierOnboardingLoaded ||
+      roundModifier.id === "classic" ||
+      roundModifier.isBoss ||
+      seenModifierIds.has(roundModifier.id) ||
+      runState !== "playing" ||
+      guessHistory.length > 0 ||
+      isModifierIntroVisible
+    ) {
+      return;
+    }
+
+    setIsModifierIntroVisible(true);
+    playSound("powerup");
+  }, [
+    guessHistory.length,
+    isModifierIntroVisible,
+    modifierOnboardingLoaded,
+    roundModifier.id,
+    roundModifier.isBoss,
+    runState,
+    seenModifierIds
+  ]);
+
+  const markModifierIntroSeen = (modifierId: string) => {
+    setSeenModifierIds((currentSeenModifierIds) => {
+      const nextSeenModifierIds = new Set(currentSeenModifierIds);
+      nextSeenModifierIds.add(modifierId);
+      void AsyncStorage.setItem(MODIFIER_ONBOARDING_STORAGE_KEY, JSON.stringify(Array.from(nextSeenModifierIds))).catch(() => {});
+      return nextSeenModifierIds;
+    });
+  };
+
+  const closeModifierIntro = () => {
+    playSound("uiTap");
+    setIsModifierIntroVisible(false);
+    markModifierIntroSeen(roundModifier.id);
+  };
 
   const hideBossIntro = () => {
     if (bossIntroTimerRef.current) {
@@ -891,50 +1013,175 @@ function PracticeGame() {
       <Animated.View
         style={[
           styles.modifierCard,
+          styles.modifierCardCompact,
           roundModifier.isBoss && styles.modifierCardBoss,
-          { borderColor: roundModifier.accentColor },
+          {
+            borderColor: roundModifier.isBoss ? roundModifier.accentColor : "#ebe7f3"
+          },
           roundModifier.isBoss && { transform: [{ scale: bossCardPulse }] }
         ]}
       >
-        <View style={[styles.modifierIcon, { backgroundColor: roundModifier.accentColor }]}>
-          <Ionicons color="#ffffff" name={roundModifier.isBoss ? "trophy" : roundModifier.hotColdMode ? "flame" : roundModifier.trapStart ? "warning" : "sparkles"} size={18} />
-        </View>
-        <View style={styles.modifierCopy}>
-          <View style={styles.modifierTitleRow}>
-            <Text numberOfLines={1} style={[styles.modifierTitle, roundModifier.isBoss && styles.modifierTitleBoss]}>
-              Round {roundNumber} - {roundModifier.label}
-            </Text>
+        <View
+          style={[
+            styles.modifierAccentTrack,
+            { backgroundColor: roundModifier.accentColor },
+            roundModifier.isBoss && styles.modifierAccentTrackBoss
+          ]}
+        />
+        {centeredModifierRule ? (
+          <View pointerEvents="none" style={styles.modifierCenteredRuleSlot}>
             <View
               style={[
-                styles.modifierMultiplierPill,
-                { backgroundColor: roundModifier.accentColor },
-                roundModifier.isBoss && styles.modifierMultiplierPillBoss,
-                roundModifier.isBoss && { backgroundColor: "#6f5cff" }
+                styles.modifierRuleCallout,
+                styles.modifierRuleCalloutCentered,
+                { borderColor: roundModifier.accentColor },
+                roundModifier.isBoss && styles.modifierRuleCalloutBoss
               ]}
             >
-              <Text style={styles.modifierMultiplierText}>{scoreMultiplierLabel}</Text>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.modifierRuleCalloutLabel,
+                  { color: roundModifier.accentColor },
+                  roundModifier.isBoss && styles.modifierRuleCalloutLabelBoss
+                ]}
+              >
+                {centeredModifierRule.label}
+              </Text>
+              <View style={styles.modifierRuleCalloutValueRow}>
+                {centeredModifierRule.values.map((value) => (
+                  <View key={value} style={[styles.modifierRuleCalloutValueBadge, { backgroundColor: roundModifier.accentColor }]}>
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.72}
+                      style={styles.modifierRuleCalloutValueText}
+                    >
+                      {value}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             </View>
+          </View>
+        ) : null}
+        <View style={styles.modifierCopy}>
+          <View style={styles.modifierTitleRow}>
+            <View style={styles.modifierTitleCluster}>
+              <View style={[styles.modifierIcon, { backgroundColor: roundModifier.accentColor }]}>
+                <Ionicons
+                  color="#ffffff"
+                  name={roundModifier.isBoss ? "trophy" : roundModifier.hotColdMode ? "flame" : roundModifier.trapStart ? "warning" : "sparkles"}
+                  size={18}
+                />
+              </View>
+              <View style={styles.modifierTitleCopy}>
+                <View style={styles.modifierEyebrowRow}>
+                  <Text style={[styles.modifierEyebrow, roundModifier.isBoss && styles.modifierEyebrowBoss]}>
+                    Round {roundNumber}
+                  </Text>
+                  {isNewModifierDiscovery ? (
+                    <View style={[styles.modifierNewPill, { borderColor: roundModifier.accentColor }]}>
+                      <Text style={[styles.modifierNewText, { color: roundModifier.accentColor }]}>New</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text numberOfLines={1} style={[styles.modifierTitle, roundModifier.isBoss && styles.modifierTitleBoss]}>
+                  {roundModifier.label}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.modifierActionCluster}>
+              <View
+                style={[
+                  styles.modifierMultiplierPill,
+                  !roundModifier.isBoss && { backgroundColor: "#f3edff", borderColor: "#ded0f7", borderWidth: 1 },
+                  roundModifier.isBoss && { backgroundColor: roundModifier.accentColor },
+                  roundModifier.isBoss && styles.modifierMultiplierPillBoss,
+                  roundModifier.isBoss && { backgroundColor: "#6f5cff" }
+                ]}
+              >
+                <Text style={[styles.modifierMultiplierText, !roundModifier.isBoss && { color: roundModifier.accentColor }]}>
+                  {scoreMultiplierLabel}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityLabel="Show round rules"
+                accessibilityRole="button"
+                onPress={() => {
+                  playSound("uiTap");
+                  setIsRulesModalVisible(true);
+                }}
+                style={({ pressed }) => [
+                  styles.modifierInfoButton,
+                  roundModifier.isBoss && styles.modifierInfoButtonBoss,
+                  pressed && styles.guessButtonPressed
+                ]}
+              >
+                <Ionicons color={roundModifier.isBoss ? "#ffffff" : roundModifier.accentColor} name="information-circle" size={20} />
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Animated.View>
+
+      <Modal
+        animationType="fade"
+        statusBarTranslucent
+        transparent
+        visible={isModifierIntroVisible}
+        onRequestClose={closeModifierIntro}
+      >
+        <View style={styles.modifierIntroOverlay}>
+          <View style={[styles.modifierIntroCard, { borderColor: roundModifier.accentColor }]}>
+            <View style={[styles.modifierIntroIcon, { backgroundColor: roundModifier.accentColor }]}>
+              <Ionicons
+                color="#ffffff"
+                name={roundModifier.hotColdMode ? "flame" : roundModifier.trapStart ? "warning" : "sparkles"}
+                size={26}
+              />
+            </View>
+            <Text style={styles.modifierIntroEyebrow}>New twist</Text>
+            <Text numberOfLines={1} style={styles.modifierIntroTitle}>
+              {roundModifier.label}
+            </Text>
+            <Text style={styles.modifierIntroBody}>{modifierIntroText}</Text>
+
+            {revealedDigits.length > 0 ? (
+              <View style={styles.modifierIntroDigitWrap}>
+                <Text style={styles.modifierIntroDigitLabel}>{revealedDigitLabel}</Text>
+                <View style={styles.modifierIntroDigitRow}>
+                  {revealedDigits.map((digit) => (
+                    <View key={digit} style={[styles.modifierIntroDigitBadge, { backgroundColor: roundModifier.accentColor }]}>
+                      <Text style={styles.modifierIntroDigitValue}>{digit}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            <View style={styles.modifierIntroChipRow}>
+              <View style={[styles.modifierIntroChip, { borderColor: roundModifier.accentColor }]}>
+                <Text style={[styles.modifierIntroChipText, { color: roundModifier.accentColor }]}>
+                  {scoreMultiplierLabel}
+                </Text>
+              </View>
+            </View>
+
             <Pressable
-              accessibilityLabel="Show round rules"
               accessibilityRole="button"
-              onPress={() => {
-                playSound("uiTap");
-                setIsRulesModalVisible(true);
-              }}
+              onPress={closeModifierIntro}
               style={({ pressed }) => [
-                styles.modifierInfoButton,
-                roundModifier.isBoss && styles.modifierInfoButtonBoss,
+                styles.modifierIntroButton,
+                { backgroundColor: roundModifier.accentColor, borderBottomColor: roundModifier.accentColor },
                 pressed && styles.guessButtonPressed
               ]}
             >
-              <Ionicons color={roundModifier.isBoss ? "#ffffff" : roundModifier.accentColor} name="information-circle" size={20} />
+              <Text style={styles.modifierIntroButtonText}>TRY IT</Text>
             </Pressable>
           </View>
-          <Text numberOfLines={2} style={[styles.modifierBody, roundModifier.isBoss && styles.modifierBodyBoss]}>
-            {modifierClueText || roundModifier.description}
-          </Text>
         </View>
-      </Animated.View>
+      </Modal>
 
       <Modal
         animationType="none"
@@ -1005,6 +1252,16 @@ function PracticeGame() {
               <Text style={[styles.rulesSummaryText, { color: roundModifier.accentColor }]}>
                 {modifierClueText || roundModifier.description}
               </Text>
+            </View>
+
+            <View style={styles.rulesStrategyCard}>
+              <View style={[styles.rulesStrategyIcon, { backgroundColor: `${roundModifier.accentColor}22` }]}>
+                <Ionicons color={roundModifier.accentColor} name="bulb" size={17} />
+              </View>
+              <View style={styles.rulesStrategyCopy}>
+                <Text style={styles.rulesStrategyLabel}>How to use it</Text>
+                <Text style={styles.rulesStrategyText}>{modifierStrategyText}</Text>
+              </View>
             </View>
 
             <ScrollView contentContainerStyle={styles.rulesList} showsVerticalScrollIndicator={false}>
@@ -1299,6 +1556,16 @@ function PracticeGame() {
               </Text>
             </View>
 
+            <View style={styles.resultsTargetPanel}>
+              <Text style={styles.resultsTargetLabel}>TARGET NUMBER</Text>
+              <Text adjustsFontSizeToFit minimumFontScale={0.62} numberOfLines={1} style={styles.resultsTargetValue}>
+                {secretNumber.toLocaleString("en-US")}
+              </Text>
+              <Text style={styles.resultsTargetMeta}>
+                Round {roundNumber} | {roundModifier.label}
+              </Text>
+            </View>
+
             <View style={styles.resultsRewardsRow}>
               <View style={styles.resultsRewardTile}>
                 <CoinIcon size={30} />
@@ -1540,55 +1807,114 @@ const styles = StyleSheet.create({
     textTransform: "uppercase"
   },
   modifierCard: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
+    alignItems: "stretch",
+    backgroundColor: "#fffefe",
     borderRadius: 18,
-    borderWidth: 1.5,
-    flexDirection: "row",
-    gap: 10,
+    borderWidth: 1,
     marginTop: spacing.sm,
-    minHeight: 70,
-    paddingHorizontal: 12,
+    minHeight: 86,
+    paddingHorizontal: 16,
     paddingVertical: 10,
+    position: "relative",
     shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 5 },
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.07,
-    shadowRadius: 10,
+    shadowRadius: 18,
     elevation: 3
+  },
+  modifierCardCompact: {
+    justifyContent: "center",
+    minHeight: 64,
+    paddingVertical: 8
   },
   modifierCardBoss: {
     backgroundColor: "#1f1849",
     shadowColor: "#161033",
     shadowOpacity: 0.2
   },
+  modifierAccentTrack: {
+    borderBottomRightRadius: 6,
+    borderTopRightRadius: 6,
+    bottom: 12,
+    left: 0,
+    opacity: 0.9,
+    position: "absolute",
+    top: 12,
+    width: 4
+  },
+  modifierAccentTrackBoss: {
+    opacity: 1
+  },
   modifierIcon: {
     alignItems: "center",
     borderBottomColor: "rgba(0,0,0,0.18)",
-    borderBottomWidth: 3,
-    borderRadius: 16,
-    height: 36,
+    borderBottomWidth: 2,
+    borderRadius: 13,
+    height: 30,
     justifyContent: "center",
-    width: 36
+    width: 30
   },
   modifierCopy: {
-    flex: 1,
-    gap: 4,
+    gap: 8,
     minWidth: 0
   },
   modifierTitleRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between"
+  },
+  modifierTitleCluster: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    minWidth: 0
+  },
+  modifierTitleCopy: {
+    flex: 1,
+    gap: 1,
+    minWidth: 0
+  },
+  modifierEyebrowRow: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 8
+    gap: 6
+  },
+  modifierEyebrow: {
+    color: "#687076",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+    textTransform: "uppercase"
+  },
+  modifierEyebrowBoss: {
+    color: "#cfc8ff"
   },
   modifierTitle: {
     color: colors.text,
-    flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
+    letterSpacing: 0.1,
     textTransform: "uppercase"
   },
   modifierTitleBoss: {
     color: "#ffffff"
+  },
+  modifierNewPill: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 22,
+    paddingHorizontal: 8
+  },
+  modifierNewText: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+    textTransform: "uppercase"
   },
   modifierMultiplierPill: {
     alignItems: "center",
@@ -1604,32 +1930,255 @@ const styles = StyleSheet.create({
   },
   modifierMultiplierText: {
     color: "#ffffff",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
     textTransform: "uppercase"
   },
   modifierInfoButton: {
     alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderColor: colors.border,
+    backgroundColor: "#fbfbfb",
+    borderColor: "#e3e7e3",
     borderRadius: 14,
     borderWidth: 1,
-    height: 28,
+    height: 27,
     justifyContent: "center",
-    width: 28
+    width: 27
   },
   modifierInfoButtonBoss: {
     backgroundColor: "rgba(255,255,255,0.14)",
     borderColor: "rgba(255,255,255,0.26)"
   },
+  modifierActionCluster: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexShrink: 0,
+    gap: 6
+  },
   modifierBody: {
-    color: colors.textMuted,
-    fontSize: 12,
+    color: "#23282b",
+    flex: 1,
+    fontSize: 13,
     fontWeight: "800",
-    lineHeight: 16
+    lineHeight: 17
   },
   modifierBodyBoss: {
     color: "#ece9ff"
+  },
+  modifierContentRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    paddingLeft: 41
+  },
+  modifierCenteredRuleSlot: {
+    alignItems: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 10,
+    zIndex: 2
+  },
+  modifierRuleCallout: {
+    alignItems: "center",
+    backgroundColor: "#fbf8ff",
+    borderColor: "#e1d8f3",
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexShrink: 0,
+    gap: 5,
+    minHeight: 36,
+    paddingLeft: 11,
+    paddingRight: 7,
+    paddingVertical: 5
+  },
+  modifierRuleCalloutCentered: {
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3
+  },
+  modifierRuleCalloutBoss: {
+    backgroundColor: "rgba(255,255,255,0.12)"
+  },
+  modifierRuleCalloutLabel: {
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.35,
+    textTransform: "uppercase"
+  },
+  modifierRuleCalloutLabelBoss: {
+    color: "#ffffff"
+  },
+  modifierRuleCalloutValueRow: {
+    flexDirection: "row",
+    gap: 6
+  },
+  modifierRuleCalloutValueBadge: {
+    alignItems: "center",
+    borderBottomColor: "rgba(0,0,0,0.18)",
+    borderBottomWidth: 2,
+    borderRadius: 10,
+    justifyContent: "center",
+    minHeight: 30,
+    minWidth: 34,
+    paddingHorizontal: 10
+  },
+  modifierRuleCalloutValueText: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "900",
+    includeFontPadding: false,
+    lineHeight: 21
+  },
+  modifierRulePill: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: radii.pill,
+    marginLeft: 43,
+    maxWidth: "100%",
+    minHeight: 25,
+    paddingHorizontal: 10,
+    paddingVertical: 4
+  },
+  modifierRulePillBoss: {
+    backgroundColor: "rgba(255,255,255,0.12)"
+  },
+  modifierRuleText: {
+    fontSize: 10,
+    fontWeight: "900"
+  },
+  modifierRuleTextBoss: {
+    color: "#ffffff"
+  },
+  modifierIntroOverlay: {
+    alignItems: "center",
+    backgroundColor: "rgba(22, 27, 34, 0.54)",
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.lg
+  },
+  modifierIntroCard: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: 26,
+    borderWidth: 2,
+    gap: spacing.sm,
+    maxWidth: 400,
+    padding: spacing.lg,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    width: "100%",
+    elevation: 12
+  },
+  modifierIntroIcon: {
+    alignItems: "center",
+    borderBottomColor: "rgba(0,0,0,0.18)",
+    borderBottomWidth: 4,
+    borderRadius: 24,
+    height: 52,
+    justifyContent: "center",
+    width: 52
+  },
+  modifierIntroEyebrow: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1,
+    textTransform: "uppercase"
+  },
+  modifierIntroTitle: {
+    color: colors.text,
+    fontSize: 25,
+    fontWeight: "900",
+    textAlign: "center",
+    textTransform: "uppercase"
+  },
+  modifierIntroBody: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "800",
+    lineHeight: 21,
+    textAlign: "center"
+  },
+  modifierIntroDigitWrap: {
+    alignItems: "center",
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.surfaceMuted,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    width: "100%"
+  },
+  modifierIntroDigitLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textTransform: "uppercase"
+  },
+  modifierIntroDigitRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "center"
+  },
+  modifierIntroDigitBadge: {
+    alignItems: "center",
+    borderBottomColor: "rgba(0,0,0,0.18)",
+    borderBottomWidth: 4,
+    borderRadius: 16,
+    justifyContent: "center",
+    minHeight: 52,
+    minWidth: 58,
+    paddingHorizontal: 13
+  },
+  modifierIntroDigitValue: {
+    color: "#ffffff",
+    fontSize: 34,
+    fontWeight: "900",
+    includeFontPadding: false,
+    lineHeight: 38
+  },
+  modifierIntroChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    justifyContent: "center"
+  },
+  modifierIntroChip: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    minHeight: 29,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  modifierIntroChipText: {
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  modifierIntroButton: {
+    alignItems: "center",
+    borderBottomWidth: 5,
+    borderRadius: radii.pill,
+    justifyContent: "center",
+    marginTop: spacing.xs,
+    minHeight: 48,
+    paddingHorizontal: spacing.xl,
+    width: "100%"
+  },
+  modifierIntroButtonText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "900",
+    letterSpacing: 0.7
   },
   bossIntroOverlay: {
     alignItems: "center",
@@ -1774,6 +2323,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     lineHeight: 17
+  },
+  rulesStrategyCard: {
+    alignItems: "flex-start",
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.surfaceMuted,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    padding: spacing.sm
+  },
+  rulesStrategyIcon: {
+    alignItems: "center",
+    borderRadius: radii.pill,
+    height: 30,
+    justifyContent: "center",
+    width: 30
+  },
+  rulesStrategyCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0
+  },
+  rulesStrategyLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+    textTransform: "uppercase"
+  },
+  rulesStrategyText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
   },
   rulesList: {
     gap: spacing.sm,
@@ -2289,6 +2874,37 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
     fontWeight: "800"
+  },
+  resultsTargetPanel: {
+    alignItems: "center",
+    backgroundColor: "#fff8eb",
+    borderColor: "#ffd86b",
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 3,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  resultsTargetLabel: {
+    color: "#9c6a00",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+    textTransform: "uppercase"
+  },
+  resultsTargetValue: {
+    color: "#1f2326",
+    fontSize: 34,
+    fontWeight: "900",
+    includeFontPadding: false,
+    lineHeight: 38,
+    maxWidth: "100%"
+  },
+  resultsTargetMeta: {
+    color: "#80621a",
+    fontSize: 11,
+    fontWeight: "800",
+    textAlign: "center"
   },
   resultsRewardsRow: {
     flexDirection: "row",
