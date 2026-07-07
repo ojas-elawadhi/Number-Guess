@@ -1,7 +1,17 @@
+import { useRef } from "react";
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { BannerAd, BannerAdSize, TestIds } from "react-native-google-mobile-ads";
 
 import { useMonetizationStore } from "../store/useMonetizationStore";
+import {
+  AdFormat,
+  createAdImpressionId,
+  trackAdDisplayed,
+  trackAdFailedToLoad,
+  trackAdLoaded,
+  trackAdOpened,
+  trackAdRevenue
+} from "../services/adRevenueTracking";
 
 const bannerUnitId =
   __DEV__
@@ -17,6 +27,7 @@ interface AppBannerAdProps {
 
 export function AppBannerAd({ style }: AppBannerAdProps) {
   const hasNoAdsEntitlement = useMonetizationStore((state) => state.hasNoAdsEntitlement);
+  const impressionIdRef = useRef(createAdImpressionId("app_banner"));
 
   if (hasNoAdsEntitlement) {
     return null;
@@ -27,6 +38,22 @@ export function AppBannerAd({ style }: AppBannerAdProps) {
       <BannerAd
         requestOptions={{
           requestNonPersonalizedAdsOnly: true
+        }}
+        onAdClicked={() => {
+          trackAdOpened(AdFormat.banner, bannerUnitId, "app_banner", impressionIdRef.current);
+        }}
+        onAdFailedToLoad={() => {
+          trackAdFailedToLoad(AdFormat.banner, bannerUnitId, "app_banner");
+        }}
+        onAdImpression={() => {
+          trackAdDisplayed(AdFormat.banner, bannerUnitId, "app_banner", impressionIdRef.current);
+        }}
+        onAdLoaded={() => {
+          impressionIdRef.current = createAdImpressionId("app_banner");
+          trackAdLoaded(AdFormat.banner, bannerUnitId, "app_banner", impressionIdRef.current);
+        }}
+        onPaid={(event) => {
+          trackAdRevenue(AdFormat.banner, bannerUnitId, "app_banner", impressionIdRef.current, event);
         }}
         size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
         unitId={bannerUnitId}

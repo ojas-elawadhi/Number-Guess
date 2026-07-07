@@ -78,7 +78,7 @@ export default function RootLayout() {
 
     import("../src/services/billing")
       .then(async ({ configureBilling, getBillingCustomerSnapshot }) => {
-        configureBilling(playerKey);
+        await configureBilling(playerKey);
         const customer = await getBillingCustomerSnapshot();
         setHasNoAdsEntitlement(customer.hasRemoveAds);
       })
