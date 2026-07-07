@@ -527,20 +527,28 @@ function PracticeGame() {
   }, [persistActivePracticeRun]);
 
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "background" || nextState === "inactive") {
-        persistActivePracticeRunRef.current();
-      }
-    });
+    const addAppStateListener = AppState?.addEventListener;
+    const subscription =
+      typeof addAppStateListener === "function"
+        ? addAppStateListener.call(AppState, "change", (nextState) => {
+            if (nextState === "background" || nextState === "inactive") {
+              persistActivePracticeRunRef.current();
+            }
+          })
+        : null;
 
     return () => {
-      subscription.remove();
+      subscription?.remove?.();
       persistActivePracticeRunRef.current();
     };
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (
+      typeof window === "undefined" ||
+      typeof window.addEventListener !== "function" ||
+      typeof window.removeEventListener !== "function"
+    ) {
       return undefined;
     }
 
