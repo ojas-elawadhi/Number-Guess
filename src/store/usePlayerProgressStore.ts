@@ -24,6 +24,7 @@ import type {
   ProgressSyncResponse
 } from "../types/progression.types";
 import {
+  applyActivePracticeRun,
   applySinglePlayerHighScores,
   applySinglePlayerHighRounds,
   buildOnlineLeaderboard,
@@ -308,8 +309,17 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       return;
     }
 
+    const optimisticProfile = applySinglePlayerHighRounds(currentProfile, {
+      [difficulty]: rounds
+    });
+
+    set({
+      profile: optimisticProfile,
+      leaderboard: buildOnlineLeaderboard(optimisticProfile)
+    });
+
     if (!get().playerKey) {
-      throw new Error("Your profile is still loading. Try again in a moment.");
+      return;
     }
 
     const response = await updateProgressPreferences({
@@ -334,8 +344,17 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       return;
     }
 
+    const optimisticProfile = applySinglePlayerHighScores(currentProfile, {
+      [difficulty]: score
+    });
+
+    set({
+      profile: optimisticProfile,
+      leaderboard: buildOnlineLeaderboard(optimisticProfile)
+    });
+
     if (!get().playerKey) {
-      throw new Error("Your profile is still loading. Try again in a moment.");
+      return;
     }
 
     const response = await updateProgressPreferences({
@@ -503,22 +522,18 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     return true;
   },
   syncActivePracticeRun: async (difficulty, snapshot) => {
-    if (!get().playerKey) {
-      throw new Error("Your profile is still loading. Try again in a moment.");
-    }
-
     const syncVersion = activePracticeRunSyncVersions[difficulty] + 1;
     activePracticeRunSyncVersions[difficulty] = syncVersion;
 
-    if (!snapshot) {
-      const activePracticeRuns = { ...get().profile.activePracticeRuns };
-      delete activePracticeRuns[difficulty];
-      set({
-        profile: {
-          ...get().profile,
-          activePracticeRuns
-        }
-      });
+    const optimisticProfile = applyActivePracticeRun(get().profile, difficulty, snapshot);
+
+    set({
+      profile: optimisticProfile,
+      leaderboard: buildOnlineLeaderboard(optimisticProfile)
+    });
+
+    if (!get().playerKey) {
+      return;
     }
 
     const response = await updateProgressPreferences({
