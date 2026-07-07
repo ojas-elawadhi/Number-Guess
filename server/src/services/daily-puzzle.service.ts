@@ -8,7 +8,6 @@ import type {
   DailyPuzzleGuessPayload,
   DailyPuzzleGuessResponse,
   DailyPuzzleStatusResponse,
-  LeaderboardEntry,
   PlayerProfile
 } from "../../../shared/progression.types";
 import {
@@ -16,9 +15,9 @@ import {
   applyRecordedMatch,
   DEFAULT_AVATAR_ID,
   getDailyPuzzleCompletion,
-  getPlayerBestScore,
   normalizeProfile
 } from "../../../shared/progression";
+import { leaderboardService } from "./leaderboard.service";
 
 const DAILY_PUZZLE_MAX_NUMBER = 9999;
 const DAILY_PUZZLE_LEADERBOARD_LIMIT = 20;
@@ -425,62 +424,8 @@ class DailyPuzzleService {
     };
   }
 
-  private toLeaderboardEntry(playerKey: string, entryKey: string, displayName: string, profile: PlayerProfile): LeaderboardEntry {
-    return {
-      id: entryKey,
-      rank: 0,
-      name: entryKey === playerKey ? "You" : displayName,
-      avatarId: profile.avatarId,
-      points: getPlayerBestScore(profile),
-      streak: profile.bestWinStreak,
-      level: profile.level,
-      isPlayer: entryKey === playerKey
-    };
-  }
-
   private async getLeaderboard(playerKey: string, profile: PlayerProfile, displayName: string) {
-    const players = await prisma.playerProgress.findMany({
-      select: {
-        displayName: true,
-        playerKey: true,
-        profile: true
-      }
-    });
-
-    const entries = players.map((entry) => {
-      const isPlayer = entry.playerKey === playerKey;
-
-      return this.toLeaderboardEntry(
-        playerKey,
-        entry.playerKey,
-        isPlayer ? displayName : entry.displayName,
-        isPlayer ? profile : normalizeProfile(entry.profile as Partial<PlayerProfile>)
-      );
-    });
-
-    if (!entries.some((entry) => entry.id === playerKey)) {
-      entries.push(this.toLeaderboardEntry(playerKey, playerKey, displayName, profile));
-    }
-
-    const rankedEntries = entries
-      .sort(
-        (left, right) =>
-          right.points - left.points ||
-          right.streak - left.streak ||
-          right.level - left.level ||
-          left.name.localeCompare(right.name)
-      )
-      .map((entry, index) => ({
-        ...entry,
-        rank: index + 1
-      }));
-
-    const topEntries = rankedEntries.slice(0, 8);
-    const playerEntry = rankedEntries.find((entry) => entry.id === playerKey);
-
-    return playerEntry && !topEntries.some((entry) => entry.id === playerKey)
-      ? [...topEntries, playerEntry]
-      : topEntries;
+    return leaderboardService.getLeaderboard(playerKey, profile, displayName);
   }
 }
 

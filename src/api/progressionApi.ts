@@ -50,11 +50,14 @@ const API_BASE_URL = normalizeBaseUrl(
   inferLocalDevApiUrl() ?? process.env.EXPO_PUBLIC_API_URL ?? process.env.EXPO_PUBLIC_SOCKET_URL
 );
 
+let progressSessionToken: string | null = null;
+
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(progressSessionToken ? { Authorization: `Bearer ${progressSessionToken}` } : {}),
       ...(init?.headers ?? {})
     }
   });
@@ -72,7 +75,13 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     throw new Error(compactText || "Could not sync player progress.");
   }
 
-  return response.json() as Promise<T>;
+  const jsonPayload = (await response.json()) as T & { sessionToken?: string };
+
+  if (typeof jsonPayload.sessionToken === "string" && jsonPayload.sessionToken.length > 0) {
+    progressSessionToken = jsonPayload.sessionToken;
+  }
+
+  return jsonPayload;
 };
 
 export const bootstrapProgress = (payload: ProgressBootstrapPayload) =>

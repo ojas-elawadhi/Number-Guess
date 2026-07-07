@@ -1,8 +1,9 @@
+import { createHash } from "crypto";
+
 import { prisma } from "../lib/prisma";
 import type {
   ActivePracticeRunSnapshot,
   ClaimDailyRewardResponse,
-  LeaderboardEntry,
   MatchInput,
   PlayerProfile,
   ProgressBootstrapPayload,
@@ -27,10 +28,10 @@ import {
   claimProfileDailyReward,
   createInitialProfile,
   getDefaultDisplayName,
-  getPlayerBestScore,
   normalizeProfile,
   validateDisplayName
 } from "../../../shared/progression";
+import { leaderboardService } from "./leaderboard.service";
 
 const isDatabaseConfigured = () => Boolean(process.env.DATABASE_URL);
 
@@ -43,22 +44,6 @@ const parseProfile = (value: unknown): PlayerProfile => {
 
   return normalizeProfile(value as Partial<PlayerProfile>);
 };
-
-const toLeaderboardEntry = (
-  playerKey: string,
-  displayName: string,
-  profile: PlayerProfile,
-  isPlayer: boolean
-): LeaderboardEntry => ({
-  id: playerKey,
-  rank: 0,
-  name: isPlayer ? "You" : displayName,
-  avatarId: profile.avatarId,
-  points: getPlayerBestScore(profile),
-  streak: profile.bestWinStreak,
-  level: profile.level,
-  isPlayer
-});
 
 const createFallbackLeaderboard = (profile: PlayerProfile) => buildOnlineLeaderboard(profile);
 
@@ -73,6 +58,7 @@ class ProgressionService {
     this.assertConfigured();
 
     const displayName = await this.resolveDisplayName(payload.playerKey, payload.displayName);
+    const deviceSecretHash = this.hashDeviceSecret(payload.deviceSecret);
     const existing = await prisma.playerProgress.findUnique({
       where: {
         playerKey: payload.playerKey
@@ -80,7 +66,10 @@ class ProgressionService {
     });
 
     if (!existing) {
-      const createdProfile = createInitialProfile();
+      const createdProfile = normalizeProfile({
+        ...createInitialProfile(),
+        deviceSecretHash: deviceSecretHash ?? undefined
+      });
       await prisma.playerProgress.create({
         data: {
           playerKey: payload.playerKey,
@@ -103,7 +92,7 @@ class ProgressionService {
       };
     }
 
-    const profile = parseProfile(existing.profile);
+    const profile = await this.verifyOrAttachDeviceSecret(payload.playerKey, parseProfile(existing.profile), deviceSecretHash);
 
     return {
       playerKey: existing.playerKey,
@@ -282,6 +271,54 @@ class ProgressionService {
     };
   }
 
+  private hashDeviceSecret(deviceSecret?: string) {
+    const normalizedSecret = deviceSecret?.trim();
+
+    if (!normalizedSecret || normalizedSecret.length < 24) {
+      return null;
+    }
+
+    return createHash("sha256").update(normalizedSecret).digest("hex");
+  }
+
+  private async verifyOrAttachDeviceSecret(
+    playerKey: string,
+    profile: PlayerProfile,
+    deviceSecretHash: string | null
+  ) {
+    if (!deviceSecretHash) {
+      if (profile.deviceSecretHash) {
+        throw new Error("This profile session is missing. Reopen the game and try again.");
+      }
+
+      return profile;
+    }
+
+    if (profile.deviceSecretHash && profile.deviceSecretHash !== deviceSecretHash) {
+      throw new Error("This profile belongs to another device.");
+    }
+
+    if (profile.deviceSecretHash) {
+      return profile;
+    }
+
+    const securedProfile = normalizeProfile({
+      ...profile,
+      deviceSecretHash
+    });
+
+    await prisma.playerProgress.update({
+      where: {
+        playerKey
+      },
+      data: {
+        profile: profileToJson(securedProfile)
+      }
+    });
+
+    return securedProfile;
+  }
+
   private async persistProfile(playerKey: string, displayName: string, profile: PlayerProfile) {
     const existing = await prisma.playerProgress.findUnique({
       where: {
@@ -322,48 +359,7 @@ class ProgressionService {
       return createFallbackLeaderboard(profile);
     }
 
-    const players = await prisma.playerProgress.findMany({
-      select: {
-        displayName: true,
-        playerKey: true,
-        profile: true
-      }
-    });
-
-    const entries: LeaderboardEntry[] = players.map((entry) => {
-      const isPlayer = entry.playerKey === playerKey;
-
-      return toLeaderboardEntry(
-        entry.playerKey,
-        isPlayer ? displayName : entry.displayName,
-        isPlayer ? profile : parseProfile(entry.profile),
-        isPlayer
-      );
-    });
-
-    if (!entries.some((entry: LeaderboardEntry) => entry.id === playerKey)) {
-      entries.push(toLeaderboardEntry(playerKey, displayName, profile, true));
-    }
-
-    const rankedEntries = entries
-      .sort(
-        (left: LeaderboardEntry, right: LeaderboardEntry) =>
-          right.points - left.points ||
-          right.streak - left.streak ||
-          right.level - left.level ||
-          left.name.localeCompare(right.name)
-      )
-      .map((entry: LeaderboardEntry, index: number) => ({
-        ...entry,
-        rank: index + 1
-      }));
-
-    const topEntries = rankedEntries.slice(0, 8);
-    const playerEntry = rankedEntries.find((entry: LeaderboardEntry) => entry.id === playerKey);
-
-    return playerEntry && !topEntries.some((entry: LeaderboardEntry) => entry.id === playerKey)
-      ? [...topEntries, playerEntry]
-      : topEntries;
+    return leaderboardService.getLeaderboard(playerKey, profile, displayName);
   }
 
   private async resolveDisplayName(playerKey: string, requestedDisplayName?: string, requireUnique = false) {

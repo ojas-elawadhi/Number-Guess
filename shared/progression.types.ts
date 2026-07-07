@@ -239,6 +239,7 @@ export interface ActivePracticeRunSnapshot {
 }
 
 export interface PlayerProfile {
+  deviceSecretHash?: string;
   xp: number;
   level: number;
   totalPoints: number;
@@ -282,6 +283,7 @@ export interface AchievementDefinition {
 
 export interface ProgressBootstrapPayload {
   playerKey: string;
+  deviceSecret?: string;
   displayName?: string;
   localProfile?: PlayerProfile | null;
 }
@@ -342,6 +344,7 @@ export interface ProgressSyncResponse {
   profile: PlayerProfile;
   leaderboard: LeaderboardEntry[];
   persistence: "remote";
+  sessionToken?: string;
 }
 
 export interface ClaimDailyRewardResponse extends ProgressSyncResponse {

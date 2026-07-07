@@ -34,8 +34,11 @@ import {
 import { getUtcTodayKey } from "../utils/dailyPuzzle";
 
 const PLAYER_KEY_STORAGE_KEY = "higher-lower-player-key";
+const PLAYER_DEVICE_SECRET_STORAGE_KEY = "higher-lower-player-device-secret";
 
 const createPlayerKey = () => `player_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+const createPlayerDeviceSecret = () =>
+  `device_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
 
 interface PlayerProgressStore {
   hydrated: boolean;
@@ -181,6 +184,13 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       await AsyncStorage.setItem(PLAYER_KEY_STORAGE_KEY, playerKey);
     }
 
+    let deviceSecret = await AsyncStorage.getItem(PLAYER_DEVICE_SECRET_STORAGE_KEY);
+
+    if (!deviceSecret) {
+      deviceSecret = createPlayerDeviceSecret();
+      await AsyncStorage.setItem(PLAYER_DEVICE_SECRET_STORAGE_KEY, deviceSecret);
+    }
+
     const fallbackDisplayName = getDefaultDisplayName(playerKey);
 
     set({
@@ -196,6 +206,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     try {
       const response = await bootstrapProgress({
         playerKey,
+        deviceSecret,
         displayName: fallbackDisplayName
       });
 

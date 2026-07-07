@@ -1,5 +1,6 @@
 import { Router } from "express";
 
+import { authorizePlayerRequest, withSessionToken } from "../middleware/session-token";
 import { dailyPuzzleService } from "../services/daily-puzzle.service";
 import type {
   DailyPuzzleGuessPayload,
@@ -63,7 +64,11 @@ dailyPuzzleRouter.post("/guess", async (request, response) => {
       return;
     }
 
-    response.json(await dailyPuzzleService.submitGuess(payload));
+    if (!authorizePlayerRequest(request, response, payload.playerKey)) {
+      return;
+    }
+
+    response.json(withSessionToken(await dailyPuzzleService.submitGuess(payload)));
   } catch (error) {
     console.error("[daily-puzzle/guess]", error);
     response.status(503).json({

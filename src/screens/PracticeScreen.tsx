@@ -1,8 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Animated, AppState, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderScorePill } from "../components/AppHeader";
 import { BoosterIcon } from "../components/BoosterIcon";
@@ -129,7 +129,8 @@ function PracticeGame() {
     )
   );
   const roundStartTimeRef = useRef(Date.now() - (restoredPracticeRun?.roundElapsedMs ?? 0));
-  const isInitialSyncRef = useRef(true);
+  const lastSyncedPracticeSnapshotKeyRef = useRef<string | null>(null);
+  const persistActivePracticeRunRef = useRef<() => void>(() => {});
   const [secretNumber, setSecretNumber] = useState(() => initialSecretNumberRef.current);
   const [roundModifier, setRoundModifier] = useState<SinglePlayerModifierSnapshot>(() => initialModifierRef.current);
   const [guess, setGuess] = useState("");
@@ -471,21 +472,12 @@ function PracticeGame() {
     bossIntroTimerRef.current = setTimeout(hideBossIntro, BOSS_INTRO_DURATION_MS);
   }, [bossCardPulse, bossIntroOpacity, bossIntroScale, difficulty, roundModifier.id, roundModifier.isBoss, roundNumber, runState]);
 
-  useEffect(() => {
-    // The first run mirrors the just-restored snapshot (or an untouched fresh
-    // board). Skip it so we never re-write — and possibly clobber — the saved
-    // run before the player actually changes anything.
-    if (isInitialSyncRef.current) {
-      isInitialSyncRef.current = false;
-      return;
-    }
-
+  const buildActivePracticeSnapshot = useCallback((): ActivePracticeRunSnapshot | null => {
     if (runState === "game-over") {
-      void syncActivePracticeRun(difficulty, null).catch(() => { });
-      return;
+      return null;
     }
 
-    const snapshot: ActivePracticeRunSnapshot = {
+    return {
       difficulty,
       secretNumber,
       guessHistory,
@@ -501,23 +493,69 @@ function PracticeGame() {
       roundElapsedMs: Math.max(0, Date.now() - roundStartTimeRef.current),
       updatedAt: new Date().toISOString()
     };
-
-    void syncActivePracticeRun(difficulty, snapshot).catch(() => { });
   }, [
+    adReviveCount,
     currentScore,
     difficulty,
     guessHistory,
     lastScoreGain,
     remainingChances,
-    adReviveCount,
     reviveCount,
     reviveUsedThisRun,
     roundModifier,
     roundNumber,
     runState,
-    secretNumber,
-    syncActivePracticeRun
+    secretNumber
   ]);
+
+  const persistActivePracticeRun = useCallback(() => {
+    const snapshot = buildActivePracticeSnapshot();
+    const snapshotKey = snapshot ? JSON.stringify({ ...snapshot, updatedAt: "" }) : "cleared";
+
+    if (snapshotKey === lastSyncedPracticeSnapshotKeyRef.current) {
+      return;
+    }
+
+    lastSyncedPracticeSnapshotKeyRef.current = snapshotKey;
+    void syncActivePracticeRun(difficulty, snapshot).catch(() => {
+      lastSyncedPracticeSnapshotKeyRef.current = null;
+    });
+  }, [buildActivePracticeSnapshot, difficulty, syncActivePracticeRun]);
+
+  useEffect(() => {
+    persistActivePracticeRunRef.current = persistActivePracticeRun;
+  }, [persistActivePracticeRun]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "background" || nextState === "inactive") {
+        persistActivePracticeRunRef.current();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+      persistActivePracticeRunRef.current();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handlePageExit = () => {
+      persistActivePracticeRunRef.current();
+    };
+
+    window.addEventListener("pagehide", handlePageExit);
+    window.addEventListener("beforeunload", handlePageExit);
+
+    return () => {
+      window.removeEventListener("pagehide", handlePageExit);
+      window.removeEventListener("beforeunload", handlePageExit);
+    };
+  }, []);
 
   const persistHighScoreIfNeeded = (candidateRound: number) => {
     if (candidateRound > singlePlayerHighRounds[difficulty]) {
@@ -534,6 +572,7 @@ function PracticeGame() {
   const handleBackPress = () => {
     persistHighScoreIfNeeded(roundNumber);
     persistBestScoreIfNeeded(currentScore);
+    persistActivePracticeRun();
     router.back();
   };
 
@@ -785,6 +824,7 @@ function PracticeGame() {
 
   const handleExitToHome = () => {
     playSound("uiTap");
+    persistActivePracticeRun();
     router.replace("/");
   };
 

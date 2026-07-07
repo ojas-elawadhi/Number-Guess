@@ -9,6 +9,7 @@ import { Server } from "socket.io";
 import { dailyPuzzleRouter } from "./controllers/daily-puzzle.controller";
 import { getDatabaseHealth, getHealth } from "./controllers/health.controller";
 import { progressionRouter } from "./controllers/progression.controller";
+import { apiRateLimit } from "./middleware/api-rate-limit";
 import {
   getAvatarDownloadUrl,
   getAvatarObjectKey,
@@ -67,6 +68,7 @@ app.use(
   })
 );
 app.use(express.json());
+app.use("/api", apiRateLimit);
 
 app.get("/", (_request, response) => {
   response.json({
