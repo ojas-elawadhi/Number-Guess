@@ -2,7 +2,7 @@
   "expo": {
     "name": "Number Guess: Higher Lower",
     "slug": "code-wars-multiplayer",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "scheme": "codeguess",
     "userInterfaceStyle": "light",

@@ -262,7 +262,10 @@ export default function HomeScreen() {
   const dailyDay = today.getDate();
   const totalMatches = profile.stats.matches;
   const overallWinRate = totalMatches > 0 ? Math.round((profile.stats.wins / totalMatches) * 100) : 0;
-  const aiWins = profile.stats.category["vs-ai"].wins;
+  const aiWins = Math.max(
+    profile.stats.category["vs-ai"].wins,
+    profile.history.filter((match) => match.category === "vs-ai" && match.outcome === "win").length
+  );
   const streakProgressTarget = Math.max(3, profile.bestWinStreak, profile.currentWinStreak);
   const streakProgressPercent = Math.max(
     profile.currentWinStreak > 0 ? 10 : 0,

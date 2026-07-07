@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader, HeaderBackButton } from "../components/AppHeader";
 import { ConfettiBurst } from "../components/ConfettiBurst";
+import { GameKeyboard } from "../components/GameKeyboard";
 import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { VsAiWinModal } from "../components/VsAiWinModal";
@@ -27,13 +28,6 @@ interface AiClassicRoundEntry {
 }
 
 type ClassicWinner = "player" | "ai" | "tie" | null;
-
-const keypadRows = [
-  ["1", "2", "3"],
-  ["4", "5", "6"],
-  ["7", "8", "9"],
-  ["clear", "0", "backspace"]
-] as const;
 
 const randomBetween = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
@@ -275,37 +269,6 @@ export default function VsAiClassicScreen() {
     setErrorMessage(null);
   };
 
-  const renderKey = (key: (typeof keypadRows)[number][number]) => {
-    const disabled = countdownActive || isComplete;
-    const label =
-      key === "backspace" ? (
-        <Ionicons color="#6b7075" name="backspace-outline" size={20} />
-      ) : key === "clear" ? (
-        <Ionicons color="#6b7075" name="close" size={20} />
-      ) : (
-        <Text style={styles.keyText}>{key}</Text>
-      );
-
-    const onPress =
-      key === "backspace"
-        ? removeDigit
-        : key === "clear"
-          ? clearDigit
-          : () => appendDigit(key);
-
-    return (
-      <Pressable
-        accessibilityLabel={key === "backspace" ? "Backspace" : key === "clear" ? "Clear" : `Number ${key}`}
-        disabled={disabled}
-        key={key}
-        onPress={onPress}
-        style={({ pressed }) => [styles.keyButton, pressed && !disabled && styles.keyButtonPressed, disabled && styles.keyButtonDisabled]}
-      >
-        {label}
-      </Pressable>
-    );
-  };
-
   return (
     <ScreenContainer contentStyle={styles.screen}>
       <ConfettiBurst visible={winner === "player" || winner === "tie"} />
@@ -402,13 +365,12 @@ export default function VsAiClassicScreen() {
           </View>
         ) : null}
 
-        <View style={styles.keypadWrap}>
-          {keypadRows.map((row, rowIndex) => (
-            <View key={rowIndex} style={styles.keyRow}>
-              {row.map(renderKey)}
-            </View>
-          ))}
-        </View>
+        <GameKeyboard
+          disabled={countdownActive || isComplete}
+          onAppendDigit={appendDigit}
+          onBackspace={removeDigit}
+          onClear={clearDigit}
+        />
 
         <Pressable
           disabled={ctaDisabled}
@@ -623,50 +585,6 @@ const styles = StyleSheet.create({
   },
   historyResultText: {
     fontSize: 12,
-    fontWeight: "900"
-  },
-  keypadWrap: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e3e8e8",
-    borderRadius: 18,
-    borderWidth: 1,
-    gap: 6,
-    marginHorizontal: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    shadowColor: "#263238",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3
-  },
-  keyRow: {
-    flexDirection: "row",
-    gap: 6
-  },
-  keyButton: {
-    alignItems: "center",
-    backgroundColor: "#eef0f1",
-    borderBottomColor: "#d2d7d9",
-    borderBottomWidth: 3,
-    borderColor: "#e0e4e5",
-    borderRadius: 9,
-    borderWidth: 1,
-    flex: 1,
-    height: 44,
-    justifyContent: "center"
-  },
-  keyButtonPressed: {
-    backgroundColor: "#e2e6e7",
-    borderBottomWidth: 1,
-    transform: [{ translateY: 2 }]
-  },
-  keyButtonDisabled: {
-    opacity: 0.55
-  },
-  keyText: {
-    color: "#2d2f31",
-    fontSize: 18,
     fontWeight: "900"
   },
   guessButton: {

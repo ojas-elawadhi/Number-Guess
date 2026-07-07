@@ -8,6 +8,7 @@ import { AppHeader, HeaderBackButton, HeaderCoinsPill, HeaderScorePill } from ".
 import { BoosterIcon } from "../components/BoosterIcon";
 import { CoinIcon } from "../components/CoinIcon";
 import { ConfettiBurst } from "../components/ConfettiBurst";
+import { GameKeyboard } from "../components/GameKeyboard";
 import { GameStartCountdown } from "../components/GameStartCountdown";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { useGameStartCountdown } from "../hooks/useGameStartCountdown";
@@ -41,13 +42,6 @@ interface PracticeGuessEntry {
 
 type PracticeRunState = "playing" | "round-cleared" | "game-over";
 type GameOverView = "revive" | "results";
-
-const keypadRows = [
-  ["1", "2", "3"],
-  ["4", "5", "6"],
-  ["7", "8", "9"],
-  ["clear", "0", "backspace"]
-] as const;
 
 const REVIVE_COIN_COST = 250;
 const REVIVE_GUESSES = 5;
@@ -1002,37 +996,6 @@ function PracticeGame() {
     setErrorMessage(null);
   };
 
-  const renderKey = (key: (typeof keypadRows)[number][number]) => {
-    const disabled = countdownActive || runState !== "playing";
-    const label =
-      key === "backspace" ? (
-        <Ionicons color="#6b7075" name="backspace-outline" size={20} />
-      ) : key === "clear" ? (
-        <Ionicons color="#6b7075" name="close" size={20} />
-      ) : (
-        <Text style={styles.keyText}>{key}</Text>
-      );
-
-    const onPress =
-      key === "backspace"
-        ? removeDigit
-        : key === "clear"
-          ? clearDigit
-          : () => appendDigit(key);
-
-    return (
-      <Pressable
-        accessibilityLabel={key === "backspace" ? "Backspace" : key === "clear" ? "Clear" : `Number ${key}`}
-        disabled={disabled}
-        key={key}
-        onPress={onPress}
-        style={({ pressed }) => [styles.keyButton, pressed && !disabled && styles.keyButtonPressed, disabled && styles.keyButtonDisabled]}
-      >
-        {label}
-      </Pressable>
-    );
-  };
-
   return (
     <ScreenContainer contentStyle={styles.screen}>
       <ConfettiBurst visible={isRoundCleared} />
@@ -1416,13 +1379,12 @@ function PracticeGame() {
           </View>
         ) : null}
 
-        <View style={styles.keypadWrap}>
-          {keypadRows.map((row, rowIndex) => (
-            <View key={rowIndex} style={styles.keyRow}>
-              {row.map(renderKey)}
-            </View>
-          ))}
-        </View>
+        <GameKeyboard
+          disabled={countdownActive || runState !== "playing"}
+          onAppendDigit={appendDigit}
+          onBackspace={removeDigit}
+          onClear={clearDigit}
+        />
 
         <View style={styles.actionRow}>
           <Pressable
@@ -2565,45 +2527,6 @@ const styles = StyleSheet.create({
     gap: 10,
     marginHorizontal: 6,
     marginTop: 4
-  },
-  keypadWrap: {
-    backgroundColor: "transparent",
-    borderColor: "transparent",
-    borderRadius: 18,
-    borderWidth: 0,
-    gap: 6,
-    marginHorizontal: 6,
-    paddingHorizontal: 0,
-    paddingVertical: 0
-  },
-  keyRow: {
-    flexDirection: "row",
-    gap: 6
-  },
-  keyButton: {
-    alignItems: "center",
-    backgroundColor: "#eef0f1",
-    borderBottomColor: "#d2d7d9",
-    borderBottomWidth: 3,
-    borderColor: "#e0e4e5",
-    borderRadius: 9,
-    borderWidth: 1,
-    flex: 1,
-    height: 44,
-    justifyContent: "center"
-  },
-  keyButtonPressed: {
-    backgroundColor: "#e2e6e7",
-    borderBottomWidth: 1,
-    transform: [{ translateY: 2 }]
-  },
-  keyButtonDisabled: {
-    opacity: 0.55
-  },
-  keyText: {
-    color: "#2d2f31",
-    fontSize: 18,
-    fontWeight: "900"
   },
   guessButton: {
     alignItems: "center",

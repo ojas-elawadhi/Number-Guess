@@ -25,6 +25,7 @@ import type {
 } from "../types/progression.types";
 import {
   applyActivePracticeRun,
+  applyRecordedMatch,
   applySinglePlayerHighScores,
   applySinglePlayerHighRounds,
   buildOnlineLeaderboard,
@@ -584,18 +585,30 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     };
   },
   recordMatch: async (input) => {
-    if (!get().playerKey) {
-      throw new Error("Your profile is still loading. Try again in a moment.");
-    }
+    const optimisticResult = applyRecordedMatch(get().profile, input);
 
-    const response = await recordMatchRemote({
-      playerKey: get().playerKey!,
-      input
+    set({
+      profile: optimisticResult.profile,
+      leaderboard: buildOnlineLeaderboard(optimisticResult.profile)
     });
 
-    await applyRemoteSync(set, get, response);
+    if (!get().playerKey) {
+      return optimisticResult.record;
+    }
 
-    return response.record;
+    try {
+      const response = await recordMatchRemote({
+        playerKey: get().playerKey!,
+        input
+      });
+
+      await applyRemoteSync(set, get, response);
+
+      return response.record;
+    } catch {
+      set({ progressSynced: false });
+      return optimisticResult.record;
+    }
   },
   fetchDailyPuzzleStatus: async (dateKey) => {
     if (!get().playerKey) {

@@ -8,10 +8,12 @@ import { playButtonSound } from "../services/soundEffects";
 interface DifficultyOptionCardProps {
   difficulty: Difficulty;
   highScore?: number;
+  scoreLabel?: string;
+  scoreMeta?: string;
   onPress: () => void;
 }
 
-export function DifficultyOptionCard({ difficulty, highScore, onPress }: DifficultyOptionCardProps) {
+export function DifficultyOptionCard({ difficulty, highScore, onPress, scoreLabel = "BEST", scoreMeta }: DifficultyOptionCardProps) {
   const handlePress = () => {
     playButtonSound();
     onPress();
@@ -62,11 +64,12 @@ export function DifficultyOptionCard({ difficulty, highScore, onPress }: Difficu
       <View style={styles.scoreWrap}>
         <View style={styles.scoreInner}>
           <View style={styles.scoreTop}>
-            <Text style={[styles.scoreLabel, { color: theme.scoreAccent }]}>BEST</Text>
+            <Text style={[styles.scoreLabel, { color: theme.scoreAccent }]}>{scoreLabel}</Text>
           </View>
           <View style={[styles.scoreBottom, { borderTopColor: theme.scoreAccent }]}>
             <Text style={[styles.scoreValue, { color: theme.scoreAccent }]}>{bestRound}</Text>
           </View>
+          {scoreMeta ? <Text style={[styles.scoreMeta, { color: theme.textColor }]}>{scoreMeta}</Text> : null}
         </View>
       </View>
       <View style={[styles.ghost, { backgroundColor: theme.ghostColor }]} />
@@ -158,6 +161,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "900",
     lineHeight: 20
+  },
+  scoreMeta: {
+    fontSize: 8,
+    fontWeight: "900",
+    marginTop: 2,
+    textAlign: "center",
+    textTransform: "uppercase"
   },
   ghost: {
     backgroundColor: "rgba(133, 27, 34, 0.1)",

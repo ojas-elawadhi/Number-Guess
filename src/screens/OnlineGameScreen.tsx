@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader, HeaderBackButton } from "../components/AppHeader";
+import { GameKeyboard } from "../components/GameKeyboard";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { showInterstitialAd } from "../services/interstitialAd";
 import { playResultSound, playSound } from "../services/soundEffects";
@@ -12,13 +13,6 @@ import { useMonetizationStore } from "../store/useMonetizationStore";
 import { useOnlineGameStore } from "../store/useOnlineGameStore";
 import { colors, radii, spacing } from "../utils/theme";
 import { DIFFICULTY_CONFIG, getDifficultyRangeLabel } from "../../shared/difficulty";
-
-const keypadRows = [
-  ["1", "2", "3"],
-  ["4", "5", "6"],
-  ["7", "8", "9"],
-  ["clear", "0", "backspace"]
-] as const;
 
 export default function OnlineGameScreen() {
   const [guess, setGuess] = useState("");
@@ -481,37 +475,6 @@ export default function OnlineGameScreen() {
     setErrorMessage(null);
   };
 
-  const renderKey = (key: (typeof keypadRows)[number][number]) => {
-    const disabled = inputLocked;
-    const label =
-      key === "backspace" ? (
-        <Ionicons color="#6b7075" name="backspace-outline" size={20} />
-      ) : key === "clear" ? (
-        <Ionicons color="#6b7075" name="close" size={20} />
-      ) : (
-        <Text style={styles.keyText}>{key}</Text>
-      );
-
-    const onPress =
-      key === "backspace"
-        ? removeDigit
-        : key === "clear"
-          ? clearDigit
-          : () => appendDigit(key);
-
-    return (
-      <Pressable
-        accessibilityLabel={key === "backspace" ? "Backspace" : key === "clear" ? "Clear" : `Number ${key}`}
-        disabled={disabled}
-        key={key}
-        onPress={onPress}
-        style={({ pressed }) => [styles.keyButton, pressed && !disabled && styles.keyButtonPressed, disabled && styles.keyButtonDisabled]}
-      >
-        {label}
-      </Pressable>
-    );
-  };
-
   return (
     <ScreenContainer contentStyle={styles.screen}>
       <AppHeader left={<HeaderBackButton onPress={handleLeaveGame} />} />
@@ -559,13 +522,7 @@ export default function OnlineGameScreen() {
       <View style={styles.bottomSpacer} />
 
       <View style={styles.bottomControls}>
-        <View style={styles.keypadWrap}>
-          {keypadRows.map((row, rowIndex) => (
-            <View key={rowIndex} style={styles.keyRow}>
-              {row.map(renderKey)}
-            </View>
-          ))}
-        </View>
+        <GameKeyboard disabled={inputLocked} onAppendDigit={appendDigit} onBackspace={removeDigit} onClear={clearDigit} />
 
         <Pressable
           disabled={ctaDisabled}
@@ -725,50 +682,6 @@ const styles = StyleSheet.create({
   },
   bottomControls: {
     gap: spacing.sm
-  },
-  keypadWrap: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e3e8e8",
-    borderRadius: 18,
-    borderWidth: 1,
-    gap: 6,
-    marginHorizontal: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    shadowColor: "#263238",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3
-  },
-  keyRow: {
-    flexDirection: "row",
-    gap: 6
-  },
-  keyButton: {
-    alignItems: "center",
-    backgroundColor: "#eef0f1",
-    borderBottomColor: "#d2d7d9",
-    borderBottomWidth: 3,
-    borderColor: "#e0e4e5",
-    borderRadius: 9,
-    borderWidth: 1,
-    flex: 1,
-    height: 46,
-    justifyContent: "center"
-  },
-  keyButtonPressed: {
-    backgroundColor: "#e2e6e7",
-    borderBottomWidth: 1,
-    transform: [{ translateY: 2 }]
-  },
-  keyButtonDisabled: {
-    opacity: 0.55
-  },
-  keyText: {
-    color: "#2d2f31",
-    fontSize: 18,
-    fontWeight: "900"
   },
   guessButton: {
     alignItems: "center",
