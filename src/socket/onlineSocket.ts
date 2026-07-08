@@ -30,7 +30,7 @@ const normalizeSocketUrl = (value?: string) => {
   return `https://${value}`;
 };
 
-const SOCKET_URL = normalizeSocketUrl(process.env.EXPO_PUBLIC_SOCKET_URL);
+const SOCKET_URL = normalizeSocketUrl(process.env.EXPO_PUBLIC_SOCKET_URL ?? process.env.EXPO_PUBLIC_API_URL);
 
 let socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
 let listenersBound = false;

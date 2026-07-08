@@ -92,6 +92,7 @@ function PracticeGame() {
   const singlePlayerHighScores = usePlayerProgressStore((state) => state.profile.stats.singlePlayerHighScores);
   const updateSinglePlayerHighScore = usePlayerProgressStore((state) => state.updateSinglePlayerHighScore);
   const updateSinglePlayerBestScore = usePlayerProgressStore((state) => state.updateSinglePlayerBestScore);
+  const syncSinglePlayerRunProgress = usePlayerProgressStore((state) => state.syncSinglePlayerRunProgress);
   const consumeExtraGuessPowerUp = usePlayerProgressStore((state) => state.consumeExtraGuessPowerUp);
   const consumeSkipBooster = usePlayerProgressStore((state) => state.consumeSkipBooster);
   const awardCoins = usePlayerProgressStore((state) => state.awardCoins);
@@ -124,7 +125,11 @@ function PracticeGame() {
   );
   const roundStartTimeRef = useRef(Date.now() - (restoredPracticeRun?.roundElapsedMs ?? 0));
   const lastSyncedPracticeSnapshotKeyRef = useRef<string | null>(null);
-  const persistActivePracticeRunRef = useRef<() => void>(() => {});
+  const activePracticeRunSyncPromiseRef = useRef<Promise<void>>(Promise.resolve());
+  const highRoundSyncPromiseRef = useRef<Promise<void>>(Promise.resolve());
+  const bestScoreSyncPromiseRef = useRef<Promise<void>>(Promise.resolve());
+  const isLeavingScreenRef = useRef(false);
+  const persistActivePracticeRunRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const [secretNumber, setSecretNumber] = useState(() => initialSecretNumberRef.current);
   const [roundModifier, setRoundModifier] = useState<SinglePlayerModifierSnapshot>(() => initialModifierRef.current);
   const [guess, setGuess] = useState("");
@@ -507,17 +512,26 @@ function PracticeGame() {
     const snapshotKey = snapshot ? JSON.stringify({ ...snapshot, updatedAt: "" }) : "cleared";
 
     if (snapshotKey === lastSyncedPracticeSnapshotKeyRef.current) {
-      return;
+      return activePracticeRunSyncPromiseRef.current;
     }
 
     lastSyncedPracticeSnapshotKeyRef.current = snapshotKey;
-    void syncActivePracticeRun(difficulty, snapshot).catch(() => {
+    const syncPromise = syncActivePracticeRun(difficulty, snapshot).catch((error) => {
       lastSyncedPracticeSnapshotKeyRef.current = null;
+      throw error;
     });
+
+    activePracticeRunSyncPromiseRef.current = syncPromise;
+    void syncPromise.catch(() => { });
+    return syncPromise;
   }, [buildActivePracticeSnapshot, difficulty, syncActivePracticeRun]);
 
   useEffect(() => {
     persistActivePracticeRunRef.current = persistActivePracticeRun;
+  }, [persistActivePracticeRun]);
+
+  useEffect(() => {
+    void persistActivePracticeRun().catch(() => { });
   }, [persistActivePracticeRun]);
 
   useEffect(() => {
@@ -526,14 +540,14 @@ function PracticeGame() {
       typeof addAppStateListener === "function"
         ? addAppStateListener.call(AppState, "change", (nextState) => {
             if (nextState === "background" || nextState === "inactive") {
-              persistActivePracticeRunRef.current();
+              void persistActivePracticeRunRef.current().catch(() => { });
             }
           })
         : null;
 
     return () => {
       subscription?.remove?.();
-      persistActivePracticeRunRef.current();
+      void persistActivePracticeRunRef.current().catch(() => { });
     };
   }, []);
 
@@ -547,7 +561,7 @@ function PracticeGame() {
     }
 
     const handlePageExit = () => {
-      persistActivePracticeRunRef.current();
+      void persistActivePracticeRunRef.current().catch(() => { });
     };
 
     window.addEventListener("pagehide", handlePageExit);
@@ -559,22 +573,61 @@ function PracticeGame() {
     };
   }, []);
 
-  const persistHighScoreIfNeeded = (candidateRound: number) => {
-    if (candidateRound > singlePlayerHighRounds[difficulty]) {
-      void updateSinglePlayerHighScore(difficulty, candidateRound).catch(() => { });
+  const persistHighScoreIfNeeded = (candidateRound: number, options?: { force?: boolean }) => {
+    if (candidateRound > singlePlayerHighRounds[difficulty] || (options?.force && candidateRound > 0)) {
+      const syncPromise = updateSinglePlayerHighScore(difficulty, candidateRound);
+      highRoundSyncPromiseRef.current = syncPromise;
+      void syncPromise.catch(() => { });
+      return syncPromise;
+    }
+
+    return highRoundSyncPromiseRef.current;
+  };
+
+  const persistBestScoreIfNeeded = (candidateScore: number, options?: { force?: boolean }) => {
+    if (candidateScore > singlePlayerHighScores[difficulty] || (options?.force && candidateScore > 0)) {
+      const syncPromise = updateSinglePlayerBestScore(difficulty, candidateScore);
+      bestScoreSyncPromiseRef.current = syncPromise;
+      void syncPromise.catch(() => { });
+      return syncPromise;
+    }
+
+    return bestScoreSyncPromiseRef.current;
+  };
+
+  const flushPracticeRunToDatabase = async () => {
+    try {
+      await activePracticeRunSyncPromiseRef.current.catch(() => undefined);
+      await syncSinglePlayerRunProgress(difficulty, {
+        rounds: roundNumber,
+        score: currentScore,
+        snapshot: buildActivePracticeSnapshot()
+      });
+      return { saved: true as const };
+    } catch (error) {
+      return {
+        saved: false as const,
+        message: error instanceof Error ? error.message : "Could not save your run to the database."
+      };
     }
   };
 
-  const persistBestScoreIfNeeded = (candidateScore: number) => {
-    if (candidateScore > singlePlayerHighScores[difficulty]) {
-      void updateSinglePlayerBestScore(difficulty, candidateScore).catch(() => { });
+  const handleBackPress = async () => {
+    if (isLeavingScreenRef.current) {
+      return;
     }
-  };
 
-  const handleBackPress = () => {
-    persistHighScoreIfNeeded(roundNumber);
-    persistBestScoreIfNeeded(currentScore);
-    persistActivePracticeRun();
+    isLeavingScreenRef.current = true;
+    setErrorMessage(null);
+    const saveResult = await flushPracticeRunToDatabase();
+
+    if (!saveResult.saved) {
+      isLeavingScreenRef.current = false;
+      setErrorMessage(saveResult.message);
+      playSound("error");
+      return;
+    }
+
     router.back();
   };
 
@@ -824,9 +877,22 @@ function PracticeGame() {
     startCountdown();
   };
 
-  const handleExitToHome = () => {
+  const handleExitToHome = async () => {
+    if (isLeavingScreenRef.current) {
+      return;
+    }
+
+    isLeavingScreenRef.current = true;
     playSound("uiTap");
-    persistActivePracticeRun();
+    const saveResult = await flushPracticeRunToDatabase();
+
+    if (!saveResult.saved) {
+      isLeavingScreenRef.current = false;
+      setErrorMessage(saveResult.message);
+      playSound("error");
+      return;
+    }
+
     router.replace("/");
   };
 
@@ -1722,6 +1788,9 @@ function PracticeGame() {
 export default function PracticeScreen() {
   const hydrated = usePlayerProgressStore((state) => state.hydrated);
   const progressReady = usePlayerProgressStore((state) => state.progressReady);
+  const progressSynced = usePlayerProgressStore((state) => state.progressSynced);
+  const progressError = usePlayerProgressStore((state) => state.progressError);
+  const hydrateProgress = usePlayerProgressStore((state) => state.hydrate);
 
   // Wait for the remote profile to load before mounting the game. Otherwise the
   // game would initialize from an empty snapshot and immediately sync it back,
@@ -1732,6 +1801,23 @@ export default function PracticeScreen() {
         <ActivityIndicator color={colors.accent} size="large" />
         <Text style={styles.loadingTitle}>Loading your run</Text>
         <Text style={styles.loadingBody}>Restoring your saved progress.</Text>
+      </ScreenContainer>
+    );
+  }
+
+  if (!progressSynced) {
+    return (
+      <ScreenContainer contentStyle={styles.loadingScreen}>
+        <Text style={styles.loadingTitle}>Database unavailable</Text>
+        <Text style={styles.loadingBody}>
+          {progressError ?? "Could not connect to your player profile. Check your connection and try again."}
+        </Text>
+        <Pressable
+          onPress={() => void hydrateProgress().catch(() => { })}
+          style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.retryButtonText}>TRY AGAIN</Text>
+        </Pressable>
       </ScreenContainer>
     );
   }
@@ -1759,7 +1845,29 @@ const styles = StyleSheet.create({
   loadingBody: {
     color: "#6d757b",
     fontSize: 13,
-    fontWeight: "700"
+    fontWeight: "700",
+    lineHeight: 18,
+    maxWidth: 310,
+    textAlign: "center"
+  },
+  retryButton: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderBottomColor: "#025a29",
+    borderBottomWidth: 5,
+    borderRadius: 18,
+    justifyContent: "center",
+    marginTop: spacing.sm,
+    minHeight: 50,
+    minWidth: 150,
+    paddingHorizontal: spacing.lg
+  },
+  retryButtonText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase"
   },
   playInfoBar: {
     alignItems: "center",

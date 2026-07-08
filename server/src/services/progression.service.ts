@@ -1,5 +1,7 @@
 import { createHash } from "crypto";
 
+import type { Prisma } from "@prisma/client";
+
 import { prisma } from "../lib/prisma";
 import type {
   ActivePracticeRunSnapshot,
@@ -7,6 +9,7 @@ import type {
   MatchInput,
   PlayerProfile,
   ProgressBootstrapPayload,
+  ProgressPreferencesPayload,
   ProgressSyncResponse,
   RecordMatchResponse,
   UpdateDisplayNameResponse
@@ -153,6 +156,58 @@ class ProgressionService {
     return this.updateProfile(playerKey, (profile) => applyActivePracticeRun(profile, difficulty, snapshot));
   }
 
+  async updatePreferences(payload: ProgressPreferencesPayload) {
+    return this.updateProfile(payload.playerKey, (profile) => {
+      let nextProfile = profile;
+
+      if (payload.tutorialSeen === true) {
+        nextProfile = applyTutorialSeen(nextProfile);
+      }
+
+      if (typeof payload.soundPlaceholdersEnabled === "boolean") {
+        nextProfile = applySoundPlaceholdersEnabled(nextProfile, payload.soundPlaceholdersEnabled);
+      }
+
+      if (typeof payload.avatarId === "string") {
+        nextProfile = applyAvatarId(nextProfile, payload.avatarId);
+      }
+
+      if (typeof payload.premiumAvatarId === "string") {
+        nextProfile = applyPremiumAvatarPurchase(nextProfile, payload.premiumAvatarId);
+      }
+
+      if (payload.singlePlayerHighRounds && Object.keys(payload.singlePlayerHighRounds).length > 0) {
+        nextProfile = applySinglePlayerHighRounds(nextProfile, payload.singlePlayerHighRounds);
+      }
+
+      if (payload.singlePlayerHighScores && Object.keys(payload.singlePlayerHighScores).length > 0) {
+        nextProfile = applySinglePlayerHighScores(nextProfile, payload.singlePlayerHighScores);
+      }
+
+      if (typeof payload.extraGuessPowerUpsDelta === "number" && payload.extraGuessPowerUpsDelta !== 0) {
+        nextProfile = applyExtraGuessPowerUps(nextProfile, payload.extraGuessPowerUpsDelta);
+      }
+
+      if (typeof payload.skipBoostersDelta === "number" && payload.skipBoostersDelta !== 0) {
+        nextProfile = applySkipBoosters(nextProfile, payload.skipBoostersDelta);
+      }
+
+      if (typeof payload.coinsDelta === "number" && payload.coinsDelta !== 0) {
+        nextProfile = applyCoins(nextProfile, payload.coinsDelta);
+      }
+
+      if (payload.activePracticeRun) {
+        nextProfile = applyActivePracticeRun(
+          nextProfile,
+          payload.activePracticeRun.difficulty,
+          payload.activePracticeRun.snapshot
+        );
+      }
+
+      return nextProfile;
+    });
+  }
+
   async updateDisplayName(playerKey: string, displayName: string): Promise<UpdateDisplayNameResponse> {
     this.assertConfigured();
     const current = await this.requirePlayer(playerKey);
@@ -177,58 +232,89 @@ class ProgressionService {
   }
 
   async claimDailyReward(playerKey: string): Promise<ClaimDailyRewardResponse> {
-    this.assertConfigured();
-    const current = await this.requirePlayer(playerKey);
-    const { profile, claimed, reward } = claimProfileDailyReward(current.profile);
-    let persistedProfile = current.profile;
+    const result = await this.updateProfileWithResult(playerKey, (profile) => {
+      const rewardResult = claimProfileDailyReward(profile);
 
-    if (claimed) {
-      persistedProfile = await this.persistProfile(current.playerKey, current.displayName, profile);
-    }
+      return {
+        profile: rewardResult.claimed ? rewardResult.profile : profile,
+        result: {
+          claimed: rewardResult.claimed,
+          reward: rewardResult.reward
+        }
+      };
+    });
 
     return {
-      playerKey: current.playerKey,
-      displayName: current.displayName,
-      profile: claimed ? persistedProfile : current.profile,
-      leaderboard: await this.getLeaderboard(
-        current.playerKey,
-        claimed ? persistedProfile : current.profile,
-        current.displayName
-      ),
+      playerKey: result.playerKey,
+      displayName: result.displayName,
+      profile: result.profile,
+      leaderboard: result.leaderboard,
       persistence: "remote",
-      claimed,
-      reward
+      claimed: result.result.claimed,
+      reward: result.result.reward
     };
   }
 
   async recordMatch(playerKey: string, input: MatchInput): Promise<RecordMatchResponse> {
-    this.assertConfigured();
-    const current = await this.requirePlayer(playerKey);
-    const { profile, record } = applyRecordedMatch(current.profile, input);
-    const persistedProfile = await this.persistProfile(current.playerKey, current.displayName, profile);
+    const result = await this.updateProfileWithResult(playerKey, (profile) => {
+      const matchResult = applyRecordedMatch(profile, input);
+
+      return {
+        profile: matchResult.profile,
+        result: matchResult.record
+      };
+    });
 
     return {
-      playerKey: current.playerKey,
-      displayName: current.displayName,
-      profile: persistedProfile,
-      leaderboard: await this.getLeaderboard(current.playerKey, persistedProfile, current.displayName),
+      playerKey: result.playerKey,
+      displayName: result.displayName,
+      profile: result.profile,
+      leaderboard: result.leaderboard,
       persistence: "remote",
-      record
+      record: result.result
     };
   }
 
   private async updateProfile(playerKey: string, updater: (profile: PlayerProfile) => PlayerProfile) {
-    this.assertConfigured();
-    const current = await this.requirePlayer(playerKey);
-    const profile = normalizeProfile(updater(current.profile));
-    const persistedProfile = await this.persistProfile(current.playerKey, current.displayName, profile);
+    const result = await this.updateProfileWithResult(playerKey, (profile) => ({
+      profile: updater(profile),
+      result: null
+    }));
 
     return {
-      playerKey: current.playerKey,
-      displayName: current.displayName,
-      profile: persistedProfile,
-      leaderboard: await this.getLeaderboard(current.playerKey, persistedProfile, current.displayName),
+      playerKey: result.playerKey,
+      displayName: result.displayName,
+      profile: result.profile,
+      leaderboard: result.leaderboard,
       persistence: "remote" as const
+    };
+  }
+
+  private async updateProfileWithResult<T>(
+    playerKey: string,
+    updater: (profile: PlayerProfile) => {
+      profile: PlayerProfile;
+      result: T;
+    }
+  ) {
+    this.assertConfigured();
+    const updated = await prisma.$transaction(async (tx) => {
+      const current = await this.requirePlayerForUpdate(tx, playerKey);
+      const next = updater(current.profile);
+      const profile = normalizeProfile(next.profile);
+      const persistedProfile = await this.persistLockedProfile(tx, current.playerKey, current.displayName, profile);
+
+      return {
+        playerKey: current.playerKey,
+        displayName: current.displayName,
+        profile: persistedProfile,
+        result: next.result
+      };
+    });
+
+    return {
+      ...updated,
+      leaderboard: await this.getLeaderboard(updated.playerKey, updated.profile, updated.displayName)
     };
   }
 
@@ -249,26 +335,53 @@ class ProgressionService {
     };
   }
 
-  private mergeSinglePlayerHighRounds(currentProfile: PlayerProfile, nextProfile: PlayerProfile) {
+  private async requirePlayerForUpdate(tx: Prisma.TransactionClient, playerKey: string) {
+    const records = await tx.$queryRaw<Array<{
+      playerKey: string;
+      displayName: string;
+      profile: unknown;
+    }>>`
+      SELECT "playerKey", "displayName", "profile"
+      FROM "PlayerProgress"
+      WHERE "playerKey" = ${playerKey}
+      FOR UPDATE
+    `;
+    const record = records[0];
+
+    if (!record) {
+      throw new Error("Player profile not found. Please reopen the game and try again.");
+    }
+
     return {
-      easy: Math.max(currentProfile.stats.singlePlayerHighRounds.easy, nextProfile.stats.singlePlayerHighRounds.easy),
-      hard: Math.max(currentProfile.stats.singlePlayerHighRounds.hard, nextProfile.stats.singlePlayerHighRounds.hard),
-      impossible: Math.max(
-        currentProfile.stats.singlePlayerHighRounds.impossible,
-        nextProfile.stats.singlePlayerHighRounds.impossible
-      )
+      ...record,
+      profile: parseProfile(record.profile)
     };
   }
 
-  private mergeSinglePlayerHighScores(currentProfile: PlayerProfile, nextProfile: PlayerProfile) {
-    return {
-      easy: Math.max(currentProfile.stats.singlePlayerHighScores.easy, nextProfile.stats.singlePlayerHighScores.easy),
-      hard: Math.max(currentProfile.stats.singlePlayerHighScores.hard, nextProfile.stats.singlePlayerHighScores.hard),
-      impossible: Math.max(
-        currentProfile.stats.singlePlayerHighScores.impossible,
-        nextProfile.stats.singlePlayerHighScores.impossible
-      )
-    };
+  private async persistLockedProfile(
+    tx: Prisma.TransactionClient,
+    playerKey: string,
+    displayName: string,
+    profile: PlayerProfile
+  ) {
+    const normalizedProfile = normalizeProfile(profile);
+
+    await tx.playerProgress.update({
+      where: {
+        playerKey
+      },
+      data: {
+        displayName,
+        profile: profileToJson(normalizedProfile),
+        totalPoints: normalizedProfile.totalPoints,
+        level: normalizedProfile.level,
+        currentWinStreak: normalizedProfile.currentWinStreak,
+        onlinePoints: normalizedProfile.stats.category.online.points,
+        onlineWins: normalizedProfile.stats.category.online.wins
+      }
+    });
+
+    return normalizedProfile;
   }
 
   private hashDeviceSecret(deviceSecret?: string) {
@@ -287,71 +400,28 @@ class ProgressionService {
     deviceSecretHash: string | null
   ) {
     if (!deviceSecretHash) {
-      if (profile.deviceSecretHash) {
-        throw new Error("This profile session is missing. Reopen the game and try again.");
-      }
-
       return profile;
     }
 
-    if (profile.deviceSecretHash && profile.deviceSecretHash !== deviceSecretHash) {
-      throw new Error("This profile belongs to another device.");
-    }
-
-    if (profile.deviceSecretHash) {
+    if (profile.deviceSecretHash === deviceSecretHash) {
       return profile;
     }
 
-    const securedProfile = normalizeProfile({
-      ...profile,
-      deviceSecretHash
-    });
+    return prisma.$transaction(async (tx) => {
+      const current = await this.requirePlayerForUpdate(tx, playerKey);
 
-    await prisma.playerProgress.update({
-      where: {
-        playerKey
-      },
-      data: {
-        profile: profileToJson(securedProfile)
+      if (current.profile.deviceSecretHash === deviceSecretHash) {
+        return current.profile;
       }
-    });
 
-    return securedProfile;
-  }
-
-  private async persistProfile(playerKey: string, displayName: string, profile: PlayerProfile) {
-    const existing = await prisma.playerProgress.findUnique({
-      where: {
-        playerKey
-      }
+      // playerKey is the only durable profile credential in this app. Device
+      // secrets can change across reinstalls, restores, and native/dev builds,
+      // so rotate the stored secret instead of locking out the profile.
+      return this.persistLockedProfile(tx, playerKey, current.displayName, {
+        ...current.profile,
+        deviceSecretHash
+      });
     });
-    const existingProfile = existing ? parseProfile(existing.profile) : createInitialProfile();
-    const mergedProfile = normalizeProfile({
-      ...profile,
-      premiumAvatarIds: [...new Set([...existingProfile.premiumAvatarIds, ...profile.premiumAvatarIds])],
-      stats: {
-        ...profile.stats,
-        singlePlayerHighRounds: this.mergeSinglePlayerHighRounds(existingProfile, profile),
-        singlePlayerHighScores: this.mergeSinglePlayerHighScores(existingProfile, profile)
-      }
-    });
-
-    await prisma.playerProgress.update({
-      where: {
-        playerKey
-      },
-      data: {
-        displayName,
-        profile: profileToJson(mergedProfile),
-        totalPoints: mergedProfile.totalPoints,
-        level: mergedProfile.level,
-        currentWinStreak: mergedProfile.currentWinStreak,
-        onlinePoints: mergedProfile.stats.category.online.points,
-        onlineWins: mergedProfile.stats.category.online.wins
-      }
-    });
-
-    return mergedProfile;
   }
 
   private async getLeaderboard(playerKey: string, profile: PlayerProfile, displayName: string) {

@@ -46,6 +46,7 @@ interface PlayerProgressStore {
   hydrated: boolean;
   progressReady: boolean;
   progressSynced: boolean;
+  progressError: string | null;
   playerKey: string | null;
   displayName: string;
   profile: PlayerProfile;
@@ -60,6 +61,14 @@ interface PlayerProgressStore {
   toggleSoundPlaceholders: () => Promise<void>;
   updateSinglePlayerHighScore: (difficulty: import("../types/game.types").Difficulty, rounds: number) => Promise<void>;
   updateSinglePlayerBestScore: (difficulty: import("../types/game.types").Difficulty, score: number) => Promise<void>;
+  syncSinglePlayerRunProgress: (
+    difficulty: import("../types/game.types").Difficulty,
+    progress: {
+      rounds?: number;
+      score?: number;
+      snapshot?: ActivePracticeRunSnapshot | null;
+    }
+  ) => Promise<void>;
   consumeExtraGuessPowerUp: () => Promise<boolean>;
   awardExtraGuessPowerUps: (amount: number) => Promise<boolean>;
   consumeSkipBooster: () => Promise<boolean>;
@@ -172,6 +181,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
   hydrated: false,
   progressReady: false,
   progressSynced: false,
+  progressError: null,
   playerKey: null,
   displayName: "",
   profile: createInitialProfile(),
@@ -199,6 +209,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       hydrated: true,
       progressReady: false,
       progressSynced: false,
+      progressError: null,
       playerKey,
       displayName: fallbackDisplayName,
       profile: createInitialProfile(),
@@ -213,7 +224,12 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       });
 
       await applyRemoteSync(set, get, response);
-      set({ progressSynced: true });
+      set({ progressSynced: true, progressError: null });
+    } catch (error) {
+      set({
+        progressSynced: false,
+        progressError: error instanceof Error ? error.message : "Could not connect to the progression database."
+      });
     } finally {
       // Remote profile has settled (loaded or failed). Screens can now safely
       // restore from / sync the persisted snapshot without clobbering it.
@@ -306,7 +322,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     const currentProfile = get().profile;
     const currentHighScore = currentProfile.stats.singlePlayerHighRounds[difficulty];
 
-    if (rounds <= currentHighScore) {
+    if (rounds < currentHighScore) {
       return;
     }
 
@@ -341,7 +357,7 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
     const currentProfile = get().profile;
     const currentBestScore = currentProfile.stats.singlePlayerHighScores[difficulty];
 
-    if (score <= currentBestScore) {
+    if (score < currentBestScore) {
       return;
     }
 
@@ -365,6 +381,80 @@ export const usePlayerProgressStore = create<PlayerProgressStore>((set, get) => 
       }
     });
     const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+    set({
+      displayName: response.displayName,
+      profile: normalizedProfile,
+      leaderboard: response.leaderboard
+    });
+  },
+  syncSinglePlayerRunProgress: async (difficulty, progress) => {
+    let optimisticProfile = get().profile;
+    const shouldSyncRounds = typeof progress.rounds === "number" && Number.isFinite(progress.rounds) && progress.rounds > 0;
+    const shouldSyncScore = typeof progress.score === "number" && Number.isFinite(progress.score) && progress.score > 0;
+    const shouldSyncSnapshot = Object.prototype.hasOwnProperty.call(progress, "snapshot");
+
+    if (!shouldSyncRounds && !shouldSyncScore && !shouldSyncSnapshot) {
+      return;
+    }
+
+    if (shouldSyncRounds) {
+      optimisticProfile = applySinglePlayerHighRounds(optimisticProfile, {
+        [difficulty]: Math.floor(progress.rounds!)
+      });
+    }
+
+    if (shouldSyncScore) {
+      optimisticProfile = applySinglePlayerHighScores(optimisticProfile, {
+        [difficulty]: Math.floor(progress.score!)
+      });
+    }
+
+    if (shouldSyncSnapshot) {
+      optimisticProfile = applyActivePracticeRun(optimisticProfile, difficulty, progress.snapshot ?? null);
+    }
+
+    set({
+      profile: optimisticProfile,
+      leaderboard: buildOnlineLeaderboard(optimisticProfile)
+    });
+
+    if (!get().playerKey) {
+      return;
+    }
+
+    const response = await updateProgressPreferences({
+      playerKey: get().playerKey!,
+      ...(shouldSyncRounds
+        ? {
+            singlePlayerHighRounds: {
+              [difficulty]: Math.floor(progress.rounds!)
+            }
+          }
+        : {}),
+      ...(shouldSyncScore
+        ? {
+            singlePlayerHighScores: {
+              [difficulty]: Math.floor(progress.score!)
+            }
+          }
+        : {}),
+      ...(shouldSyncSnapshot
+        ? {
+            activePracticeRun: {
+              difficulty,
+              snapshot: progress.snapshot ?? null
+            }
+          }
+        : {})
+    });
+    const normalizedProfile = mergeSinglePlayerRecords(normalizeProfile(response.profile), get().profile);
+
+    if (shouldSyncSnapshot && !progress.snapshot) {
+      const activePracticeRuns = { ...normalizedProfile.activePracticeRuns };
+      delete activePracticeRuns[difficulty];
+      normalizedProfile.activePracticeRuns = activePracticeRuns;
+    }
 
     set({
       displayName: response.displayName,

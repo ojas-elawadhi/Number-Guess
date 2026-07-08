@@ -118,8 +118,11 @@ const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_URL ?? process.env.EXPO
 const fallbackAvatarBaseUrl = configuredApiBaseUrl
   ? `${normalizeBaseUrl(configuredApiBaseUrl)}/avatars`
   : "http://localhost:3001/avatars";
-const avatarBaseUrl = inferLocalAvatarBaseUrl() ??
-  (configuredAvatarBaseUrl ? normalizeBaseUrl(configuredAvatarBaseUrl) : fallbackAvatarBaseUrl);
+const avatarBaseUrl = configuredAvatarBaseUrl
+  ? normalizeBaseUrl(configuredAvatarBaseUrl)
+  : configuredApiBaseUrl
+    ? fallbackAvatarBaseUrl
+    : inferLocalAvatarBaseUrl() ?? fallbackAvatarBaseUrl;
 
 const buildAvatarOption = <T extends AvatarId>(id: T) => ({
   id,

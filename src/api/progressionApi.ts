@@ -47,7 +47,7 @@ const normalizeBaseUrl = (value?: string) => {
 };
 
 const API_BASE_URL = normalizeBaseUrl(
-  inferLocalDevApiUrl() ?? process.env.EXPO_PUBLIC_API_URL ?? process.env.EXPO_PUBLIC_SOCKET_URL
+  process.env.EXPO_PUBLIC_API_URL ?? process.env.EXPO_PUBLIC_SOCKET_URL ?? inferLocalDevApiUrl()
 );
 
 let progressSessionToken: string | null = null;

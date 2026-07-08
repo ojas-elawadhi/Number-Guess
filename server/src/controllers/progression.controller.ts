@@ -12,6 +12,18 @@ import type {
 
 export const progressionRouter = Router();
 
+const hasSupportedPreferenceUpdate = (payload: ProgressPreferencesPayload) =>
+  payload.tutorialSeen === true ||
+  typeof payload.soundPlaceholdersEnabled === "boolean" ||
+  typeof payload.avatarId === "string" ||
+  typeof payload.premiumAvatarId === "string" ||
+  Boolean(payload.singlePlayerHighRounds && Object.keys(payload.singlePlayerHighRounds).length > 0) ||
+  Boolean(payload.singlePlayerHighScores && Object.keys(payload.singlePlayerHighScores).length > 0) ||
+  (typeof payload.extraGuessPowerUpsDelta === "number" && payload.extraGuessPowerUpsDelta !== 0) ||
+  (typeof payload.skipBoostersDelta === "number" && payload.skipBoostersDelta !== 0) ||
+  (typeof payload.coinsDelta === "number" && payload.coinsDelta !== 0) ||
+  Boolean(payload.activePracticeRun);
+
 progressionRouter.post("/bootstrap", async (request, response) => {
   try {
     const payload = request.body as ProgressBootstrapPayload;
@@ -33,84 +45,8 @@ progressionRouter.patch("/preferences", async (request, response) => {
       return;
     }
 
-    if (payload.tutorialSeen === true) {
-      response.json(withSessionToken(await progressionService.markTutorialSeen(payload.playerKey)));
-      return;
-    }
-
-    if (typeof payload.soundPlaceholdersEnabled === "boolean") {
-      response.json(
-        withSessionToken(
-          await progressionService.setSoundPlaceholdersEnabled(payload.playerKey, payload.soundPlaceholdersEnabled)
-        )
-      );
-      return;
-    }
-
-    if (typeof payload.avatarId === "string") {
-      response.json(withSessionToken(await progressionService.updateAvatarId(payload.playerKey, payload.avatarId)));
-      return;
-    }
-
-    if (typeof payload.premiumAvatarId === "string") {
-      response.json(
-        withSessionToken(
-          await progressionService.purchasePremiumAvatar(
-            payload.playerKey,
-            payload.premiumAvatarId
-          )
-        )
-      );
-      return;
-    }
-
-    if (payload.singlePlayerHighRounds && Object.keys(payload.singlePlayerHighRounds).length > 0) {
-      response.json(
-        withSessionToken(
-          await progressionService.updateSinglePlayerHighRounds(payload.playerKey, payload.singlePlayerHighRounds)
-        )
-      );
-      return;
-    }
-
-    if (payload.singlePlayerHighScores && Object.keys(payload.singlePlayerHighScores).length > 0) {
-      response.json(
-        withSessionToken(
-          await progressionService.updateSinglePlayerHighScores(payload.playerKey, payload.singlePlayerHighScores)
-        )
-      );
-      return;
-    }
-
-    if (typeof payload.extraGuessPowerUpsDelta === "number" && payload.extraGuessPowerUpsDelta !== 0) {
-      response.json(
-        withSessionToken(
-          await progressionService.adjustExtraGuessPowerUps(payload.playerKey, payload.extraGuessPowerUpsDelta)
-        )
-      );
-      return;
-    }
-
-    if (typeof payload.skipBoostersDelta === "number" && payload.skipBoostersDelta !== 0) {
-      response.json(withSessionToken(await progressionService.adjustSkipBoosters(payload.playerKey, payload.skipBoostersDelta)));
-      return;
-    }
-
-    if (typeof payload.coinsDelta === "number" && payload.coinsDelta !== 0) {
-      response.json(withSessionToken(await progressionService.adjustCoins(payload.playerKey, payload.coinsDelta)));
-      return;
-    }
-
-    if (payload.activePracticeRun) {
-      response.json(
-        withSessionToken(
-          await progressionService.updateActivePracticeRun(
-            payload.playerKey,
-            payload.activePracticeRun.difficulty,
-            payload.activePracticeRun.snapshot
-          )
-        )
-      );
+    if (hasSupportedPreferenceUpdate(payload)) {
+      response.json(withSessionToken(await progressionService.updatePreferences(payload)));
       return;
     }
 
